@@ -61,17 +61,20 @@ GaussDB、OBS、MaaS、OCR 的区域、连接、权限、费用和完整项目�
 ## Zeabur
 
 使用 [zeabur-template.yaml](../zeabur-template.yaml) 在已有服务器的新项目中部署一个服务。
-模板包含 HTTP 端口 `3000`、SQLite 持久卷 `/data`、精确 origin 与卷权限初始化。
+模板包含 HTTP 端口 `3000`、SQLite 持久卷 `/data`、精确 origin 与非 root 启动配置。
 它使用 CI 验证并公开发布的镜像，不在远端重复安装依赖，不额外创建数据库服务。
 
 ```bash
-pnpm dlx zeabur template deploy -f zeabur-template.yaml --project-id <project-id> --var PUBLIC_DOMAIN=equilens --var IMAGE_REF=ghcr.io/alaala-daka/equilens:sha-<full-commit> -i=false
+pnpm dlx zeabur template deploy -f zeabur-template.yaml --project-id <project-id> --var PUBLIC_DOMAIN=equilens -i=false
 ```
 
+导入前将模板 `source.image` 设为已验证的完整提交标签或摘要；Zeabur 不在该字段展开模板变量。
 `APP_ORIGIN` 必须等于公开入口 `https://equilens.zeabur.app`，不带末尾斜线；反向代理内部 HTTP 不改变此配置。
-`DATABASE_PROVIDER=sqlite`，`SQLITE_PATH=/data/equilens.sqlite`。只运行一个副本；卷初始化后应用仍以 UID 1000 运行。
+`DATABASE_PROVIDER=sqlite`，`SQLITE_PATH=/data/equilens/equilens.sqlite`。只运行一个副本，以 UID 1000 运行。
+启动时设置 `umask 077`，应用创建自己的数据子目录，实测目录 `700`、数据库文件 `600`；不修改挂载根目录属主。
 后续升级固定新的完整提交镜像标签并重部署，保留现有卷；不要重复部署模板创建第二个服务。
 域名、HTTPS、API 权限、下载和重启恢复须实测，模板导入成功不等于这些检查通过。
+当前线上使用 `39a97b10ae33f23022fe805cdac5b64786cf8671` 镜像，部署与重启验证见[数据库验证记录](reviews/2026-10-22-database-validation.md)。
 
 ## SQLite 备份
 

@@ -10,18 +10,18 @@ spec:
       type: DOMAIN
       name: Domain
       description: Zeabur subdomain for this deployment.
-    - key: IMAGE_REF
-      type: STRING
-      name: Image
-      description: Verified ghcr.io/alaala-daka/equilens image pinned to a full commit tag or digest.
   services:
     - name: equilens
       template: PREBUILT_V2
       domainKey: PUBLIC_DOMAIN
       spec:
         source:
-          image: ${IMAGE_REF}
+          image: ghcr.io/alaala-daka/equilens:sha-39a97b10ae33f23022fe805cdac5b64786cf8671
           runAsUserID: 1000
+          command:
+            - /bin/sh
+            - -c
+            - umask 077; exec node server.js
         ports:
           - id: web
             port: 3000
@@ -29,21 +29,11 @@ spec:
         volumes:
           - id: data
             dir: /data
-        init:
-          - id: data-permissions
-            image: busybox:1.37.0
-            volumes:
-              - id: data
-                mountPath: /data
-            command:
-              - /bin/sh
-              - -c
-              - chown 1000:1000 /data && chmod 700 /data
         env:
           DATABASE_PROVIDER:
             default: sqlite
           SQLITE_PATH:
-            default: /data/equilens.sqlite
+            default: /data/equilens/equilens.sqlite
           APP_ORIGIN:
             default: ${ZEABUR_WEB_URL}
           PORT:

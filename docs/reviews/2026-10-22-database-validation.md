@@ -23,4 +23,19 @@ GaussDB 使用华为维护的 `gaussdb-node@0.2.2` 适配，配置测试检查�
 浏览器会话隔离不替代账号和项目成员授权，清除 cookie 不提供账号恢复。
 未完成异地备份恢复演练、Microsoft Word 人工验收或法律业务 AC 验收。
 
-Zeabur HTTPS 和重部署验收在实际部署后补充，以上本地结果不计为线上验收。
+## Zeabur 实测
+
+- 项目：`6ad9bfc941d0e9b6bfde90c2`，使用已有东京服务器，未购买服务器或新增独立数据库服务。
+- 活跃服务：`6ad9c67d79815446417f863c`；环境：`6ad9bfc9ce88521483143e24`。
+- 域名：[equilens.zeabur.app](https://equilens.zeabur.app)，HTTPS、首页、CSS、公共资源及健康接口通过。
+- 镜像：`ghcr.io/alaala-daka/equilens:sha-39a97b10ae33f23022fe805cdac5b64786cf8671`。
+  [CI](https://github.com/alaala-daka/EquiLens/actions/runs/39744937323) 完整通过并发布该镜像。
+- 线上运行数据库 API 冒烟检查通过：新建、保存、重读、重复保存、旧版本冲突、跨会话读取/复制拒绝、缺失 Origin 与非法文件拒绝。
+- 重启命令成功；日志记录旧 Pod 在 08:19:26 UTC 停止、新 Pod 在 08:19:28 UTC 启动。
+  新 Pod 启动后重读原版本，ID、摘要、DOCX 字节及标题一致。
+- 通过容器命令确认 UID `1000`；`/data/equilens` 权限 `700`，SQLite 文件权限 `600`。
+- `/source` 返回公开仓库的完整部署提交地址，未指向浮动的主分支。
+- 本地浏览器通过真实 Word 画布输入中文、保存、刷新及重开，内容一致；线上浏览器可加载文档工作台。
+
+平台限制：`source.image` 不展开模板变量，必须写实际镜像引用。挂载根目录不能由非 root 容器执行 chown；
+模板改为 `umask 077` 并使用应用自行创建的数据子目录。首个未成功启动的空服务已删除并确认暂停，无用户文档。

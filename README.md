@@ -11,6 +11,8 @@
 > 文档原件和保存版本存入服务端数据库，支持 SQLite / GaussDB 配置。SQLite 已有行为测试；GaussDB 尚未连接真实实例验证。
 > Agent、OBS、MaaS、OCR 及四个业务模块尚未接入，当前不执行法律业务分析。
 
+[在线使用](https://equilens.zeabur.app) · [部署说明](docs/deployment.md)
+
 ## 工作方式
 
 产品首版聚焦房建机电安装专业分包，代表专业分包人，优先完成
@@ -62,7 +64,7 @@ pnpm dev
 | 配置 | 用途 |
 | --- | --- |
 | `DATABASE_PROVIDER=sqlite` | 使用 SQLite，默认值 |
-| `SQLITE_PATH` | SQLite 文件路径，Zeabur 使用 `/data/equilens.sqlite` |
+| `SQLITE_PATH` | SQLite 文件路径，Zeabur 使用 `/data/equilens/equilens.sqlite` |
 | `DATABASE_PROVIDER=gaussdb` | 使用 GaussDB 集中式，连接失败不回退 |
 | `GAUSSDB_HOST/PORT/DATABASE/USER/PASSWORD` | GaussDB 连接配置，端口默认 `8000` |
 | `GAUSSDB_CA_PATH` | 可选 CA 文件，TLS 始终校验证书 |
