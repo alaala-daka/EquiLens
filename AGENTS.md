@@ -16,6 +16,14 @@ Each durable rule has one owner. Update its spec, implementation, affected instr
 Unresolved proposals and implementation tasks belong in GitHub Issues; creating an Issue requires user authorization.
 Treat screenshots as layout references and sample data, not evidence of implemented features or acceptance results.
 
+Before implementing a feature or changing behavior, read `spec/README.md` and the owning contract.
+If the requested behavior is missing or changes that contract, update the owning spec first; add a numbered
+spec and its index entry only when no existing spec owns it. Define scope, inputs/outputs, failure states,
+permissions and acceptance checks before writing implementation code. Implement against that contract,
+then update validation and operating instructions. Do not implement first and backfill a spec afterward.
+Keep unresolved alternatives in Issues rather than presenting them as accepted decisions.
+Routine fixes that restore an existing contract and editorial changes do not need a new spec.
+
 ## Delivery Scope & Architecture
 
 - Deliver a working Demo within 12 days of the actual start, followed by one additional month of improvement. Keep the stages and their acceptance results separate; follow `spec/01-product.md` sections 12–13.
@@ -23,7 +31,7 @@ Treat screenshots as layout references and sample data, not evidence of implemen
 - Project isolation, real processing, immutable provenance, correct amount semantics, and human revision protection apply from the first Demo workflow. Reduce optional depth when needed; disclose unfinished functions instead of counting placeholder pages as completed.
 - Use Next.js App Router and TypeScript in one Node.js application, managed with pnpm. Deploy the standalone container on ECS; use GaussDB centralized, private OBS, MaaS, and verified OCR through server-only adapters. Do not add a separate API or Worker service. Validate the selected GaussDB version, mode, driver and migrations before choosing an ORM.
 - Share document processing, typed facts, source tracking, versioning, and exports. Load published scenario rule packs before supplementary keyword retrieval. Do not add vector infrastructure, Redis, a separate queue service, Kubernetes, or an open-ended agent platform without a demonstrated requirement.
-- Preserve layout A. Full scanned-document processing, arbitrary contract drafting, original Word layout preservation, tracked-change editing, and real-time collaboration remain outside both stages unless scope is explicitly revised.
+- Use the Documents / Standards tabs and document editor with a right-hand Agent conversation defined in `spec/02-workbench-ui.md`; this replaces layout A. Full scanned-document processing, arbitrary contract drafting, original Word layout preservation, tracked-change editing, and real-time collaboration remain outside both stages unless scope is explicitly revised.
 - Verify actual contest requirements, account permissions, HTTPS access, service capabilities, and budgets; do not infer availability or scoring requirements from reference links.
 
 ## Build, Test, and Development Commands
@@ -49,6 +57,28 @@ Keep routes thin; place domain behavior and cloud/database access in `src/server
 Use `server-only` at service boundaries and never import credentials or database clients into Client Components.
 Use the Node.js runtime for database, file and model operations. Private project data must not enter shared caches.
 Keep Markdown concise and preserve Chinese domain terminology. New accepted specifications use numbered topic names in `spec/`.
+
+## UI: Official shadcn/ui Blocks First
+
+- Use formal, restrained, professional product copy. Keep labels concise and task-oriented.
+  Do not add explanatory paragraphs, implementation notes, development-process narration, preview labels,
+  or unfinished-feature wording such as “本地预览”, “本地草稿”, “尚未接入”, and “功能建设中” to product pages.
+  Keep implementation status and temporary limitations in developer documentation, not interface decorations.
+  Empty states should name the absent resource; retain only operational messages needed for actual errors,
+  authorization, validation, or user decisions. Do not invent success states when removing explanatory copy.
+- Before creating or changing an interface, inspect the [official Blocks](https://ui.shadcn.com/blocks)
+  and use the closest matching block as the starting point. Read its actual source and examples;
+  do not recreate its appearance from memory or substitute a third-party block collection.
+- Follow the official block's structure, layout, spacing, typography, component variants, and interaction
+  patterns strictly. Adapt domain content, data and actions while keeping the supplied styles wherever possible.
+- When no block covers the interaction, compose the [official component examples](https://ui.shadcn.com/docs/components)
+  with their documented styles. Prefer existing components and variants over handwritten equivalents.
+- Avoid custom CSS, arbitrary Tailwind values, bespoke colors, shadows, radii and decorative animations.
+  Add custom styling only for a concrete product, accessibility or responsive requirement that the official
+  pattern cannot satisfy; keep the change minimal and record its reason with the implementation.
+- Preserve accessibility, keyboard interaction and responsive behavior. Follow the current workbench spec when composing official patterns; historical screenshots do not constrain the current layout or custom styling.
+- Record the official block/example URL and any necessary deviations in the change description so they
+  can be reviewed. `DEVELOPMENT.md` owns the detailed UI engineering rules.
 
 ## Testing Guidelines
 

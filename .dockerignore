@@ -11,3 +11,4 @@
 !public/**
 !scripts/
 !scripts/prepare-standalone.mjs
+!THIRD_PARTY_NOTICES.md

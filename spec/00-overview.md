@@ -59,6 +59,6 @@ Docker 使用 Next.js `standalone` 输出，非 root 用户运行，包含静态
 GaussDB 托管备份不能替代包含 OBS 对象、版本、配置和删除记录的完整项目恢复演练。
 不引入 Redis、独立消息队列、向量数据库、Kubernetes 或通用智能体编排平台。
 
-当前实现只有公开建设中页面和 `GET /healthz` 存活检查。健康响应不证明数据库、OBS、MaaS、OCR
+当前实现提供公开的 [工作台界面预览](02-workbench-ui.md) 和 `GET /healthz` 存活检查。健康响应不证明数据库、OBS、MaaS、OCR
 可用，也不证明 AC-01 的受控登录与 HTTPS 已通过。镜像流水线与部署方式见
 [部署指南](../docs/deployment.md)。
