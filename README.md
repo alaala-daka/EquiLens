@@ -56,6 +56,22 @@ pnpm dev
 第三方许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 项目采用 [AGPL-3.0-only](LICENSE)，保留 SuperDoc 等第三方许可；页面“源代码”链接对应部署版本。
 
+## 模型连接测试
+
+在本机 `.env.local` 或服务端环境中配置 `AI_BASE_URL`、`AI_MODEL` 和 `AI_API_KEY`。
+当前网关为 `https://aigw.saurlax.com/v1`，模型暂定 `glm-5.3-flash`；配置字段见 `.env.example`。
+密钥不提交 Git，也不使用 `NEXT_PUBLIC_` 前缀。
+
+```bash
+pnpm ai:smoke
+```
+
+此命令只发送一次固定测试消息“请只回复：连接成功”，可能产生少量模型费用。
+它显示模型回复和可用的 Token 用量；错误时返回明确原因，不输出密钥或服务端响应正文。
+服务端业务可从 `@/server/ai` 导入 `askModel`。模块导入及构建不会调用模型。
+当前仅验证连接，尚未接入合同、页面或业务任务，不代表合同审查已经实现。
+实际验证与构建限制见[模型连接验证记录](docs/reviews/2026-10-22-model-gateway-validation.md)。
+
 ## 数据库
 
 默认不需要云端数据库即可启动，SQLite 文件位于 `data/equilens.sqlite`。

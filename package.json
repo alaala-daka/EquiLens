@@ -10,7 +10,8 @@
     "lint": "eslint . --max-warnings 0",
     "typecheck": "next typegen && tsc --noEmit",
     "check": "pnpm lint && pnpm typecheck",
-    "test": "node scripts/build-docx-validator.mjs && tsx --test src/lib/documents/*.test.ts src/server/database/*.test.ts src/server/documents/*.test.ts",
+    "test": "node scripts/build-docx-validator.mjs && tsx --test src/lib/documents/*.test.ts src/server/database/*.test.ts src/server/documents/*.test.ts src/server/ai/*.test.ts",
+    "ai:smoke": "tsx scripts/check-model.mts",
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
