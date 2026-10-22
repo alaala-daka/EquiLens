@@ -8,7 +8,8 @@
 款项分析和文书撰写，使事实、来源和人工修订能在流程之间复用。
 
 > **项目状态：**提供文档/规范库工作台和浏览器 Word 编辑器，支持新建、导入、编辑、保存、重开及导出 DOCX。
-> 文档原件和保存版本存放在当前浏览器。Agent、GaussDB、OBS、MaaS、OCR 及四个业务模块尚未接入，当前不执行法律业务分析。
+> 文档原件和保存版本存入服务端数据库，支持 SQLite / GaussDB 配置。SQLite 已有行为测试；GaussDB 尚未连接真实实例验证。
+> Agent、OBS、MaaS、OCR 及四个业务模块尚未接入，当前不执行法律业务分析。
 
 ## 工作方式
 
@@ -18,8 +19,9 @@
 业务来源定位、人工复核和正式业务成果导出按产品契约另行实现。
 
 应用采用 **Next.js App Router + TypeScript**，一个 Node.js 应用承担页面、接口和后台任务。
-业务数据库选用 **GaussDB 集中式**，原件及导出文件使用 **OBS 私有桶**，模型分析与证照识别分别接入
-**MaaS** 和 **OCR**。云服务配置与能力以实际账号验证为准。
+数据库通过环境变量选择 **SQLite** 或 **GaussDB 集中式**。SQLite 适用于单实例运行，Zeabur 部署挂载持久卷。
+后续业务原件及导出文件计划使用 **OBS 私有桶**，模型分析与证照识别分别接入 **MaaS** 和 **OCR**。
+云服务配置与能力以实际账号验证为准。
 
 ## 从源码运行
 
@@ -43,13 +45,31 @@ pnpm dev
 离开编辑器前可保存、放弃或取消。多标签页保存冲突时保留当前编辑，可另存为新文档。
 只有保存成功的版本能在刷新后恢复，导入原件不会被编辑覆盖。
 
-IndexedDB 按浏览器及站点 origin 隔离，端口或域名变化会看到不同列表；清理站点数据会删除这些文件，
-隐私模式、存储权限和配额可能限制保存。请自行下载需要保留的文件，本步没有云端同步或备份。
+服务端使用 HttpOnly 会话 cookie 隔离文档；其他浏览器、设备或隐私窗口有独立列表。
+当前没有账号登录，清除 cookie 会失去该会话的文件访问入口，请下载需要保留的文件。
+历史 IndexedDB 文档不会删除或自动上传；可从旧版导出后重新导入。持久卷不替代备份。
 
 来源和边界见 [工作台界面规格](spec/02-workbench-ui.md)、[Word 编辑规格](spec/03-word-editing.md)
 及[验证记录](docs/reviews/2026-10-22-word-editing-validation.md)，
 第三方许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
-SuperDoc 1.47.2 使用 AGPLv3，项目根许可尚未选择；对外提供编辑器或发布包含它的镜像前须完成许可路径与对应源码提供安排。
+项目采用 [AGPL-3.0-only](LICENSE)，保留 SuperDoc 等第三方许可；页面“源代码”链接对应部署版本。
+
+## 数据库
+
+默认不需要云端数据库即可启动，SQLite 文件位于 `data/equilens.sqlite`。
+配置示例见 [.env.example](.env.example)，开发时复制为 `.env.local`。
+
+| 配置 | 用途 |
+| --- | --- |
+| `DATABASE_PROVIDER=sqlite` | 使用 SQLite，默认值 |
+| `SQLITE_PATH` | SQLite 文件路径，Zeabur 使用 `/data/equilens.sqlite` |
+| `DATABASE_PROVIDER=gaussdb` | 使用 GaussDB 集中式，连接失败不回退 |
+| `GAUSSDB_HOST/PORT/DATABASE/USER/PASSWORD` | GaussDB 连接配置，端口默认 `8000` |
+| `GAUSSDB_CA_PATH` | 可选 CA 文件，TLS 始终校验证书 |
+| `APP_ORIGIN` | 远程部署的完整 HTTPS origin，用于写请求校验 |
+
+数据库首次访问时建立初始表，生产构建不连接数据库。切换 provider 不会自动迁移已有文档。
+存储边界与独立 GaussDB 验收见[数据库规格](spec/04-database-deployment.md)。
 
 生产构建与启动：
 
@@ -75,7 +95,8 @@ pnpm start
 ```text
 src/app/               页面、布局与 HTTP 入口
 src/components/        工作台、Word 适配器与官方 UI 组件
-src/lib/documents/     DOCX 校验、浏览器存储与行为测试
+src/lib/documents/     DOCX 校验、存储客户端与历史浏览器存储
+src/server/            数据库适配、文档版本与会话隔离
 public/                公共静态资源
 scripts/               应用冒烟检查
 spec/                  已接受的产品与技术契约
@@ -90,7 +111,7 @@ docs/                  操作指南与历史资料
 
 GitHub Actions 构建并验证镜像；完成许可安排并启用发布开关后，在主分支和版本标签检查通过时发布到
 `ghcr.io/alaala-daka/equilens`。当前配置构建 Linux AMD64 镜像，使用非 root 用户运行。
-镜像标签、仓库权限、Compose 和 ECS 部署方式见 [部署指南](docs/deployment.md)。
+镜像标签、仓库权限、Compose、Zeabur 和 ECS 部署方式见 [部署指南](docs/deployment.md)。
 
 ## 规格
 

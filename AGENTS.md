@@ -7,6 +7,7 @@
 - `spec/00-overview.md`: Next.js single-application architecture and external service boundaries.
 - `spec/01-product.md`: two-stage scope, business contracts, and AC-01–AC-26.
 - `spec/03-word-editing.md`: real DOCX editing, local revisions, import/export boundaries, and WD acceptance checks.
+- `spec/04-database-deployment.md`: SQLite / GaussDB configuration, server revisions, session isolation, and Zeabur volumes.
 - `DEVELOPMENT.md` and `CONTRIBUTING.md`: engineering boundaries and contribution checks.
 - `docs/deployment.md`: container and GHCR operation instructions.
 - `docs/superpowers/` and `docs/reviews/`: historical designs, screenshots, and reviews; not current architecture authorities.
@@ -30,7 +31,7 @@ Routine fixes that restore an existing contract and editorial changes do not nee
 - Deliver a working Demo within 12 days of the actual start, followed by one additional month of improvement. Keep the stages and their acceptance results separate; follow `spec/01-product.md` sections 12–13.
 - The Demo retains four workflows and three fixed document templates: 专业分包合同、补充协议、催款函. Start with 房建机电安装专业分包 and represent the 专业分包人. Prioritize 合同审查 → 款项核对 → 证据整理 → 催款函; limit rule and template depth to the verified scope.
 - Project isolation, real processing, immutable provenance, correct amount semantics, and human revision protection apply from the first Demo workflow. Reduce optional depth when needed; disclose unfinished functions instead of counting placeholder pages as completed.
-- Use Next.js App Router and TypeScript in one Node.js application, managed with pnpm. Deploy the standalone container on ECS; use GaussDB centralized, private OBS, MaaS, and verified OCR through server-only adapters. Do not add a separate API or Worker service. Validate the selected GaussDB version, mode, driver and migrations before choosing an ORM.
+- Use Next.js App Router and TypeScript in one Node.js application, managed with pnpm. Deploy the standalone container on ECS or Zeabur. Select SQLite or GaussDB centralized with DATABASE_PROVIDER; SQLite requires one instance and a persistent data volume. Use private OBS, MaaS, and verified OCR through server-only adapters as business features are implemented. Do not add a separate API or Worker service. Validate GaussDB on its actual version and mode; do not infer compatibility from SQLite tests.
 - Share document processing, typed facts, source tracking, versioning, and exports. Load published scenario rule packs before supplementary keyword retrieval. Do not add vector infrastructure, Redis, a separate queue service, Kubernetes, or an open-ended agent platform without a demonstrated requirement.
 - Use the Documents / Standards tabs and document editor with a right-hand Agent conversation defined in `spec/02-workbench-ui.md`; this replaces layout A. Full scanned-document processing, arbitrary contract drafting, original Word layout preservation, tracked-change editing, and real-time collaboration remain outside both stages unless scope is explicitly revised.
 - Verify actual contest requirements, account permissions, HTTPS access, service capabilities, and budgets; do not infer availability or scoring requirements from reference links.
@@ -42,7 +43,7 @@ Use Node.js 24 and the pnpm version pinned in `package.json`. Commit `pnpm-lock.
 - `pnpm install --frozen-lockfile`: install locked dependencies.
 - `pnpm dev`: local development server.
 - `pnpm check`: ESLint, Next.js route types, and TypeScript checks.
-- `pnpm test`: DOCX validation, immutable browser revisions, save conflicts, and export failure protection.
+- `pnpm test`: DOCX validation, immutable revisions, database persistence, session isolation, save conflicts, and export failure protection.
 - `pnpm build`: production standalone build.
 - `pnpm start`: serve the production build.
 - `pnpm smoke [url]`: check a running application, defaulting to `http://127.0.0.1:3000`.

@@ -5,7 +5,7 @@ import { BookOpenIcon, FileTextIcon, PlusIcon, ScaleIcon, UploadIcon, LoaderCirc
 
 import { DocumentEditor } from "@/components/document-editor"
 import { blankDocx } from "@/lib/documents/docx"
-import { createDocument as persistDocument, listDocuments, openDocument } from "@/lib/documents/storage"
+import { createDocument as persistDocument, listDocuments, openDocument } from "@/lib/documents/client"
 import { errorMessage, type DocumentRecord, type OpenDocument } from "@/lib/documents/types"
 import { validateDocx } from "@/lib/documents/validate"
 import { Button } from "@/components/ui/button"
@@ -82,6 +82,7 @@ export function Workbench() {
           <ScaleIcon className="size-5" />
           衡鉴 <span className="font-normal text-muted-foreground">EquiLens</span>
         </div>
+        <Button variant="link" asChild><a href="/source" target="_blank" rel="noreferrer">源代码</a></Button>
       </header>
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col p-6">
         <input ref={fileInput} type="file" accept=".docx" aria-label="选择 Word 文件" className="hidden" disabled={loading || busy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void createOrImport(file) }} />

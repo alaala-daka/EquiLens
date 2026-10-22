@@ -11,7 +11,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Separator } from "@/components/ui/separator"
 import { WordCanvas, type WordCanvasHandle } from "@/components/word-canvas"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { createDocument, RevisionConflict, saveDocument } from "@/lib/documents/storage"
+import { createDocument, RevisionConflict, saveDocument } from "@/lib/documents/client"
 import { documentTitle, downloadName, errorMessage, type OpenDocument } from "@/lib/documents/types"
 
 function download(blob: Blob, title: string) {
@@ -111,6 +111,7 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy }: {
         <Separator orientation="vertical" className="data-vertical:h-4" />
         <Input aria-label="文档标题" className="min-w-0 flex-1 md:max-w-sm" value={title} disabled={busy} onChange={event => { setTitle(event.target.value); markChanged() }} placeholder="未命名文档" />
         <div className="ml-auto flex items-center gap-2">
+          <Button variant="link" asChild><a href="/source" target="_blank" rel="noreferrer">源代码</a></Button>
           <Button variant="outline" disabled={!ready || busy || !dirty || conflict} onClick={() => void persist()}>{busy ? <LoaderCircleIcon className="animate-spin" /> : <SaveIcon />}保存</Button>
           <Button variant="outline" disabled={!ready || busy || conflict} onClick={() => void persist(true)}><DownloadIcon />导出 Word</Button>
         </div>

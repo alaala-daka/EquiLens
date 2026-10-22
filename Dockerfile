@@ -13,9 +13,14 @@ COPY . .
 RUN pnpm build
 
 FROM base AS runner
+ARG SOURCE_COMMIT
+ENV SOURCE_COMMIT=$SOURCE_COMMIT
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV DATABASE_PROVIDER=sqlite
+ENV SQLITE_PATH=/data/equilens.sqlite
+RUN mkdir -p /data && chown node:node /data
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 USER node
 EXPOSE 3000

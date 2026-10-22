@@ -3,7 +3,7 @@
 ## 应用边界
 
 使用 Next.js App Router 和 TypeScript 构建单体应用，pnpm 管理依赖。
-页面、Route Handlers 和服务端业务共用一个代码库，以 Node.js runtime 运行在 ECS。
+页面、Route Handlers 和服务端业务共用一个代码库，以 Node.js runtime 运行在 ECS 或 Zeabur。
 首版只运行一个应用实例，不配置独立 FastAPI、Fastify 或 Worker 服务。
 
 | 位置 | 职责 |
@@ -23,19 +23,21 @@ Route Handlers 保持薄，业务计算与来源校验不写在页面里。
 ```mermaid
 flowchart LR
     Browser[浏览器] --> App[Next.js 应用 / ECS]
-    App --> DB[(GaussDB 集中式)]
+    App --> DB[(SQLite / GaussDB 集中式)]
     App --> OBS[OBS 私有桶]
     App --> MaaS[MaaS]
     App --> OCR[OCR]
 ```
 
-GaussDB 集中式是业务数据库选型，优先评估基础版。数据库不部署在应用容器内，
+数据库通过 `DATABASE_PROVIDER` 选择 SQLite 或 GaussDB 集中式，详见[数据库与单体部署](04-database-deployment.md)。
+SQLite 用于单实例部署，数据目录挂载持久卷；GaussDB 优先评估基础版，独立于应用容器，
 通过内网连接，具体区域、版本、兼容模式、规格、权限与费用需实测登记。
 不能因 PostgreSQL 协议兼容就认定所有 SQL、驱动、ORM 或迁移工具兼容。
 接入前验证事务、精确金额、JSON、索引、迁移和连接安全；不预先绑定未经验证的 ORM。
-本次初始化不安装数据库驱动、不提供占位迁移，也不声明已经连接 GaussDB。
+已配置 SQLite 初始 schema 与 GaussDB 驱动适配；GaussDB 未连接真实实例，不声明兼容性验收通过。
 
-OBS 保存原件、核验证明和导出文件；业务数据、不可变来源与版本关系保存在数据库。
+当前编辑器原件、文档版本和元数据保存在选定数据库；未来业务使用 OBS 保存原件、核验证明和导出文件，
+业务数据、不可变来源与版本关系保存在数据库。
 MaaS 和 OCR 经独立的小接口调用；模型身份、上下文、输出预算及 OCR 文档种类以实测为准。
 凭据只由服务端运行环境注入，不使用 `NEXT_PUBLIC_` 前缀，不作为镜像构建参数。
 

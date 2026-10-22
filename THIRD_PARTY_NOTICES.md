@@ -9,10 +9,17 @@ Upstream source: https://github.com/superdoc/docx-editor
 Exact published package: https://www.npmjs.com/package/superdoc/v/1.47.2
 
 This integration does not use `@superdoc/docx-engine` or the v2 React wrapper.
-The repository's root license has not been selected. Local evaluation does not
-establish a completed distribution or hosted-service licensing review. Before
-publishing an image or providing the editor to remote users, determine the
-applicable license path and retain/provide the corresponding source and notices.
+EquiLens is licensed under AGPL-3.0-only; see `LICENSE`. Its corresponding source,
+build scripts and locked dependency versions are published at
+https://github.com/alaala-daka/EquiLens . The hosted `/source` link identifies the
+deployment commit through `SOURCE_COMMIT`. Preserve this notice and the license
+texts when redistributing the application.
+
+## GaussDB driver
+
+`gaussdb-node@0.2.2` is MIT licensed. Its full notice is retained in
+`licenses/gaussdb-node-MIT.txt`. Upstream source:
+https://github.com/huaweicloud-samples/database-gaussdb-node .
 
 ## DOCX package validation
 

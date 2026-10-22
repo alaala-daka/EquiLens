@@ -9,3 +9,8 @@ coverage/
 next-env.d.ts
 *.log
 .pnpm-store/
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+scripts/generated/

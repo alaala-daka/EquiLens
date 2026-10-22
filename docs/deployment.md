@@ -14,6 +14,8 @@ docker compose down
 应用监听容器的 `3000` 端口，Compose 只发布到宿主机 `127.0.0.1:3000`。
 `GET /healthz` 仅表示应用能响应请求，不检查云服务或业务状态。
 镜像以非 root 用户运行，数据库和云服务凭据不参与构建。
+Compose 将命名卷 `equilens-data` 挂到 `/data`，SQLite 位于 `/data/equilens.sqlite`；保留该卷才能在重建后恢复文件。
+不要使用 `docker compose down --volumes` 删除仍需保留的数据。
 构建使用 BuildKit 的 pnpm store 缓存，限制并发并将下载超时设为十分钟；仍使用锁定依赖和完整性校验。
 
 ## GitHub Actions 与 GHCR
@@ -50,9 +52,34 @@ docker compose up -d --no-build
 ```
 
 HTTPS 反向代理转发至回环端口，云安全组不公开数据库端口。
-当前版本提供浏览器 Word 编辑，没有登录和云端资料存储；不能用于法律业务分析。
-浏览器保存不在 ECS 或容器内，切换访问 origin 后文件列表彼此独立。
-包含 SuperDoc 的镜像对外发布或提供远程编辑服务前，应先完成
-[第三方许可](../THIRD_PARTY_NOTICES.md)中的许可与对应源码提供安排；本地构建不表示该项已完成。
+当前版本提供 Word 编辑和服务端文件保存，通过浏览器会话隔离，没有账号登录和项目成员权限；不能用于法律业务分析。
+SQLite 模式保持一个实例并挂载持久卷；GaussDB 的连接变量见 [.env.example](../.env.example)。
+项目按 AGPL-3.0-only 开源，保留[第三方许可](../THIRD_PARTY_NOTICES.md)，镜像的 `SOURCE_COMMIT` 指向对应源码。
 GaussDB、OBS、MaaS、OCR 的区域、连接、权限、费用和完整项目恢复需在业务实现时验证，
 相关环境变量随实际接入补充，不提供当前应用尚不读取的配置示例。
+
+## Zeabur
+
+使用 [zeabur-template.yaml](../zeabur-template.yaml) 在已有服务器的新项目中部署一个服务。
+模板包含 HTTP 端口 `3000`、SQLite 持久卷 `/data`、精确 origin 与卷权限初始化。
+它使用 CI 验证并公开发布的镜像，不在远端重复安装依赖，不额外创建数据库服务。
+
+```bash
+pnpm dlx zeabur template deploy -f zeabur-template.yaml --project-id <project-id> --var PUBLIC_DOMAIN=equilens --var IMAGE_REF=ghcr.io/alaala-daka/equilens:sha-<full-commit> -i=false
+```
+
+`APP_ORIGIN` 必须等于公开入口 `https://equilens.zeabur.app`，不带末尾斜线；反向代理内部 HTTP 不改变此配置。
+`DATABASE_PROVIDER=sqlite`，`SQLITE_PATH=/data/equilens.sqlite`。只运行一个副本；卷初始化后应用仍以 UID 1000 运行。
+后续升级固定新的完整提交镜像标签并重部署，保留现有卷；不要重复部署模板创建第二个服务。
+域名、HTTPS、API 权限、下载和重启恢复须实测，模板导入成功不等于这些检查通过。
+
+## SQLite 备份
+
+```bash
+docker compose exec app node scripts/backup-sqlite.mjs /data/backups/equilens-<timestamp>.sqlite
+```
+
+备份脚本使用 Node.js SQLite online backup API，目标必须为新文件，不覆盖已有备份。
+将生成文件下载并存放到容器和宿主服务器以外；同一持久卷内的备份不具有异地恢复能力。
+恢复时停止应用，保留现库及其 WAL/SHM 文件，将一致性备份放到新的数据库路径，设置 `SQLITE_PATH` 后启动并验证下载。
+会话 cookie 是文件访问凭据，数据库恢复不能恢复已丢失的浏览器 cookie。

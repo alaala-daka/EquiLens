@@ -73,6 +73,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
+          build-args: SOURCE_COMMIT=${{ github.sha }}
           platforms: linux/amd64
           load: true
           tags: equilens:smoke
@@ -82,10 +83,17 @@ jobs:
       - name: Verify container
         shell: bash
         run: |
-          container=$(docker run --detach --publish 127.0.0.1:18080:3000 equilens:smoke)
-          trap 'docker logs "$container"; docker rm --force "$container"' EXIT
+          volume="equilens-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker volume create "$volume"
+          container=$(docker run --detach --env APP_ORIGIN=http://127.0.0.1:18080 --mount "type=volume,source=$volume,target=/data" --publish 127.0.0.1:18080:3000 equilens:smoke)
+          trap 'docker logs "$container"; docker rm --force "$container"; docker volume rm "$volume"' EXIT
           node scripts/smoke.mjs http://127.0.0.1:18080
           test "$(docker exec "$container" id -u)" != "0"
+          node scripts/smoke-database.mjs http://127.0.0.1:18080 "$RUNNER_TEMP/equilens-db-smoke.json"
+          docker rm --force "$container"
+          container=$(docker run --detach --env APP_ORIGIN=http://127.0.0.1:18080 --mount "type=volume,source=$volume,target=/data" --publish 127.0.0.1:18080:3000 equilens:smoke)
+          node scripts/smoke.mjs http://127.0.0.1:18080
+          node scripts/smoke-database.mjs http://127.0.0.1:18080 "$RUNNER_TEMP/equilens-db-smoke.json" --verify
       - name: Sign in to GHCR
         if: vars.WORD_EDITOR_DISTRIBUTION_APPROVED == 'true' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: docker/login-action@v4

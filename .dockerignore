@@ -11,6 +11,9 @@
 !public/**
 !scripts/
 !scripts/prepare-standalone.mjs
+!scripts/build-docx-validator.mjs
+!scripts/backup-sqlite.mjs
+!LICENSE
 !THIRD_PARTY_NOTICES.md
 !licenses/
 !licenses/**

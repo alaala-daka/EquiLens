@@ -3,6 +3,12 @@ services:
     image: ${EQUILENS_IMAGE:-equilens:local}
     build: .
     init: true
+    environment:
+      DATABASE_PROVIDER: ${DATABASE_PROVIDER:-sqlite}
+      SQLITE_PATH: /data/equilens.sqlite
+      APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:3000}
+    volumes:
+      - equilens-data:/data
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
@@ -10,3 +16,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+
+volumes:
+  equilens-data:

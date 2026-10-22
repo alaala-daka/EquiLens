@@ -59,4 +59,12 @@ pnpm build
 
 `pnpm exec tsx scripts/create-word-fixtures.mts` 生成表格、分页和外部资源拒绝样本，
 文件位于忽略的 `.superpowers/previews/word-fixtures/`。仅使用合成或明确授权文件进行验证。
-当前尚未选择项目根许可，发布含编辑器的制品前按第三方声明完成许可审查。
+项目采用 AGPL-3.0-only，保留第三方声明和许可证，并通过 `/source` 提供部署对应源码。
+
+## 数据存储
+
+先阅读[数据库规格](spec/04-database-deployment.md)。`DATABASE_PROVIDER` 选择 SQLite 或 GaussDB；
+配置错误必须显式失败。服务端 API 按 HttpOnly 会话隔离文档，写操作检查同源 Origin。
+SQLite 单实例使用持久卷，GaussDB 默认校验证书。测试覆盖 SQLite，不将其作为 GaussDB 真机验证。
+上传校验使用有内存限制和超时的短生命周期子进程，不在主进程解析不可信 DOCX。
+`scripts/generated/` 是构建生成的校验程序，不提交 Git、不对生成代码运行 lint。
