@@ -1,0 +1,105 @@
+[
+  {
+    "ruleId": "MEASURE-001",
+    "category": "计量结算",
+    "title": "计量方式与结算依据",
+    "status": "待核对",
+    "appliesTo": {
+      "role": "专业分包人",
+      "projectType": "房建机电安装专业分包"
+    },
+    "trigger": {
+      "tags": [
+        "计量"
+      ],
+      "keywords": [
+        "计量",
+        "工程量",
+        "单价",
+        "总价",
+        "结算方式"
+      ]
+    },
+    "requirement": "合同应明确采用固定单价、固定总价或可调价格方式，并写明工程量计量规则与结算依据，避免两种计价方式混用。",
+    "severity": "重大关注",
+    "basis": [
+      {
+        "sourceId": "LAW-CivilCode-509"
+      },
+      {
+        "sourceId": "STD-GF-2017-0201"
+      }
+    ],
+    "expectedSamples": [
+      "本合同工程量采用固定单价方式计量，以经审核的工程量清单和竣工图为准"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "MEASURE-002",
+    "category": "计量结算",
+    "title": "结算资料与审核流程",
+    "status": "待核对",
+    "appliesTo": {
+      "role": "专业分包人",
+      "projectType": "房建机电安装专业分包"
+    },
+    "trigger": {
+      "tags": [
+        "结算资料"
+      ],
+      "keywords": [
+        "结算资料",
+        "结算文件",
+        "竣工结算",
+        "审核",
+        "造价咨询"
+      ]
+    },
+    "requirement": "应写明结算资料的提交清单、提交期限、审核主体与审核时限，便于后续主张工程价款。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "LAW-CivilCode-509"
+      },
+      {
+        "sourceId": "STD-GF-2017-0201"
+      }
+    ],
+    "expectedSamples": [
+      "承包人于竣工验收合格后 28 日内提交完整结算资料，发包人委托造价咨询机构在 30 日内完成审核"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "MEASURE-003",
+    "category": "计量结算",
+    "title": "暂定金额与暂估价",
+    "status": "待核对",
+    "appliesTo": {
+      "role": "专业分包人",
+      "projectType": "房建机电安装专业分包"
+    },
+    "trigger": {
+      "tags": [
+        "暂定金额"
+      ],
+      "keywords": [
+        "暂定金额",
+        "暂估价",
+        "暂列金额"
+      ]
+    },
+    "requirement": "使用暂定金额或暂估价的，应写明确认方式、确认期限与超出后的处理规则，防止长期挂账。",
+    "severity": "提示",
+    "basis": [
+      {
+        "sourceId": "STD-GF-2017-0201"
+      }
+    ],
+    "expectedSamples": [
+      "暂列金额用于本工程暂未确定的工程量，须经发包人书面确认后方可使用"
+    ],
+    "mandatory": true
+  }
+]

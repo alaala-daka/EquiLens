@@ -1,0 +1,143 @@
+[
+  {
+    "ruleId": "PAY-001",
+    "category": "付款条件与时间",
+    "title": "付款触发条件必须明确",
+    "status": "待核对",
+    "appliesTo": {
+      "role": "专业分包人",
+      "projectType": "房建机电安装专业分包"
+    },
+    "trigger": {
+      "tags": [
+        "付款"
+      ],
+      "keywords": [
+        "付款",
+        "支付",
+        "价款",
+        "结算款"
+      ]
+    },
+    "requirement": "合同应写明付款的前提条件（如验收合格、发票签收、结算审核完成）与付款金额计算方式，不能仅笼统约定“按合同约定支付”。",
+    "severity": "重大关注",
+    "basis": [
+      {
+        "sourceId": "LAW-CivilCode-509"
+      },
+      {
+        "sourceId": "STD-GF-2017-0201"
+      },
+      {
+        "sourceId": "ENT-PAYMENT-POLICY"
+      }
+    ],
+    "expectedSamples": [
+      "工程竣工验收合格且发包人收到合格发票后 30 日内支付工程款的 95%"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "PAY-002",
+    "category": "付款条件与时间",
+    "title": "付款期限起算点与最长账期",
+    "status": "待核对",
+    "appliesTo": {
+      "role": "专业分包人",
+      "projectType": "房建机电安装专业分包"
+    },
+    "trigger": {
+      "tags": [
+        "付款期限"
+      ],
+      "keywords": [
+        "日内支付",
+        "天内支付",
+        "工作日内",
+        "支付期限",
+        "付款期限",
+        "账期"
+      ]
+    },
+    "requirement": "付款期限应写明起算点（如验收合格之日、发票签收之日）与最长付款天数，避免使用“及时”“尽快”等无期限表述。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "LAW-CivilCode-509"
+      },
+      {
+        "sourceId": "ENT-PAYMENT-POLICY"
+      }
+    ],
+    "expectedSamples": [
+      "自收到发包人签认的结算文件之日起 30 日内"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "PAY-003",
+    "category": "付款条件与时间",
+    "title": "逾期付款违约责任",
+    "status": "待核对",
+    "appliesTo": {
+      "role": "专业分包人",
+      "projectType": "房建机电安装专业分包"
+    },
+    "trigger": {
+      "tags": [
+        "逾期付款"
+      ],
+      "keywords": [
+        "逾期付款",
+        "逾期支付",
+        "拖欠",
+        "迟延支付"
+      ]
+    },
+    "requirement": "应约定发包人逾期付款的违约责任与计算方式；如完全未约定，应指出该缺口及其法律后果。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "LAW-CivilCode-585"
+      },
+      {
+        "sourceId": "LAW-CivilCode-577"
+      }
+    ],
+    "expectedSamples": [
+      "每逾期一日，按未付金额的万分之三向承包人支付违约金"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "PAY-004",
+    "category": "付款条件与时间",
+    "title": "质保金比例与退还条件",
+    "status": "待核对",
+    "appliesTo": {
+      "role": "专业分包人",
+      "projectType": "房建机电安装专业分包"
+    },
+    "trigger": {
+      "tags": [
+        "质保金"
+      ],
+      "keywords": [
+        "质保金",
+        "质量保证金",
+        "尾款"
+      ]
+    },
+    "requirement": "质保金应写明预留比例、退还条件与退还期限；比例明显超出公司审查要点上限时提示。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "ENT-PAYMENT-POLICY"
+      }
+    ],
+    "expectedSamples": [
+      "质保金为合同总价的 3%，质保期届满且无质量问题的 30 日内无息退还"
+    ],
+    "mandatory": true
+  }
+]

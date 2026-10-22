@@ -14,3 +14,9 @@ data/
 *.sqlite-wal
 *.sqlite-shm
 scripts/generated/
+tools/contract-review/output/
+/tmp-docx.txt
+/tmp-err.txt
+/tmp-out.txt
+/tmp-xml.txt
+/tmp-xml2.txt

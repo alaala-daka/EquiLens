@@ -9,7 +9,7 @@
 
 > **项目状态：**提供文档/规范库工作台和浏览器 Word 编辑器，支持新建、导入、编辑、保存、重开及导出 DOCX。
 > 文档原件和保存版本存入服务端数据库，支持 SQLite / GaussDB 配置。SQLite 已有行为测试；GaussDB 尚未连接真实实例验证。
-> Agent、OBS、MaaS、OCR 及四个业务模块尚未接入，当前不执行法律业务分析。
+> Agent、OBS、MaaS、OCR 及四个业务模块尚未接入网页。另有合同审查开发联调模块，内置资料待核对，尚未完成业务验收。
 
 [在线使用](https://equilens.zeabur.app) · [部署说明](docs/deployment.md)
 
@@ -69,8 +69,16 @@ pnpm ai:smoke
 此命令只发送一次固定测试消息“请只回复：连接成功”，可能产生少量模型费用。
 它显示模型回复和可用的 Token 用量；错误时返回明确原因，不输出密钥或服务端响应正文。
 服务端业务可从 `@/server/ai` 导入 `askModel`。模块导入及构建不会调用模型。
-当前仅验证连接，尚未接入合同、页面或业务任务，不代表合同审查已经实现。
+此入口只验证模型连接；合同审查使用下述独立联调入口，网页及业务任务尚未接入。
 实际验证与构建限制见[模型连接验证记录](docs/reviews/2026-10-22-model-gateway-validation.md)。
+
+## 合同审查开发交接
+
+后端固定入口为 `@/server/contract-review` 的 `reviewText`，本地入口为 `pnpm review:contract`。
+先阅读[交接说明与调用示例](tools/contract-review/README.md)，其中列明前后端职责、环境配置、
+返回状态、规则发布边界和待执行检查。内置规则仅供显式调试模式使用。
+`pnpm review:contract:example` 使用离线合成桩，不调用模型；真实 CLI 会发送合同并产生费用。
+本次未运行测试、真实模型调用或生产构建，不能据此认定已满足合同审查业务验收。
 
 ## 数据库
 

@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0-draft",
+  "name": "建设工程合同审查规则包",
+  "status": "待核对",
+  "description": "房建机电安装专业分包人立场的开发联调规则包；所有资料待核对，企业口径为合成示例，不能直接发布或用于正式法律结论。",
+  "reviewer": null,
+  "reviewedAt": null,
+  "ruleFiles": [
+    "rules/payment.json",
+    "rules/measurement.json",
+    "rules/duration.json",
+    "rules/change.json",
+    "rules/breach.json",
+    "rules/dispute.json"
+  ],
+  "sourceFiles": [
+    "sources/legal.json",
+    "sources/internal.json"
+  ]
+}

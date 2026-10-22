@@ -1,0 +1,103 @@
+[
+  {
+    "ruleId": "DURATION-001",
+    "category": "工期",
+    "title": "工期总日历天数与开工条件",
+    "status": "待核对",
+    "appliesTo": {
+      "role": "专业分包人",
+      "projectType": "房建机电安装专业分包"
+    },
+    "trigger": {
+      "tags": [
+        "工期"
+      ],
+      "keywords": [
+        "工期",
+        "日历天",
+        "开工",
+        "竣工",
+        "交工"
+      ]
+    },
+    "requirement": "应明确总工期日历天数、开工日期或开工条件、竣工标准与验收流程。",
+    "severity": "重大关注",
+    "basis": [
+      {
+        "sourceId": "LAW-CivilCode-788"
+      }
+    ],
+    "expectedSamples": [
+      "本合同工期为 365 日历天，自监理人发出的开工通知载明的日期起算"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "DURATION-002",
+    "category": "工期",
+    "title": "工期顺延与延误责任",
+    "status": "待核对",
+    "appliesTo": {
+      "role": "专业分包人",
+      "projectType": "房建机电安装专业分包"
+    },
+    "trigger": {
+      "tags": [
+        "顺延"
+      ],
+      "keywords": [
+        "顺延",
+        "工期延长",
+        "延误",
+        "逾期竣工",
+        "赶工"
+      ]
+    },
+    "requirement": "应约定可顺延工期的情形、顺延申请时限与逾期竣工的违约责任；只写“可顺延”而无条件的，应指出该缺口。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "LAW-CivilCode-804"
+      },
+      {
+        "sourceId": "LAW-CivilCode-577"
+      }
+    ],
+    "expectedSamples": [
+      "因不可抗力导致延误的，承包人应在 7 日内提出顺延申请，经监理人确认后工期相应顺延"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "DURATION-003",
+    "category": "工期",
+    "title": "关键节点与里程碑",
+    "status": "待核对",
+    "appliesTo": {
+      "role": "专业分包人",
+      "projectType": "房建机电安装专业分包"
+    },
+    "trigger": {
+      "tags": [
+        "节点"
+      ],
+      "keywords": [
+        "节点",
+        "里程碑",
+        "阶段工期",
+        "形象进度"
+      ]
+    },
+    "requirement": "关键节点应设置具体日期或期限，便于过程管控与违约认定。",
+    "severity": "提示",
+    "basis": [
+      {
+        "sourceId": "STD-GF-2017-0201"
+      }
+    ],
+    "expectedSamples": [
+      "基础工程于开工后 90 日历天内完成并报验"
+    ],
+    "mandatory": true
+  }
+]
