@@ -1,47 +1,58 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Sources and Specification Workflow
 
-This repository is currently design-only; application source and test directories do not exist yet.
+- `README.md`: runnable setup and honest implementation status.
+- `spec/README.md`: accepted contract index; read the owning specification before changing behavior.
+- `spec/00-overview.md`: Next.js single-application architecture and external service boundaries.
+- `spec/01-product.md`: two-stage scope, business contracts, and AC-01–AC-26.
+- `DEVELOPMENT.md` and `CONTRIBUTING.md`: engineering boundaries and contribution checks.
+- `docs/deployment.md`: container and GHCR operation instructions.
+- `docs/superpowers/` and `docs/reviews/`: historical designs, screenshots, and reviews; not current architecture authorities.
+- `.superpowers/`: ignored local preview sessions; keep them untracked.
 
-- `README.md`: project status and documentation entry point.
-- `docs/superpowers/specs/2026-10-19-engineering-legal-ai-platform-design.md`: current v1.1 implementation reference, two-stage scope, domain contracts, architecture, and acceptance criteria.
-- `docs/reviews/2026-10-20-spec-feasibility-review.md`: historical v1.0 audit; its original line numbers and twelve-day assumptions do not describe the revised specification. The current spec maps R01–R18 in section 16.
-- `docs/superpowers/specs/assets/`: reviewed interface screenshots.
-- `.superpowers/`: ignored local preview sessions; keep these artifacts untracked.
-
-Use the current specification for implementation decisions. Treat screenshots as layout references and sample data, not evidence that application features or acceptance criteria have passed.
+`spec/` owns accepted, testable contracts; `docs/` owns operating instructions and historical evidence.
+Each durable rule has one owner. Update its spec, implementation, affected instructions, and validation together.
+Unresolved proposals and implementation tasks belong in GitHub Issues; creating an Issue requires user authorization.
+Treat screenshots as layout references and sample data, not evidence of implemented features or acceptance results.
 
 ## Delivery Scope & Architecture
 
-- Deliver a working Demo within 12 days of the actual start, followed by one additional month of improvement. Keep the stages and their acceptance results separate; follow spec sections 12–13.
+- Deliver a working Demo within 12 days of the actual start, followed by one additional month of improvement. Keep the stages and their acceptance results separate; follow `spec/01-product.md` sections 12–13.
 - The Demo retains four workflows and three fixed document templates: 专业分包合同、补充协议、催款函. Start with 房建机电安装专业分包 and represent the 专业分包人. Prioritize 合同审查 → 款项核对 → 证据整理 → 催款函; limit rule and template depth to the verified scope.
 - Project isolation, real processing, immutable provenance, correct amount semantics, and human revision protection apply from the first Demo workflow. Reduce optional depth when needed; disclose unfinished functions instead of counting placeholder pages as completed.
-- Use React/TypeScript/Vite, FastAPI, one independent Worker, and PostgreSQL in a modular monolith with shared backend code. Deploy through ECS/Docker Compose; use private OBS, MaaS, and verified OCR services through adapters.
+- Use Next.js App Router and TypeScript in one Node.js application, managed with pnpm. Deploy the standalone container on ECS; use GaussDB centralized, private OBS, MaaS, and verified OCR through server-only adapters. Do not add a separate API or Worker service. Validate the selected GaussDB version, mode, driver and migrations before choosing an ORM.
 - Share document processing, typed facts, source tracking, versioning, and exports. Load published scenario rule packs before supplementary keyword retrieval. Do not add vector infrastructure, Redis, a separate queue service, Kubernetes, or an open-ended agent platform without a demonstrated requirement.
 - Preserve layout A. Full scanned-document processing, arbitrary contract drafting, original Word layout preservation, tracked-change editing, and real-time collaboration remain outside both stages unless scope is explicitly revised.
 - Verify actual contest requirements, account permissions, HTTPS access, service capabilities, and budgets; do not infer availability or scoring requirements from reference links.
 
 ## Build, Test, and Development Commands
 
-No application build scripts, package manifests, or test runners are configured. Current documentation checks are:
+Use Node.js 24 and the pnpm version pinned in `package.json`. Commit `pnpm-lock.yaml`; use no npm or yarn lockfiles.
 
-- `git status --short`: inspect working-tree changes.
+- `pnpm install --frozen-lockfile`: install locked dependencies.
+- `pnpm dev`: local development server.
+- `pnpm check`: ESLint, Next.js route types, and TypeScript checks.
+- `pnpm build`: production standalone build.
+- `pnpm start`: serve the production build.
+- `pnpm smoke [url]`: check a running application, defaulting to `http://127.0.0.1:3000`.
+- `docker compose up --build -d`: build and start the local container.
 - `git diff --check`: detect whitespace errors.
-- `git diff -- <path>`: review a specific file.
 
-When introducing application code, document verified installation, development, build, and test commands in `README.md`.
-Check links, acceptance IDs, stage assignments, and consistency with the current specification when changing documentation. `git diff` does not include untracked files; inspect those directly.
+Read `docs/deployment.md` before changing image publication. PRs build and verify containers without publishing.
+Inspect untracked files directly; report only checks actually executed and distinguish local validation from GitHub CI runs.
 
 ## Coding Style & Naming Conventions
 
-Keep Markdown concise with descriptive headings. Preserve Chinese terminology in existing product documentation. Name design specifications `YYYY-MM-DD-<topic>-design.md`.
-
-For future code, use four-space Python indentation and two-space TypeScript/JSON indentation. Use `snake_case` for Python modules and functions, `PascalCase` for React components, and `camelCase` for TypeScript functions. No formatter or linter is currently configured; document tooling when adding it.
+Use two-space TypeScript/JSON indentation, PascalCase components, and camelCase functions.
+Keep routes thin; place domain behavior and cloud/database access in `src/server/` as it is implemented.
+Use `server-only` at service boundaries and never import credentials or database clients into Client Components.
+Use the Node.js runtime for database, file and model operations. Private project data must not enter shared caches.
+Keep Markdown concise and preserve Chinese domain terminology. New accepted specifications use numbered topic names in `spec/`.
 
 ## Testing Guidelines
 
-No testing framework or numeric code-coverage requirement is established. The specification separately defines business-quality release gates. Name future Python tests `test_*.py` and frontend tests `*.test.ts` or `*.test.tsx`.
+No unit-test framework or numeric code-coverage requirement is established yet. The smoke script checks the application and container entrypoints. Add meaningful `*.test.ts` or `*.test.tsx` behavioral tests with the relevant business implementation; follow the product specification for business-quality release gates.
 
 Map behavioral tests to AC-01–AC-26, preserving the original AC-01–AC-18 IDs. Cover project/role isolation and revocation, source validity and coverage, amount semantics, retries and stale attempts, human revision protection, versioned DOCX exports, complete-project recovery, and visible model/OCR failures.
 
@@ -66,8 +77,8 @@ PRs should explain the change, reference relevant issues and specification secti
 
 ## Tasks, Documents & Recovery
 
-- Persist tasks before execution. Use idempotent submission, short claim transactions, leases/heartbeats, and per-attempt execution tokens; stale attempts must not overwrite current results. Persist call-budget usage before external requests and retain it across recovery.
-- Keep parsing in resource-limited subprocesses and human confirmation outside running jobs. Follow configurable input, execution, queue, and retry limits in spec sections 2, 9, and 10; do not silently truncate inputs or retry indefinitely.
+- Use a database-backed, in-process serial task runner in the single application. Initialize it once through an explicit Node.js runtime lifecycle, never on module import or during build. Next.js `after()` is not a durable queue. Persist tasks before execution. Use idempotent submission, short claim transactions, leases/heartbeats, and per-attempt execution tokens; stale attempts must not overwrite current results. Persist call-budget usage before external requests and retain it across recovery.
+- Keep parsing in resource-limited subprocesses and human confirmation outside running jobs. Follow configurable input, execution, queue, and retry limits in `spec/01-product.md` sections 2, 9, and 10; do not silently truncate inputs or retry indefinitely.
 - Record parsing/check coverage. Mixed scans, embedded content, or unsupported structures must not appear as a complete review. OCR support is limited to tested document types; preserve images, recognized values, and human corrections.
 - Treat uploaded text and generated output as untrusted. Document instructions cannot grant tool permissions or bypass server-side authorization, calculations, and validation. Never replace failed processing with demonstration answers.
 - Back up the database outside the ECS and protect OBS originals, verification evidence, and exports. Validate a complete project restore, including source access and historical downloads, rather than only restoring database rows. Follow retention/deletion rules and replay deletion records after recovery.
@@ -76,6 +87,6 @@ PRs should explain the change, reference relevant issues and specification secti
 
 Keep cloud credentials server-side and outside Git, logs, and screenshots. Enforce project membership for linked resource IDs, previews, downloads, task execution, and external sends; recheck permission before sending material to MaaS/OCR. Private files must not become public to make previews work.
 
-Use synthetic or explicitly authorized documents, minimize sensitive fields, and follow spec section 10.5 for authorization, retention, generated-content markings, and deletion of originals and derived data. Immutable versions do not imply indefinite retention.
+Use synthetic or explicitly authorized documents, minimize sensitive fields, and follow `spec/01-product.md` section 10.5 for authorization, retention, generated-content markings, and deletion of originals and derived data. Immutable versions do not imply indefinite retention.
 
 Distinguish material consistency checks from authoritative qualification verification. Unverified, not-found, or failed external checks remain unresolved; manual checks retain source, time, query conditions, operator, and proof. Valid citations do not establish correct legal applicability. Missing evidence, conflicting facts, and incomplete documents must remain visible and cannot be cleared by a review button.
