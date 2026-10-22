@@ -18,7 +18,9 @@ export function session(request: NextRequest) {
 
 export function sameOrigin(request: Request) {
   const origin = request.headers.get("origin")
-  if (!origin || origin !== new URL(process.env.APP_ORIGIN ?? request.url).origin) throw new StoreError(403, "请求来源无效。")
+  const url = new URL(request.url)
+  const expected = process.env.APP_ORIGIN ?? `${url.protocol}//${request.headers.get("host") ?? url.host}`
+  if (!origin || origin !== new URL(expected).origin) throw new StoreError(403, "请求来源无效。")
 }
 
 export async function inputBody(request: Request): Promise<Record<string, unknown> & { title: string; prompt: string; blob: Blob }> {

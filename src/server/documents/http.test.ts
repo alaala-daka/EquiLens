@@ -8,6 +8,7 @@ test("DB-03: require same-origin writes and issue private HttpOnly session cooki
   assert.throws(() => sameOrigin(new Request("https://equilens.invalid/api/documents")), { status: 403 })
   assert.throws(() => sameOrigin(new Request("https://equilens.invalid/api/documents", { headers: { Origin: "https://other.invalid" } })), { status: 403 })
   sameOrigin(new Request("https://equilens.invalid/api/documents", { headers: { Origin: "https://equilens.invalid" } }))
+  sameOrigin(new Request("http://localhost:3001/api/documents", { headers: { Host: "127.0.0.1:3001", Origin: "http://127.0.0.1:3001" } }))
   const first = session(new NextRequest("https://equilens.invalid/api/documents"))
   const response = first.apply(NextResponse.json([]))
   assert.match(response.headers.get("set-cookie")!, /HttpOnly/i)
