@@ -9,6 +9,7 @@
 
 > **项目状态：**提供文档/规范库工作台和浏览器 Word 编辑器，支持新建、导入、编辑、保存、重开及导出 DOCX。
 > 文档原件和保存版本存入服务端数据库，支持 SQLite / GaussDB 配置。SQLite 已有行为测试；GaussDB 尚未连接真实实例验证。
+> 匿名固定期限、到期拒绝访问、服务内清理及私有维护工具已实现；Linux 日志持久性与容器恢复仍待本版验证。
 > Agent、OBS、MaaS、OCR 及四个业务模块尚未接入，当前不执行法律业务分析。
 
 [在线使用](https://equilens.zeabur.app) · [部署说明](docs/deployment.md)
@@ -33,6 +34,7 @@
 git clone https://github.com/alaala-daka/EquiLens.git
 cd EquiLens
 pnpm install --frozen-lockfile
+# Copy .env.example to .env.local and register ANONYMOUS_DATA_RETENTION_DAYS before creating documents.
 pnpm dev
 ```
 
@@ -51,8 +53,17 @@ pnpm dev
 当前没有账号登录，清除 cookie 会失去该会话的文件访问入口，请下载需要保留的文件。
 历史 IndexedDB 文档不会删除或自动上传；可从旧版导出后重新导入。持久卷不替代备份。
 
+匿名资料按[数据库规格](spec/04-database-deployment.md)使用固定保留期限。负责人须先登记用途和天数；
+新建、导入前确认实际到期日期，同会话后续操作及配置调整不续期。到期立即停止旧资料读写与下载；
+请在到期前打开文档，使用“导出 DOCX”保存需要保留的版本。到期后可“开始新会话”，新列表不继承旧资料。
+cookie 只提供访问凭据，清除或过期不会触发服务端删除，也不能恢复访问入口。
+服务启动重放删除日志后开放资料访问，并在启动及每小时尝试清理到期资料；故障期间仍拒绝过期访问。
+存量资料须先通知并登记导出窗口，窗口内仅原会话可读和导出，结束后拒绝访问。
+窗口登记、私有删除日志及恢复重放见[部署说明](docs/deployment.md#匿名资料维护与恢复)。
+
 来源和边界见 [工作台界面规格](spec/02-workbench-ui.md)、[Word 编辑规格](spec/03-word-editing.md)
-及[验证记录](docs/reviews/2026-10-22-word-editing-validation.md)，
+及 [Word 验证记录](docs/reviews/2026-10-22-word-editing-validation.md)、
+[工作台步骤一验证记录](docs/reviews/2026-10-22-workbench-step-one-validation.md)，
 第三方许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 项目采用 [AGPL-3.0-only](LICENSE)，保留 SuperDoc 等第三方许可；页面“源代码”链接对应部署版本。
 
@@ -65,12 +76,17 @@ pnpm dev
 | --- | --- |
 | `DATABASE_PROVIDER=sqlite` | 使用 SQLite，默认值 |
 | `SQLITE_PATH` | SQLite 文件路径，Zeabur 使用 `/data/equilens/equilens.sqlite` |
+| `ANONYMOUS_DATA_RETENTION_DAYS` | 新建、导入、复制必需，正整数天数，无默认值；负责人登记用途和期限 |
+| `ANONYMOUS_DELETION_JOURNAL_DIR` | 私有持久删除日志；SQLite 默认数据库旁 retention-journal，GaussDB 必须显式配置 |
+| `ANONYMOUS_EMPTY_SESSION_RETENTION_DAYS` | 可选、另行登记的空会话窗口，正整数，无默认值；未设不清理空行，显式空值或非法值使资料就绪失败 |
 | `DATABASE_PROVIDER=gaussdb` | 使用 GaussDB 集中式，连接失败不回退 |
 | `GAUSSDB_HOST/PORT/DATABASE/USER/PASSWORD` | GaussDB 连接配置，端口默认 `8000` |
 | `GAUSSDB_CA_PATH` | 可选 CA 文件，TLS 始终校验证书 |
 | `APP_ORIGIN` | 远程部署的完整 HTTPS origin，用于写请求校验 |
 
-数据库首次访问时建立初始表，生产构建不连接数据库。切换 provider 不会自动迁移已有文档。
+运行期显式初始化数据库和删除日志，生产构建不连接数据库或启动清理。切换 provider 不会自动迁移已有文档。
+资料期限缺失或非法时新建返回 503；已有有效期限仍可读取、保存和下载，到期后立即拒绝。
+删除日志初始化或重放失败时资料接口返回 503；健康接口仍独立可用。
 存储边界与独立 GaussDB 验收见[数据库规格](spec/04-database-deployment.md)。
 
 生产构建与启动：
@@ -118,6 +134,10 @@ GitHub Actions 构建并验证镜像；完成许可安排并启用发布开关�
 ## 规格
 
 [规格索引](spec/README.md)是当前架构、业务行为和验收要求的入口。
+前端开发按[工作台界面规格](spec/02-workbench-ui.md)依次完善工作台、编辑器，再接入业务交互，
+从合同审查推进到款项核对、证据整理和催款函。步骤一已实现标题检索、列表状态、操作取消和会话期限交互，
+并完成本地 SQLite 工程与部分浏览器验证；200% 缩放、部分网络失败路径及平台恢复验收仍有缺口，
+见[步骤一验证记录](docs/reviews/2026-10-22-workbench-step-one-validation.md)。步骤二、三的新增验收尚未完成。
 `spec/` 保存已接受的契约，`docs/` 保存使用说明与历史资料，未决方案及任务通过 GitHub Issues 管理。
 
 项目用于华为 ICT 大赛创新赛，按实际开工日起十二天 Demo、随后一个月完善的两阶段范围交付。

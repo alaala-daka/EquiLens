@@ -34,6 +34,12 @@ spec:
             default: sqlite
           SQLITE_PATH:
             default: /data/equilens/equilens.sqlite
+          ANONYMOUS_DATA_RETENTION_DAYS:
+            default: ""
+          ANONYMOUS_DELETION_JOURNAL_DIR:
+            default: /data/equilens/retention-journal
+          # Optional ANONYMOUS_EMPTY_SESSION_RETENTION_DAYS must be omitted unless
+          # a positive integer window is registered; an empty value fails readiness.
           APP_ORIGIN:
             default: ${ZEABUR_WEB_URL}
           PORT:

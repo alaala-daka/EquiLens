@@ -14,6 +14,11 @@ const schema = [
   "CREATE TABLE IF NOT EXISTS equilens_revisions (owner VARCHAR(64) NOT NULL, id VARCHAR(36) NOT NULL, document_id VARCHAR(36) NOT NULL, metadata TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (owner, id), FOREIGN KEY (owner, document_id) REFERENCES equilens_documents(owner, id))",
   "CREATE INDEX IF NOT EXISTS equilens_revision_document ON equilens_revisions(owner, document_id)",
 ]
+const sessionSchema = [
+  "CREATE TABLE IF NOT EXISTS equilens_document_sessions (owner VARCHAR(64) PRIMARY KEY, context_id VARCHAR(36) NOT NULL, registered_at TEXT NOT NULL, first_created_at TEXT, retention_days INTEGER, expires_at TEXT, policy_version VARCHAR(64), export_until TEXT, legacy_pending INTEGER NOT NULL, revision INTEGER NOT NULL, revoked_at TEXT, registration TEXT)",
+  "CREATE TABLE IF NOT EXISTS equilens_retention_deletions (id VARCHAR(36) PRIMARY KEY, owner VARCHAR(64) NOT NULL, expires_at TEXT NOT NULL, requested_at TEXT NOT NULL, reason VARCHAR(32) NOT NULL, completed_at TEXT)",
+  "CREATE INDEX IF NOT EXISTS equilens_session_expiry ON equilens_document_sessions(expires_at)",
+]
 
 export async function connectDatabase(config = databaseConfig()): Promise<Database> {
   let database: Database
@@ -67,9 +72,11 @@ export async function connectDatabase(config = databaseConfig()): Promise<Databa
     await database.transaction(async connection => {
       await connection.query(schema[0])
       const { rows } = await connection.query("SELECT version FROM equilens_schema")
-      if (rows.length && (rows.length !== 1 || rows[0].version !== 1)) throw new Error("Unsupported database schema")
+      if (rows.length && (rows.length !== 1 || ![1, 2].includes(Number(rows[0].version)))) throw new Error("Unsupported database schema")
       for (const sql of schema.slice(1)) await connection.query(sql)
-      if (!rows.length) await connection.query("INSERT INTO equilens_schema(version) VALUES (1)")
+      for (const sql of sessionSchema) await connection.query(sql)
+      if (!rows.length) await connection.query("INSERT INTO equilens_schema(version) VALUES (2)")
+      else if (Number(rows[0].version) === 1) await connection.query("UPDATE equilens_schema SET version=2 WHERE version=1")
     })
     return database
   } catch (failure) { await database.close(); throw failure }
