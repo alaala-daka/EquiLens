@@ -4,3 +4,4 @@ import { cpSync } from "node:fs";
 cpSync("public", ".next/standalone/public", { recursive: true });
 cpSync(".next/static", ".next/standalone/.next/static", { recursive: true });
 cpSync("THIRD_PARTY_NOTICES.md", ".next/standalone/THIRD_PARTY_NOTICES.md");
+cpSync("licenses", ".next/standalone/licenses", { recursive: true });

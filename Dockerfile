@@ -5,7 +5,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 FROM base AS dependencies
 RUN npm install --global pnpm@11.6.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=equilens-pnpm-v11,target=/pnpm/store,sharing=locked \
+  pnpm install --store-dir=/pnpm/store --network-concurrency=8 --frozen-lockfile
 
 FROM dependencies AS builder
 COPY . .

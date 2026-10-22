@@ -8,24 +8,27 @@
 使用官方 shadcn/ui Radix / Nova 中性色预设，以及官方
 [Tabs](https://ui.shadcn.com/docs/components/tabs)、[Table](https://ui.shadcn.com/docs/components/table)、
 [Empty](https://ui.shadcn.com/docs/components/empty)、[Textarea](https://ui.shadcn.com/docs/components/textarea)、
-[Input Group](https://ui.shadcn.com/docs/components/input-group) 和
-[Resizable](https://ui.shadcn.com/docs/components/resizable)示例。
+[Input Group](https://ui.shadcn.com/docs/components/input-group)、
+[Resizable](https://ui.shadcn.com/docs/components/resizable)、
+[Alert Dialog](https://ui.shadcn.com/docs/components/radix/alert-dialog)示例。
 保留官方组件的结构、变体、间距和交互，不沿用旧 Sidebar Block 的演示导航。
 
 ## 文档与规范库
 
 - `/` 默认显示文档页签。初始文档列表为空，不填充虚构项目、合同或模型结果。
-- “新建文档”创建浏览器页面内存中的空白草稿并进入编辑器；这是可编辑的本地预览，不是服务端保存。
-- 文档列表支持点击标题再次进入草稿，显示实际输入的标题，不显示开发状态或本地草稿标记。
+- “新建文档”创建真正空白 DOCX 并进入编辑器；“导入 Word”校验后保存独立原件。
+- 文档列表从 IndexedDB 读取，点击标题打开已保存版本，不显示开发状态或本地草稿标记。
 - 规范库显示空状态，本步不支持上传、编辑或发布规范，不把未经核对内容列为可用依据。
-- 草稿包含本地标识、标题、纯文本正文和待发送的会话输入；不接收上传文件，不读取私有服务端资源。
-- 切换页签、返回列表、重新打开文档时保留本页内存中的编辑；刷新或关闭页面会清空，限制记录在 README，不添加编辑器底部说明。
+- 文档版本、来源、保存与导入边界由 Word 规格负责，不读取私有服务端资源。
+- 返回列表前处理未保存更改；刷新后可打开成功保存的版本，不添加编辑器底部说明。
 
 ## 编辑器与 Agent 会话
 
-- 桌面左侧为纯文本编辑器，右侧为当前文档的 Agent 会话区域，采用官方可调整面板。
-- 标题与正文可直接编辑，每次修改只更新当前本地草稿；不声称实现富文本、原 Word 版式或 DOCX 导出。
-- 返回列表不丢弃内存中的草稿。文档切换后会话输入独立，不混用其他草稿的上下文。
+Word 引擎、文件保存和 DOCX 往返行为由 [Word 文档编辑规格](03-word-editing.md) 负责。
+
+- 桌面左侧为 Word 画布及引擎官方工具栏，右侧为当前文档的 Agent 会话区域，采用官方可调整面板。
+- 标题与正文可编辑；应用外壳提供保存、导出及未保存更改对话框，不重做 Word Ribbon。
+- 会话输入按文档独立保存，不混用其他文档的上下文。
 - Agent 区域允许编辑待发送内容，但发送按钮禁用；无网络调用、模拟回复或虚假进度，不展示开发状态标签。
 - 后续 Agent 接入必须遵守产品中的权限、事实、来源和版本契约；会话 UI 不授予任意工具执行或覆盖人工内容的权限。
 - 窄屏将编辑器与会话区域纵向排列，保留键盘焦点、面板调整和可读的正文输入。
@@ -38,6 +41,6 @@
 仅对全屏编辑区域的尺寸、边框衔接及窄屏排列做必要适配，保持官方中性色和组件样式。
 系统字体替代远程下载字体；响应式检测使用 `useSyncExternalStore` 和 768px 断点。
 
-验证两个页签、新建/打开文档、标题/正文输入、返回后保留、草稿间隔离、Agent 禁止发送和窄屏布局。
+验证两个页签、新建/导入/打开文档、标题/正文输入、保存与离开选择、文档隔离、Agent 禁止发送和窄屏布局。
 执行代码、类型、构建、健康接口及静态资源检查。这些是本地界面验证，不计为业务 AC 通过。
-当前不提供账号、GaussDB 持久化、规范发布、模型处理、复核或导出。
+当前不提供账号、GaussDB 持久化、规范发布、模型处理、业务复核或正式业务成果导出。

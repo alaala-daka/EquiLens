@@ -37,13 +37,26 @@ pnpm 版本固定在 `package.json`；提交 `pnpm-lock.yaml` 和 `pnpm-workspac
 ```bash
 pnpm install --frozen-lockfile
 pnpm check
+pnpm test
 pnpm build
 ```
 
 `pnpm check` 执行 ESLint 和 Next.js 路由类型生成、TypeScript 检查。
+`pnpm test` 使用 Node.js test runner、tsx 与 fake-indexeddb 验证 DOCX 拒绝条件、版本、冲突与导出失败保护。
 `pnpm smoke` 检查运行中的应用，可用 `pnpm smoke http://127.0.0.1:18080` 指定入口。
 冒烟检查不等于业务质量评测。业务测试随实际功能加入，使用 `*.test.ts` / `*.test.tsx`，
 并映射到 [AC-01—AC-26](spec/01-product.md#12-验收标准)。
 
 使用两空格缩进，组件使用 PascalCase，函数使用 camelCase。
 不为低影响的静态内容添加镜像实现的测试；对权限、金额、来源、版本及任务恢复编写行为测试。
+
+## Word 编辑
+
+先阅读 [Word 编辑规格](spec/03-word-editing.md)。固定 `superdoc@1.47.2`，仅客户端动态加载；
+关闭遥测与网络校对，文档处理不发往外部服务。CSP 限制连接、字体、图片和 Worker 来源。
+引擎可能在导出异常后返回原件，适配器必须拦截该回退，不能仅以非空 Blob 判断成功。
+最低 OOXML 工作副本可补齐缺省样式及关系部件；原件与保存版本保持原有字节。
+
+`pnpm exec tsx scripts/create-word-fixtures.mts` 生成表格、分页和外部资源拒绝样本，
+文件位于忽略的 `.superpowers/previews/word-fixtures/`。仅使用合成或明确授权文件进行验证。
+当前尚未选择项目根许可，发布含编辑器的制品前按第三方声明完成许可审查。

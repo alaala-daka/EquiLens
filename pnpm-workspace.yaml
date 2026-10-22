@@ -1,3 +1,6 @@
+fetchTimeout: 600000
 allowBuilds:
+  esbuild: true
   sharp: false
   unrs-resolver: false
+  vue-demi: true

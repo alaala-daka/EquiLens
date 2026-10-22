@@ -10,7 +10,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-提交变更前运行 `pnpm check`、`pnpm build` 和 `git diff --check`。
+提交变更前运行 `pnpm check`、`pnpm test`、`pnpm build` 和 `git diff --check`。
 运行生产服务后使用 `pnpm smoke` 检查入口；修改镜像时还需验证容器启动和静态资源。
 未执行或失败的检查应如实记录。
 

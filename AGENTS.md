@@ -6,6 +6,7 @@
 - `spec/README.md`: accepted contract index; read the owning specification before changing behavior.
 - `spec/00-overview.md`: Next.js single-application architecture and external service boundaries.
 - `spec/01-product.md`: two-stage scope, business contracts, and AC-01–AC-26.
+- `spec/03-word-editing.md`: real DOCX editing, local revisions, import/export boundaries, and WD acceptance checks.
 - `DEVELOPMENT.md` and `CONTRIBUTING.md`: engineering boundaries and contribution checks.
 - `docs/deployment.md`: container and GHCR operation instructions.
 - `docs/superpowers/` and `docs/reviews/`: historical designs, screenshots, and reviews; not current architecture authorities.
@@ -41,6 +42,7 @@ Use Node.js 24 and the pnpm version pinned in `package.json`. Commit `pnpm-lock.
 - `pnpm install --frozen-lockfile`: install locked dependencies.
 - `pnpm dev`: local development server.
 - `pnpm check`: ESLint, Next.js route types, and TypeScript checks.
+- `pnpm test`: DOCX validation, immutable browser revisions, save conflicts, and export failure protection.
 - `pnpm build`: production standalone build.
 - `pnpm start`: serve the production build.
 - `pnpm smoke [url]`: check a running application, defaulting to `http://127.0.0.1:3000`.
@@ -82,7 +84,7 @@ Keep Markdown concise and preserve Chinese domain terminology. New accepted spec
 
 ## Testing Guidelines
 
-No unit-test framework or numeric code-coverage requirement is established yet. The smoke script checks the application and container entrypoints. Add meaningful `*.test.ts` or `*.test.tsx` behavioral tests with the relevant business implementation; follow the product specification for business-quality release gates.
+Use the Node.js test runner through tsx for document tests, with fake-indexeddb for storage transactions. No numeric code-coverage requirement is established. The smoke script checks application and container entrypoints. Add meaningful `*.test.ts` or `*.test.tsx` behavioral tests with the relevant business implementation; follow the product specification for business-quality release gates.
 
 Map behavioral tests to AC-01–AC-26, preserving the original AC-01–AC-18 IDs. Cover project/role isolation and revocation, source validity and coverage, amount semantics, retries and stale attempts, human revision protection, versioned DOCX exports, complete-project recovery, and visible model/OCR failures.
 
