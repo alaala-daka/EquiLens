@@ -93,7 +93,20 @@ export function Workbench() {
   const [focusReturn, setFocusReturn] = useState<HTMLButtonElement | null>(null)
   const [activeTab, setActiveTab] = useState("documents")
   const [query, setQuery] = useState("")
+  const listSearch = useRef<HTMLInputElement>(null)
+  const documentsTab = useRef<HTMLButtonElement>(null)
+  const returnToList = useRef(false)
   const visibleDocuments = selectDocuments(documents, query)
+  useEffect(() => {
+    if (opened || !returnToList.current) return
+    const frame = requestAnimationFrame(() => {
+      const search = listSearch.current
+      if (search && !search.disabled) search.focus()
+      else documentsTab.current?.focus()
+      returnToList.current = false
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [opened])
   function runCreate(file?: File) {
     const trigger = initiatingControl.current
     void operations.create(file).finally(() => setFocusReturn(trigger))
@@ -251,12 +264,19 @@ export function Workbench() {
     } finally { if (downloadRequest.current === controller) { downloadRequest.current = null; setDownloading(false) } }
   }
 
-  function recordSaved(saved: OpenDocument) {
+  const recordSaved = useCallback((saved: OpenDocument) => {
     listStore.upsert(saved.document)
-  }
+  }, [listStore])
+  const editorBack = useCallback(() => { dirty.current = false; returnToList.current = true; setOpened(null) }, [])
+  const editorCopy = useCallback((saved: OpenDocument) => {
+    listStore.upsert(saved.document)
+    dirty.current = false
+    setOpened(saved)
+  }, [listStore])
+  const editorDirtyChanged = useCallback((value: boolean) => { dirty.current = value }, [])
 
   if (opened && session?.canSave) {
-    return <DocumentEditor key={opened.document.id} opened={opened} onSaved={recordSaved} onBack={() => { dirty.current = false; setOpened(null) }} onCopy={setOpened} onSessionUnavailable={unavailable} onDirtyChange={value => { dirty.current = value }} />
+    return <DocumentEditor key={opened.document.id} opened={opened} onSaved={recordSaved} onBack={editorBack} onCopy={editorCopy} onSessionUnavailable={unavailable} onDirtyChange={editorDirtyChanged} />
   }
 
   return (
@@ -285,7 +305,7 @@ export function Workbench() {
         {operationState.operation && <div role="status" className="mb-4 flex items-center gap-2 text-sm"><LoaderCircleIcon className="size-4 animate-spin" />{operationState.operation === "creating" ? "正在新建文档" : operationState.operation === "importing" ? "正在导入文档" : "正在打开文档"}<Button variant="ghost" size="sm" onClick={() => operations.cancel()}>取消</Button></div>}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 gap-6">
           <TabsList>
-            <TabsTrigger value="documents"><FileTextIcon />文档</TabsTrigger>
+            <TabsTrigger ref={documentsTab} value="documents"><FileTextIcon />文档</TabsTrigger>
             <TabsTrigger value="standards"><BookOpenIcon />规范库</TabsTrigger>
           </TabsList>
           <TabsContent value="documents" className="flex flex-col gap-6">
@@ -297,7 +317,7 @@ export function Workbench() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Input type="search" aria-label="搜索文档" placeholder="搜索文档" value={query} disabled={!listReady} onChange={event => setQuery(event.target.value)} />
+              <Input ref={listSearch} type="search" aria-label="搜索文档" placeholder="搜索文档" value={query} disabled={!listReady} onChange={event => setQuery(event.target.value)} />
               {query && <Button variant="outline" onClick={() => setQuery("")}>清空搜索</Button>}
             </div>
             {list.error && <div className="flex items-center gap-2">

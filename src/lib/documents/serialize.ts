@@ -1,3 +1,20 @@
+export class WordExportTimeout extends Error {
+  constructor() { super("Word 文档导出超时，当前编辑已保留，请重新加载后重试。") }
+}
+
+// Each canvas owns one serializer. A deadline rejects the caller, but cannot
+// cancel the vendor export: keep the lock until that operation actually settles.
+export function createWordSerializer(errorCount: () => number, timeoutMs = 60000) {
+  let pending = false
+  return async (operation: () => Promise<Blob>) => {
+    if (pending) throw new Error("Word 文档仍在处理，请稍候或重新加载。")
+    pending = true
+    return serializeWord(async () => {
+      try { return await operation() } finally { pending = false }
+    }, errorCount, timeoutMs)
+  }
+}
+
 export async function serializeWord(
   exporter: () => Promise<Blob>,
   errorCount: () => number,
@@ -7,7 +24,7 @@ export async function serializeWord(
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const blob = await Promise.race([exporter(), new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("Word 文档导出超时，当前编辑已保留，请重试。")), timeoutMs)
+      timer = setTimeout(() => reject(new WordExportTimeout()), timeoutMs)
     })])
     // The engine can emit an exception and return the original bytes as fallback.
     if (errorCount() !== before || !blob?.size) throw new Error("Word 文档导出失败，当前编辑已保留，请重试。")
