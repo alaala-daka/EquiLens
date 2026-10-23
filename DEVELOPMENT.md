@@ -58,6 +58,10 @@ CI 的两次容器运行仅为夹具设置 `ANONYMOUS_DATA_RETENTION_DAYS=2`，�
 
 步骤一实际命令、合成输入、浏览器截图和未执行项见
 [工作台验证记录](docs/reviews/2026-10-22-workbench-step-one-validation.md)。
+步骤二的冻结构建、工程命令、SQLite 重启、浏览器/Word 证据和未执行项见
+[编辑器验证记录](docs/reviews/2026-10-23-editor-step-two-validation.md)。
+该记录保留修复前构建的正文键盘陷阱与序列化超时状态误报；后续修复须注明新构建和实际复测，
+不得以 Word COM 自动检查或代理查看渲染图替代人工 Word 验收。
 工程测试、浏览器检查及平台恢复分别记录；缩小 CSS 视口不作为浏览器 200% 缩放证据，
 Windows 进程重启不作为 Linux 容器或文件/目录同步持久性证据。
 
