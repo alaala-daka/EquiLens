@@ -7,6 +7,13 @@ services:
       DATABASE_PROVIDER: ${DATABASE_PROVIDER:-sqlite}
       SQLITE_PATH: /data/equilens.sqlite
       APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:3000}
+      AI_BASE_URL: ${AI_BASE_URL:-https://aigw.saurlax.com/v1}
+      AI_MODEL: ${AI_MODEL:-glm-5.3-flash}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_REVIEW_MODE: ${AI_REVIEW_MODE:-published}
+      AI_REVIEW_RETENTION_DAYS: ${AI_REVIEW_RETENTION_DAYS:-}
+      AI_REVIEW_MAX_PROMPT_CHARS: ${AI_REVIEW_MAX_PROMPT_CHARS:-}
+      AI_AGENT_MAX_CALLS: ${AI_AGENT_MAX_CALLS:-8}
     volumes:
       - equilens-data:/data
     restart: unless-stopped

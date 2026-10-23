@@ -1,5 +1,15 @@
 # Third-party notices
 
+## AI SDK and schema validation
+
+- `ai@7.0.148` and `@ai-sdk/openai-compatible@3.0.75`: Apache-2.0,
+  upstream https://github.com/vercel/ai . Full package license texts are retained in
+  `licenses/ai-sdk-Apache-2.0.txt` and `licenses/ai-sdk-openai-compatible-Apache-2.0.txt`.
+- `zod@4.6.7`: MIT, upstream https://github.com/colinhacks/zod . Full package notice
+  is retained in `licenses/zod-MIT.txt`.
+
+The packages are used without modification. The standalone build includes these notices and license files.
+
 ## SuperDoc
 
 The browser Word editor uses unmodified `superdoc@1.47.2`, published by

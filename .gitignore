@@ -1,4 +1,5 @@
 .superpowers/
+.workbuddy/
 node_modules/
 .next/
 out/

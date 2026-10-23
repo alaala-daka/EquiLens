@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { BookOpenIcon, FileTextIcon, PlusIcon, ScaleIcon, UploadIcon, LoaderCircleIcon } from "lucide-react"
 
 import { DocumentEditor } from "@/components/document-editor"
+import { ContractReviewHistory } from "@/components/contract-review-history"
 import { blankDocx } from "@/lib/documents/docx"
 import { createDocument as persistDocument, listDocuments, openDocument } from "@/lib/documents/client"
 import { errorMessage, type DocumentRecord, type OpenDocument } from "@/lib/documents/types"
@@ -16,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 export function Workbench() {
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [opened, setOpened] = useState<OpenDocument | null>(null)
+  const [reviewTaskId, setReviewTaskId] = useState<string | undefined>()
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -48,6 +50,7 @@ export function Workbench() {
       const result = await persistDocument(blob, file ? file.name.replace(/\.docx$/i, "") : "未命名文档", file ? "imported" : "authored", file?.name)
       if (controller.signal.aborted) return
       recordSaved(result)
+      setReviewTaskId(undefined)
       setOpened(result)
     } catch (failure) {
       if (!controller.signal.aborted) setError(errorMessage(failure))
@@ -56,7 +59,7 @@ export function Workbench() {
     }
   }
 
-  async function open(id: string) {
+  async function open(id: string, taskId?: string) {
     if (operation.current) return
     const controller = new AbortController()
     operation.current = controller
@@ -66,13 +69,14 @@ export function Workbench() {
       const result = await openDocument(id)
       await validateDocx(result.revision.blob, controller.signal)
       controller.signal.throwIfAborted()
+      setReviewTaskId(taskId)
       setOpened(result)
     } catch (failure) { if (!controller.signal.aborted) setError(errorMessage(failure)) }
     finally { if (operation.current === controller) { operation.current = null; setBusy(false) } }
   }
 
   if (opened) {
-    return <DocumentEditor key={opened.document.id} opened={opened} onSaved={recordSaved} onBack={() => setOpened(null)} onCopy={setOpened} />
+    return <DocumentEditor key={opened.document.id} opened={opened} onSaved={recordSaved} onBack={() => setOpened(null)} onCopy={setOpened} initialReviewTaskId={reviewTaskId} />
   }
 
   return (
@@ -131,6 +135,7 @@ export function Workbench() {
                 </Table>
               </div>
             )}
+            <ContractReviewHistory busy={busy || loading} onOpen={(documentId, taskId) => void open(documentId, taskId)} />
           </TabsContent>
           <TabsContent value="standards" className="flex flex-col gap-6">
             <h1 className="text-lg font-semibold">规范库</h1>

@@ -10,3 +10,4 @@ cpSync("scripts/generated", ".next/standalone/scripts/generated", { recursive: t
 cpSync("scripts/backup-sqlite.mjs", ".next/standalone/scripts/backup-sqlite.mjs");
 // File-backed review rules are not discoverable by Next.js static tracing.
 cpSync("tools/contract-review/rules", ".next/standalone/tools/contract-review/rules", { recursive: true });
+cpSync("tools/contract-review/skills", ".next/standalone/tools/contract-review/skills", { recursive: true });

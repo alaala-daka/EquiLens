@@ -117,11 +117,29 @@ export type Finding = {
   pending: string[]
   reviewStatus: "待人工复核"
   checkedParagraphIndexes?: number[]
+  citations?: {
+    documentVersionId?: string
+    parseSnapshotId?: string
+    paragraphIndex: number
+    quote: string
+    table?: Paragraph["table"]
+  }[]
+  sourceReferences?: Pick<SourceEntry, "sourceId" | "type" | "name" | "article" | "version" | "officialUrl" | "status">[]
 }
 
 export type RejectedFinding = {
   ruleId: string
   reason: string
+  detail: string
+}
+
+/**
+ * 未能定位的规则。no-match：未纳入本次检查；outline-only：仅有目录、没有
+ * 可引用的正文，不计为完整检查。
+ */
+export type NotLocated = {
+  ruleId: string
+  reason: "no-match" | "outline-only"
   detail: string
 }
 
@@ -155,9 +173,19 @@ export type ReviewResult = {
   paragraphs: Paragraph[]
   findings: Finding[]
   rejected: RejectedFinding[]
+  notLocated: NotLocated[]
   coverage: CategoryReport[]
   usage: { inputTokens: number; outputTokens: number; totalTokens: number } | null
   model: string
+  agent?: {
+    engine: "ai-sdk"
+    skill: { id: string; version: string; sha256: string; loaded: boolean }
+    readParagraphIndexes: number[]
+    readSourceIds: string[]
+    events: { tool: string; at: string; paragraphIndexes?: number[]; sourceIds?: string[]; ruleIds?: string[] }[]
+    submissions: { ruleIds: string[]; readParagraphIndexes: number[]; readSourceIds: string[] }[]
+  }
+  summary?: { issues: number; pending: number; rejected: number; unreadParagraphs: number }
 }
 
 export type ReviewContext = { role?: string; projectType?: string; region?: string }

@@ -1,12 +1,13 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ArrowLeftIcon, ArrowUpIcon, BotIcon, DownloadIcon, FileTextIcon, LoaderCircleIcon, SaveIcon } from "lucide-react"
+import { ArrowLeftIcon, BotIcon, DownloadIcon, FileTextIcon, LoaderCircleIcon, SaveIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
+import { InputGroup, InputGroupTextarea } from "@/components/ui/input-group"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ContractReviewPanel } from "@/components/contract-review-panel"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Separator } from "@/components/ui/separator"
 import { WordCanvas, type WordCanvasHandle } from "@/components/word-canvas"
@@ -25,11 +26,12 @@ function download(blob: Blob, title: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60000)
 }
 
-export function DocumentEditor({ opened, onSaved, onBack, onCopy }: {
+export function DocumentEditor({ opened, onSaved, onBack, onCopy, initialReviewTaskId }: {
   opened: OpenDocument
   onSaved: (saved: OpenDocument) => void
   onBack: () => void
   onCopy: (saved: OpenDocument) => void
+  initialReviewTaskId?: string
 }) {
   const isMobile = useIsMobile()
   const [saved, setSaved] = useState(opened)
@@ -133,11 +135,15 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy }: {
           <aside aria-label="Agent 会话" className="flex h-full flex-col">
             <header className="flex items-center justify-between border-b px-4 py-3"><h2 className="flex items-center gap-2 text-sm font-medium"><BotIcon className="size-4" />Agent</h2></header>
             <div className="flex items-center gap-2 border-b px-4 py-3 text-xs text-muted-foreground"><FileTextIcon className="size-3.5 shrink-0" /><span className="truncate">{documentTitle(title)}</span></div>
-            <div className="flex min-h-0 flex-1 overflow-auto"><Empty><EmptyHeader><EmptyMedia variant="icon"><BotIcon /></EmptyMedia><EmptyTitle>暂无会话</EmptyTitle></EmptyHeader></Empty></div>
-            <div className="p-4"><InputGroup>
-              <InputGroupTextarea aria-label="Agent 消息" placeholder="输入消息…" value={prompt} disabled={busy} onChange={event => { setPrompt(event.target.value); markChanged() }} />
-              <InputGroupAddon align="block-end"><InputGroupButton type="button" size="icon-sm" variant="default" className="ml-auto" disabled aria-label="发送消息"><ArrowUpIcon /></InputGroupButton></InputGroupAddon>
-            </InputGroup></div>
+            <Tabs defaultValue="review" className="min-h-0 flex-1">
+              <TabsList className="mx-4 mt-3"><TabsTrigger value="review">合同审查</TabsTrigger><TabsTrigger value="notes">备注</TabsTrigger></TabsList>
+              <TabsContent value="review" className="min-h-0 flex-1 overflow-auto">
+                <ContractReviewPanel documentId={saved.document.id} revisionId={saved.revision.id} dirty={dirty} busy={busy} initialTaskId={initialReviewTaskId} />
+              </TabsContent>
+              <TabsContent value="notes" className="min-h-0 flex-1 overflow-auto p-4"><InputGroup>
+                <InputGroupTextarea aria-label="文档备注" placeholder="输入备注…" value={prompt} disabled={busy} onChange={event => { setPrompt(event.target.value); markChanged() }} />
+              </InputGroup></TabsContent>
+            </Tabs>
           </aside>
         </ResizablePanel>
       </ResizablePanelGroup>

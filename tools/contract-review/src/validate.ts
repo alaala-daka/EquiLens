@@ -43,7 +43,7 @@ export function validateFindings(
     const quote = raw.quote.trim()
     const paragraphIndex = raw.paragraphIndex as number
     if (!complete && (kind === "未发现问题" || kind === "缺失条款")) {
-      reject("范围不完整", "解析不完整，不能确认没有问题或条款缺失。"); continue
+      reject("范围不完整", "解析或已读正文范围不完整，不能确认没有问题或条款缺失。"); continue
     }
     if (kind === "缺失条款") {
       if (quote || paragraphIndex !== -1) { reject("引文校验失败", "缺失条款不得虚构引文，编号必须为 -1。"); continue }

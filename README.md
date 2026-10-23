@@ -9,7 +9,7 @@
 
 > **项目状态：**提供文档/规范库工作台和浏览器 Word 编辑器，支持新建、导入、编辑、保存、重开及导出 DOCX。
 > 文档原件和保存版本存入服务端数据库，支持 SQLite / GaussDB 配置。SQLite 已有行为测试；GaussDB 尚未连接真实实例验证。
-> Agent、OBS、MaaS、OCR 及四个业务模块尚未接入网页。另有合同审查开发联调模块，内置资料待核对，尚未完成业务验收。
+> 合同审查 Agent 已接入网页及持久化后台任务，当前为匿名会话联调范围，内置资料待核对，尚未完成业务验收。OBS、MaaS、OCR 和其他业务模块仍待接入。
 
 [在线使用](https://equilens.zeabur.app) · [部署说明](docs/deployment.md)
 
@@ -69,7 +69,7 @@ pnpm ai:smoke
 此命令只发送一次固定测试消息“请只回复：连接成功”，可能产生少量模型费用。
 它显示模型回复和可用的 Token 用量；错误时返回明确原因，不输出密钥或服务端响应正文。
 服务端业务可从 `@/server/ai` 导入 `askModel`。模块导入及构建不会调用模型。
-此入口只验证模型连接；合同审查使用下述独立联调入口，网页及业务任务尚未接入。
+此入口只验证模型连接；网页合同审查通过独立的持久化任务接口调用 Agent。
 实际验证与构建限制见[模型连接验证记录](docs/reviews/2026-10-22-model-gateway-validation.md)。
 
 ## 合同审查开发交接
@@ -107,6 +107,18 @@ pnpm start
 `GET /healthz` 返回应用存活状态。它不检查数据库或外部服务，也不表示业务流程已可用。
 
 ## 开发
+
+合同审查新增 AI SDK Agent 模块：支持按需加载 skill、读取条款/依据、结构化提交与引文校验。
+新后端入口 `reviewTextWithAgent`、CLI `pnpm review:contract:agent` 的用法见
+[模块说明](tools/contract-review/README.md#ai-sdk-agent-入口)。旧固定审查入口保留。
+2026-10-23 已接编辑器审查栏、会话内任务列表及数据库队列。类型检查通过，未运行测试、构建、浏览器或真实模型验证。
+
+本地使用：在忽略的 `.env.local` 配置 AI_BASE_URL、AI_MODEL、AI_API_KEY，运行 `pnpm dev`。
+导入基础 DOCX → 编辑器右侧「合同审查」→ 保存修改 → 确认地域、审查条件及外发授权 → 开始审查。
+开发环境默认 debug，须确认未核对资料；生产默认 published，规则未发布时拒绝提交。
+页面关闭不取消入库任务；返回文档列表可查看历史任务，点击报告引文查看原版本段落。
+生产需显式配置 AI_REVIEW_RETENTION_DAYS（1–365 天）及经验证的 AI_REVIEW_MAX_PROMPT_CHARS。
+网页当前只接 DOCX；TXT 继续通过 CLI 使用。账号/项目权限、人工修订和正式法律业务验收仍未实现。
 
 | 工作 | 命令 |
 | --- | --- |

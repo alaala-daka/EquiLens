@@ -23,6 +23,13 @@ export function toMarkdown(result: ReviewResult): string {
     "",
   ]
   if (result.usage) lines.push("- Token 用量：" + result.usage.totalTokens, "")
+  if (result.agent) {
+    lines.push("- 执行方式：AI SDK Agent",
+      "- 技能：" + plain(result.agent.skill.id + " / " + result.agent.skill.version),
+      "- 已读正文：" + result.agent.readParagraphIndexes.length + " / " + result.paragraphs.length + " 段", "")
+  }
+  if (result.summary) lines.push("- 风险摘要：" + result.summary.issues + " 项问题，" + result.summary.pending +
+    " 项待核实，" + result.summary.unreadParagraphs + " 段未读正文。", "")
   for (const warning of result.warnings) lines.push("> " + plain(warning), "")
   lines.push("## 检查覆盖", "", "| 检查类别 | 状态 | 说明 |", "| --- | --- | --- |")
   for (const item of result.coverage) lines.push("| " + item.category + " | " + item.status + " | " + plain(item.note) + " |")
@@ -39,7 +46,13 @@ export function toMarkdown(result: ReviewResult): string {
       "- 风险：" + plain(item.risk),
       "- 位置：" + (item.kind === "缺失条款" ? "所提供的完整检查范围，未找到必要约定" : "第 " + (item.paragraphIndex + 1) + " 段"))
     if (item.quote) lines.push("- 原文：" + plain(item.quote))
-    lines.push("- 依据：" + plain(item.basis.join("、")), "- 影响：" + plain(item.impact),
+    for (const citation of item.citations ?? []) {
+      if (citation.paragraphIndex === item.paragraphIndex && citation.quote === item.quote) continue
+      lines.push("- 补充引文（第 " + (citation.paragraphIndex + 1) + " 段）：" + plain(citation.quote))
+    }
+    const references = item.sourceReferences?.map(source => source.sourceId + " " + source.type + "：" + source.name +
+      (source.article ? " " + source.article : "") + (source.version ? " / " + source.version : ""))
+    lines.push("- 依据：" + plain(references?.join("；") || item.basis.join("、")), "- 影响：" + plain(item.impact),
       "- 建议：" + plain(item.suggestion), "- 复核状态：" + item.reviewStatus, "")
   }
   lines.push("## 待核实与未完成", "")
@@ -51,6 +64,13 @@ export function toMarkdown(result: ReviewResult): string {
   if (result.rejected.length) {
     lines.push("", "## 被拒绝或缺少的结论", "")
     for (const item of result.rejected) lines.push("- " + plain(item.ruleId + "：" + item.reason + "；" + item.detail))
+  }
+  if (result.notLocated.length) {
+    lines.push("", "## 未定位的检查项", "")
+    for (const item of result.notLocated) {
+      lines.push("- " + plain(item.ruleId + "：" + (item.reason === "no-match" ? "未执行" : "仅有目录，待核实") + "；" + item.detail))
+    }
+    lines.push("", "以上检查项不计为已通过，需补充材料或人工确认。")
   }
   lines.push("", "> 本报告由 AI 辅助生成，所有结论均待人工复核；引用校验通过不代表法律适用正确。", "")
   return lines.join("\n")

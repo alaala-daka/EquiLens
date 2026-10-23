@@ -78,6 +78,15 @@ pnpm dlx zeabur template deploy -f zeabur-template.yaml --project-id <project-id
 
 ## SQLite 备份
 
+### 合同审查任务的新增配置
+
+网页审查使用常驻 Node.js 执行器及相同数据库，需部署包含此增量的新构建；现有 Zeabur 模板固定的旧镜像不包含这些改动。
+服务端配置 AI_BASE_URL、AI_MODEL、AI_API_KEY，密钥仅作为运行时环境变量，不传构建参数或前端变量。
+生产默认 AI_REVIEW_MODE=published，内置规则未发布时会拒绝提交；调试须显式设 debug 并由网页用户确认。
+生产必须设置 AI_REVIEW_RETENTION_DAYS（1–365）及经验证的 AI_REVIEW_MAX_PROMPT_CHARS；
+AI_AGENT_MAX_CALLS 默认 8，累计预算不随恢复重置。Compose 已增加这些环境映射；此轮未运行部署。
+任务、解析快照、模型交换和报告均在数据库，备份作为私有材料管理。详见[网页审查交接](contract-review-web.md)。
+
 ```bash
 docker compose exec app node scripts/backup-sqlite.mjs /data/backups/equilens-<timestamp>.sqlite
 ```

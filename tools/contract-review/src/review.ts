@@ -5,6 +5,7 @@ import { applicability, matchRules } from "./match"
 import { publishedRules, publishedSources } from "./pack"
 import { buildPrompt } from "./prompt"
 import type { LoadedPack, Paragraph, ReviewContext, ReviewResult, TriggeredRule } from "./types"
+import { buildOutline, expandSegments, type Segment } from "./segments"
 import { buildCoverage, validateFindings, type RawFinding } from "./validate"
 
 export type AskModel = (input: { system: string; user: string; signal?: AbortSignal }) =>
@@ -32,6 +33,11 @@ export type ReviewOptions = {
   signal?: AbortSignal
   /** 持久化计次并复查权限；失败时不会发送请求。 */
   onBeforeCall?: (reservation: { callNumber: number; ruleIds: string[] }) => Promise<void>
+  /**
+   * 条款块。提供后进入定向取材：每批只送相关块及相邻块，并附全文目录。
+   * 不提供时保持原行为，整篇合同随每批发送。
+   */
+  segments?: Segment[]
 }
 
 export function parseModelOutput(text: string): RawFinding[] {
@@ -73,6 +79,15 @@ export async function reviewContract(options: ReviewOptions & { pack: LoadedPack
       new Set(paragraphs.map(item => item.index)).size !== paragraphs.length) throw new ReviewError("REVIEW_INPUT_INVALID")
   const text = paragraphs.map(item => item.text).join("\n")
   if (text.length > 100000 || (options.documentText?.length ?? 0) > 100000) throw new ReviewError("REVIEW_INPUT_TOO_LARGE")
+  const focus = options.segments?.length ? structuredClone(options.segments) : null
+  if (focus) {
+    const known = new Set(paragraphs.map(item => item.index))
+    const invalid = focus.some(segment => !segment || !Array.isArray(segment.indexes) ||
+      typeof segment.title !== "string" || !segment.indexes.length || segment.indexes.some(index => !known.has(index))) ||
+      focus.flatMap(segment => segment.indexes).length !== known.size ||
+      new Set(focus.flatMap(segment => segment.indexes)).size !== known.size
+    if (invalid) throw new ReviewError("REVIEW_INPUT_INVALID")
+  }
   const context = { ...options.context }
   if (Object.values(context).some(value => typeof value !== "string" || !value.trim() || value.length > 200)) throw new ReviewError("REVIEW_INPUT_INVALID")
   const batchSize = integer(options.batchSize ?? 7, 1, 20)
@@ -91,7 +106,7 @@ export async function reviewContract(options: ReviewOptions & { pack: LoadedPack
     },
     callsUsed: integer(options.callsUsed ?? 0, 0, 3),
     documentTitle: options.documentTitle ?? "未命名合同", packVersion: pack.manifest.version,
-    paragraphs, findings: [], rejected: [], coverage: [], usage: null, model: options.modelName ?? "未标注模型",
+    paragraphs, findings: [], rejected: [], notLocated: [], coverage: [], usage: null, model: options.modelName ?? "未标注模型",
   }
   if (mode === "debug") result.warnings.unshift("调试结果：使用未核对材料，仅用于开发联调，不形成正式法律结论。")
   if (!result.input.complete) result.warnings.push("输入解析不完整；不能确认无问题或条款缺失。")
@@ -106,7 +121,14 @@ export async function reviewContract(options: ReviewOptions & { pack: LoadedPack
     const applies = applicability(rule, context)
     if (applies === "excluded") { result.warnings.push(rule.ruleId + "：调用方确认的适用条件不符，本次排除。"); continue }
     const entry = matchRules([{ ...rule, appliesTo: {} }], paragraphs)[0]
-    if (!entry) continue
+    if (!entry) {
+      // 非必检规则没有命中线索时必须留痕，否则"没查"与"查过没问题"无法区分。
+      result.notLocated.push({
+        ruleId: rule.ruleId, reason: "no-match",
+        detail: "未命中任何条款线索，未纳入本次检查。",
+      })
+      continue
+    }
     planned.push(entry)
     const missingBasis = rule.basis.some(item => !sourceIds.has(item.sourceId))
     if (applies === "unknown" || missingBasis) {
@@ -117,7 +139,13 @@ export async function reviewContract(options: ReviewOptions & { pack: LoadedPack
         basis: [], impact: "", suggestion: "补齐并核对必要条件后重新审查。",
         pending: [reason], reviewStatus: "待人工复核",
       })
-    } else executable.push(entry)
+    } else {
+      executable.push(entry)
+      if (focus && !entry.excerpts.length) result.notLocated.push({
+        ruleId: rule.ruleId, reason: "outline-only",
+        detail: "未定位到正文，仅提供目录；该项检查范围不足，须待核实。",
+      })
+    }
   }
   if (!rules.length) result.errors.push({ ...safeError(new ReviewError("REVIEW_RULES_UNAVAILABLE")), ruleIds: [] })
   const controller = new AbortController()
@@ -126,6 +154,7 @@ export async function reviewContract(options: ReviewOptions & { pack: LoadedPack
   options.signal?.addEventListener("abort", externalAbort, { once: true })
   if (options.signal?.aborted) externalAbort()
   const signal = controller.signal
+  const outline = focus ? buildOutline(focus) : undefined
   const addError = (failure: unknown, batch: TriggeredRule[]) => result.errors.push({
     ...safeError(failure), ruleIds: batch.map(item => item.rule.ruleId),
   })
@@ -133,7 +162,12 @@ export async function reviewContract(options: ReviewOptions & { pack: LoadedPack
     for (let offset = 0; offset < executable.length; offset += batchSize) {
       const batch = executable.slice(offset, offset + batchSize)
       const basisIds = new Set(batch.flatMap(item => item.rule.basis.map(basis => basis.sourceId)))
-      const prompt = buildPrompt({ paragraphs, triggered: batch, context, sources: sources.filter(source => basisIds.has(source.sourceId)) })
+      // 定向取材：命中段落所在块及前后各一块；仅有目录时保留待核实。
+      const select = focus
+        ? [...new Set(expandSegments(focus, batch.flatMap(item => item.excerpts.map(excerpt => excerpt.paragraphIndex)))
+          .flatMap(segment => segment.indexes))]
+        : undefined
+      const prompt = buildPrompt({ paragraphs, triggered: batch, context, sources: sources.filter(source => basisIds.has(source.sourceId)), outline, select })
       if (prompt.system.length + prompt.user.length > maxPromptChars) {
         addError(new ReviewError("REVIEW_INPUT_TOO_LARGE"), batch); continue
       }
@@ -173,7 +207,9 @@ export async function reviewContract(options: ReviewOptions & { pack: LoadedPack
             totalTokens: (result.usage?.totalTokens ?? 0) + response.usage.totalTokens,
           }
         }
-        const outcome = validateFindings(parseModelOutput(response.text), batch, paragraphs, sourceIds, result.input.complete)
+        const visible = select ? paragraphs.filter(item => select.includes(item.index)) : paragraphs
+        const outcome = validateFindings(parseModelOutput(response.text), batch, visible, sourceIds,
+          result.input.complete && visible.length === paragraphs.length)
         result.findings.push(...outcome.findings)
         result.rejected.push(...outcome.rejected)
       } catch (failure) {
@@ -193,6 +229,7 @@ export async function reviewContract(options: ReviewOptions & { pack: LoadedPack
   }
   result.coverage = buildCoverage(result.findings, planned)
   const complete = result.input.complete && result.errors.length === 0 &&
+    result.notLocated.length === 0 &&
     result.coverage.every(item => !["未覆盖", "待核实"].includes(item.status)) &&
     result.findings.length === planned.length && planned.length > 0
   result.status = complete ? "success" : result.findings.length ? "partial" : "failed"

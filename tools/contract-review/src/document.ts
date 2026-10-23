@@ -82,7 +82,8 @@ export function paragraphsFromString(text: string): Paragraph[] {
 }
 export function isDocxPath(path: string): boolean { return path.toLowerCase().endsWith(".docx") }
 
-async function readDocxInChild(bytes: Buffer): Promise<Paragraph[]> {
+export async function readDocxInChild(bytes: Buffer, signal?: AbortSignal): Promise<Paragraph[]> {
+  signal?.throwIfAborted()
   const worker = resolve(process.cwd(), "scripts/generated/contract-reader.mjs")
   try { await access(worker) } catch { throw new ReviewError("REVIEW_PARSER_UNAVAILABLE") }
   return new Promise((accept, reject) => {
@@ -95,11 +96,15 @@ async function readDocxInChild(bytes: Buffer): Promise<Paragraph[]> {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      signal?.removeEventListener("abort", abort)
       child.kill()
       if (error) reject(error)
       else accept(paragraphs ?? [])
     }
     const timer = setTimeout(() => finish(new ReviewError("REVIEW_DOCUMENT_TIMEOUT")), 60000)
+    const abort = () => finish(new ReviewError("REVIEW_CANCELLED"))
+    signal?.addEventListener("abort", abort, { once: true })
+    if (signal?.aborted) { abort(); return }
     child.once("error", () => finish(new ReviewError("REVIEW_PARSER_UNAVAILABLE")))
     child.once("exit", () => finish(new ReviewError("REVIEW_DOCUMENT_INVALID")))
     child.once("message", message => {
