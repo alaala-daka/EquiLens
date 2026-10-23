@@ -5,8 +5,8 @@
     "title": "争议解决方式唯一性",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [
@@ -41,8 +41,8 @@
     "title": "管辖法院或仲裁机构明确性",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [
@@ -73,8 +73,8 @@
     "title": "协商与调解前置程序",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [

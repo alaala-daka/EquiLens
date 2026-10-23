@@ -20,7 +20,9 @@ function longContract() {
 test("AC-03：整篇超限时报错，定向取材后同一合同可以审查", async () => {
   const documentText = longContract()
   const paragraphs = paragraphsFromString(documentText)
-  const exceeded = await reviewContract({ pack: testPack(), documentText, model: validModel })
+  // 显式固定预算：本用例比较整篇与定向两种取材方式，不依赖服务端默认值。
+  const budget = 24000
+  const exceeded = await reviewContract({ pack: testPack(), documentText, model: validModel, maxPromptChars: budget })
   assert.equal(exceeded.status, "failed")
   assert.ok(exceeded.errors.some(item => item.code === "REVIEW_INPUT_TOO_LARGE"))
 
@@ -30,7 +32,7 @@ test("AC-03：整篇超限时报错，定向取材后同一合同可以审查", 
       for (const item of answer.findings) item.kind = "发现问题"
       return { text: JSON.stringify(answer) }
     },
-    segments: buildSegments(paragraphs),
+    segments: buildSegments(paragraphs), maxPromptChars: budget,
   })
   assert.notEqual(result.status, "failed")
   assert.equal(result.errors.length, 0)

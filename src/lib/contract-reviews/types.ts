@@ -1,4 +1,5 @@
 import type { ReviewResult, ReviewContext } from "../../../tools/contract-review/src/types"
+import type { SceneId } from "../../../tools/contract-review/src/scenes"
 export type { ReviewResult, ReviewContext }
 export type ReviewTaskState = "queued" | "running" | "success" | "partial" | "failed"
 export type ReviewTask = {
@@ -11,8 +12,10 @@ export type ReviewTask = {
 export type ReviewAvailability = {
   ready: boolean; mode: "published" | "debug"; model: string; providerHost: string; retentionDays: number; configurationId: string; error?: string
 }
+/** 提交时只传场景标识与地域：立场与项目名称由场景表给出，不再由客户端决定。 */
+export type SubmitContext = { scene: SceneId; region: string }
 export type SubmitReview = {
-  documentId: string; revisionId: string; context: ReviewContext
+  documentId: string; revisionId: string; context: SubmitContext
   externalProcessingConsent: true; unreviewedMaterialsConsent: boolean
   configurationId: string
 }

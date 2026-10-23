@@ -2,10 +2,12 @@ import { createHash, randomUUID } from "node:crypto"
 import type { Database, Connection, Row } from "../../database/connection"
 import { StoreError } from "../../documents/repository"
 import type { ReviewTask, ReviewResult, SubmitReview } from "../../../lib/contract-reviews/types"
-import type { LoadedPack, Paragraph } from "../../../../tools/contract-review/src/types"
+import type { LoadedPack, Paragraph, ReviewContext } from "../../../../tools/contract-review/src/types"
 import type { ReviewSkill } from "../../../../tools/contract-review/src/agent/skill"
 
-export type TaskInput = SubmitReview & {
+/** 提交契约只带 scene+region；任务内部存完整上下文，供判定、展示与报告使用。 */
+export type TaskInput = Omit<SubmitReview, "context"> & {
+  context: ReviewContext
   title: string; revisionHash: string; pack: LoadedPack; packSha256: string; skill: ReviewSkill
   mode: "debug" | "published"; model: string; baseURL: string; maxPromptChars: number; consentAt: string
 }

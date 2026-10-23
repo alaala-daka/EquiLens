@@ -11,6 +11,7 @@ import { ContractReviewReport } from "@/components/contract-review-report"
 import { listReviewTasks, readReviewTask, createReviewTask, actOnReviewTask } from "@/lib/contract-reviews/client"
 import { taskStageLabel, taskStateLabel, type ReviewAvailability, type ReviewTask, type SubmitReview } from "@/lib/contract-reviews/types"
 import { errorMessage } from "@/lib/documents/types"
+import { defaultSceneId, sceneOf } from "../../tools/contract-review/src/scenes"
 
 export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initialTaskId }: {
   documentId: string; revisionId: string; dirty: boolean; busy: boolean; initialTaskId?: string
@@ -73,7 +74,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     const controller = new AbortController()
     pending.current = controller; setSubmitting(true); setError("")
     const input: SubmitReview = { documentId, revisionId,
-      context: { role: "专业分包人", projectType: "房建机电安装专业分包", region: region.trim() },
+      context: { scene: defaultSceneId, region: region.trim() },
       externalProcessingConsent: true, unreviewedMaterialsConsent: draftConsent, configurationId: configuration.configurationId }
     const signature = JSON.stringify(input)
     if (operation.current?.signature !== signature) operation.current = { signature, key: crypto.randomUUID() }
@@ -99,7 +100,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
   }
   return <section aria-label="合同审查" className="flex flex-col gap-6 p-4">
     <form onSubmit={event => void submit(event)} className="flex flex-col gap-4">
-      <div className="space-y-1 text-sm"><p className="font-medium">专业分包合同审查</p><p className="text-muted-foreground">审查立场：专业分包人</p><p className="text-muted-foreground">项目类型：房建机电安装专业分包</p><p className="break-all text-xs text-muted-foreground">保存版本：{revisionId}</p></div>
+      <div className="space-y-1 text-sm"><p className="font-medium">专业分包合同审查</p><p className="text-muted-foreground">审查立场：{sceneOf(defaultSceneId).role}</p><p className="text-muted-foreground">项目类型：{sceneOf(defaultSceneId).label}</p><p className="break-all text-xs text-muted-foreground">保存版本：{revisionId}</p></div>
       <label className="grid gap-2 text-sm">项目地域<Input value={region} required maxLength={100} disabled={submitting} onChange={event => { setRegion(event.target.value); setConsent(false) }} /></label>
       {configuration?.mode === "debug" && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draftConsent} disabled={submitting} onChange={event => setDraftConsent(event.target.checked)} /><span>我已知悉审查依据尚未核对，结果仅供联调，需人工复核。</span></label>}
       {configuration?.ready && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} disabled={submitting} onChange={event => setConsent(event.target.checked)} /><span>我确认上述审查条件，并有权将此保存版本发送至 {configuration.providerHost}（{configuration.model}）进行处理。审查记录保留 {configuration.retentionDays} 天。</span></label>}

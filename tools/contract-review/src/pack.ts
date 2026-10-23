@@ -14,6 +14,7 @@ import {
   type SourceEntry,
   type SourceType,
 } from "./types"
+import { isSceneId } from "./scenes"
 
 const one = <T>(values: T[], value: unknown, field: string): T => {
   if (!values.includes(value as T)) throw new Error(`${field} 取值无效：${String(value)}`)
@@ -70,12 +71,16 @@ function parseRule(value: unknown, origin: string): RuleEntry {
   if (!Array.isArray(basis) || !basis.length) throw new Error(`${origin} 的规则必须提供至少一个依据。`)
   const appliesTo = (entry.appliesTo ?? {}) as Record<string, unknown>
   const status = one<PublicationStatus>(PUBLICATION_STATUSES, entry.status, `${origin} 的规则发布状态`)
+  const scene = optionalText(appliesTo.scene, `${origin} 的适用场景`)
+  // 未知场景直接拒绝加载：拼错的场景标识不能静默变成"永不适用"。
+  if (scene !== undefined && !isSceneId(scene)) throw new Error(`${origin} 的适用场景未登记：${scene}`)
   return {
     ruleId: text(entry.ruleId, `${origin} 的 ruleId`),
     category: one<CheckCategory>(CHECK_CATEGORIES, entry.category, `${origin} 的检查类别`),
     title: text(entry.title, `${origin} 的标题`),
     status,
     appliesTo: {
+      scene,
       role: optionalText(appliesTo.role, `${origin} 的适用主体`),
       projectType: optionalText(appliesTo.projectType, `${origin} 的适用项目类型`),
       region: optionalText(appliesTo.region, `${origin} 的适用地域`),

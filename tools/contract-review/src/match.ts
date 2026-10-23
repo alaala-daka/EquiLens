@@ -20,12 +20,13 @@ export function matchParagraph(rule: RuleEntry, paragraph: Paragraph): boolean {
 
 export function applicability(rule: RuleEntry, context: ReviewContext): "applicable" | "unknown" | "excluded" {
   let unknown = false
-  for (const field of ["role", "projectType", "region"] as const) {
+  // scene 用短标识判定，不随中文名称或标点变化；其余字段保留用于旧规则包。
+  for (const field of ["scene", "role", "projectType", "region"] as const) {
     const required = rule.appliesTo[field]
     if (!required) continue
     const actual = context[field]
     if (!actual) unknown = true
-    else if (normalize(required) !== normalize(actual)) return "excluded"
+    else if (field === "scene" ? required !== actual : normalize(required) !== normalize(actual)) return "excluded"
   }
   return unknown ? "unknown" : "applicable"
 }

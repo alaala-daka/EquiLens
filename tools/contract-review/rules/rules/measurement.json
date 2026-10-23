@@ -5,8 +5,8 @@
     "title": "计量方式与结算依据",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [
@@ -41,8 +41,8 @@
     "title": "结算资料与审核流程",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [
@@ -77,8 +77,8 @@
     "title": "暂定金额与暂估价",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [

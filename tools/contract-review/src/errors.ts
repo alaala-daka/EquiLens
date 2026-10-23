@@ -2,6 +2,8 @@ const messages: Record<string, string> = {
   REVIEW_INPUT_INVALID: "合同文字、段落编号或调用参数无效。",
   REVIEW_INPUT_TOO_LARGE: "合同或提示内容超过本次输入预算，请减少材料或调整已验证的配置。",
   REVIEW_RULES_UNAVAILABLE: "没有可用的已发布规则包；当前内置资料仅供显式开启调试模式联调。",
+  REVIEW_CONTEXT_UNMATCHED: "已发布的规则与当前审查条件（立场、项目类型、地域）不一致，没有可执行的检查项；请核对所选条件。",
+  REVIEW_RULES_UNMATCHED: "已发布的规则未命中本合同任何内容，没有可执行的检查项；请确认合同类型与规则包是否匹配。",
   REVIEW_RULE_PACK_INVALID: "规则包读取或格式校验失败，请由维护者检查规则文件。",
   REVIEW_BUDGET_EXHAUSTED: "本次审查已达到模型调用次数上限。",
   REVIEW_BUDGET_UNVERIFIED: "正式审查的提示预算尚未验证并配置；请使用调试模式联调。",

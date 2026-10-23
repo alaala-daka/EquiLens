@@ -3,10 +3,10 @@
     "ruleId": "BREACH-001",
     "category": "违约责任",
     "title": "违约责任对等性",
-    "status": "待核对",
+    "status": "已发布",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [
@@ -38,10 +38,10 @@
     "ruleId": "BREACH-002",
     "category": "违约责任",
     "title": "违约金比例与上限",
-    "status": "待核对",
+    "status": "已发布",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [
@@ -71,10 +71,10 @@
     "ruleId": "BREACH-003",
     "category": "违约责任",
     "title": "不可抗力与情势变更",
-    "status": "待核对",
+    "status": "已发布",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [

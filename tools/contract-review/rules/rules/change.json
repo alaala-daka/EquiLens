@@ -5,8 +5,8 @@
     "title": "变更指令的书面形式与生效要件",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [
@@ -41,8 +41,8 @@
     "title": "变更价款确认时限",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [
@@ -76,8 +76,8 @@
     "title": "变更权限与人员授权",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [

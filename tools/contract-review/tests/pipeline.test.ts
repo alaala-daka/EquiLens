@@ -96,9 +96,11 @@ test("AC-23：取消或超时的模型不能继续后续批次", async () => {
 
 test("AC-03/21：默认拒绝草稿；调试标记进入全部输出且停用内容不使用", async () => {
   const pack = await loadRulePack("tools/contract-review/rules")
+  // 用本地草稿包验证发布门槛，避免依赖内置规则包当前的发布状态。
+  const draftPack = testPack(testPack().rules.map(item => ({ ...item, status: "待核对" as const })))
   let calls = 0
   const never: AskModel = async input => { calls++; return validModel(input) }
-  const published = await reviewContract({ pack, documentText, model: never })
+  const published = await reviewContract({ pack: draftPack, documentText, model: never })
   assert.equal(calls, 0)
   assert.equal(published.status, "failed")
   assert.equal(published.errors[0].code, "REVIEW_RULES_UNAVAILABLE")

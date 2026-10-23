@@ -55,9 +55,9 @@ async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T
 
 /** 只运行单次有界任务；持久化、项目鉴权、租约和恢复由调用方完成。 */
 export async function reviewWithAgent(options: AgentReviewOptions): Promise<ReviewResult> {
-  const maxCalls = integer(options.maxCalls ?? 8, 1, 16)
-  const callsUsed = integer(options.callsUsed ?? 0, 0, 16)
-  const maxPromptChars = integer(options.maxPromptChars ?? 24000, 1000, 240000)
+  const maxCalls = integer(options.maxCalls ?? 25, 1, 25)
+  const callsUsed = integer(options.callsUsed ?? 0, 0, 25)
+  const maxPromptChars = integer(options.maxPromptChars ?? 240000, 1000, 240000)
   const maxToolChars = integer(options.maxToolChars ?? 16000, 1000, 64000)
   const timeoutMs = integer(options.timeoutMs ?? 600000, 1, 600000)
   const requestTimeoutMs = integer(options.requestTimeoutMs ?? 90000, 1, 90000)
@@ -135,7 +135,9 @@ export async function reviewWithAgent(options: AgentReviewOptions): Promise<Revi
         "必须使用 submitFindings；最终自由文本不作为报告。分批提交后用 checkCoverage 确认剩余规则。",
         "达到预算时保留已有结果，未完成项目进入待核实。",
       ].join("\n"),
-      prepareStep: () => session.loaded ? {} : { activeTools: ["loadSkill"], toolChoice: { type: "tool", toolName: "loadSkill" } },
+      // 只暴露 loadSkill，不强制 toolChoice：部分模型的思考模式不接受强制指定工具。
+      // 未加载技能时菜单只印这一道，加载后才放开其余工具；若模型始终不加载，流程以 failed 收尾。
+      prepareStep: () => session.loaded ? {} : { activeTools: ["loadSkill"] },
       onStepFinish: async step => {
         const { inputTokens, outputTokens, totalTokens } = step.usage
         if ([inputTokens, outputTokens, totalTokens].every(value => typeof value === "number" && Number.isSafeInteger(value) && value >= 0)) {

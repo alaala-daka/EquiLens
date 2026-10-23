@@ -53,7 +53,8 @@ export type RuleEntry = {
   category: CheckCategory
   title: string
   status: PublicationStatus
-  appliesTo: { role?: string; projectType?: string; region?: string }
+  /** scene 是判定依据；role/projectType/region 保留用于兼容旧规则包。 */
+  appliesTo: { scene?: string; role?: string; projectType?: string; region?: string }
   /** 场景必检规则即使没有关键词命中也必须检查。默认 true。 */
   mandatory?: boolean
   trigger: { tags?: string[]; keywords: string[] }
@@ -188,4 +189,4 @@ export type ReviewResult = {
   summary?: { issues: number; pending: number; rejected: number; unreadParagraphs: number }
 }
 
-export type ReviewContext = { role?: string; projectType?: string; region?: string }
+export type ReviewContext = { scene?: string; role?: string; projectType?: string; region?: string }

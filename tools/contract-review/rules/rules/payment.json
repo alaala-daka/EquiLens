@@ -5,8 +5,8 @@
     "title": "付款触发条件必须明确",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [
@@ -43,8 +43,8 @@
     "title": "付款期限起算点与最长账期",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [
@@ -78,10 +78,10 @@
     "ruleId": "PAY-003",
     "category": "付款条件与时间",
     "title": "逾期付款违约责任",
-    "status": "待核对",
+    "status": "已发布",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [
@@ -115,8 +115,8 @@
     "title": "质保金比例与退还条件",
     "status": "待核对",
     "appliesTo": {
-      "role": "专业分包人",
-      "projectType": "房建机电安装专业分包"
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
     },
     "trigger": {
       "tags": [

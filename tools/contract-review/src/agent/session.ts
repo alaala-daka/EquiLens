@@ -35,9 +35,10 @@ export class ReviewSession {
       ? prepared.pack.sources.filter(source => source.status !== "已停用") : publishedSources(prepared.pack))
       .filter(source => source.text?.trim())
     const usable = new Set(this.sources.map(source => source.sourceId))
+    let excluded = 0
     for (const rule of rules) {
       const applies = applicability(rule, prepared.context)
-      if (applies === "excluded") { this.result.warnings.push(rule.ruleId + "：适用条件不符，本次排除。"); continue }
+      if (applies === "excluded") { excluded++; this.result.warnings.push(rule.ruleId + "：适用条件不符，本次排除。"); continue }
       const entry = matchRules([{ ...rule, appliesTo: {} }], prepared.paragraphs)[0]
       if (!entry) {
         this.result.notLocated.push({ ruleId: rule.ruleId, reason: "no-match", detail: "非必检规则未命中，未纳入本次检查。" })
@@ -47,7 +48,11 @@ export class ReviewSession {
       if (applies === "unknown") this.blocked.set(rule.ruleId, "审查立场、项目类型或地域等适用条件尚未确认。")
       else if (rule.basis.some(item => !usable.has(item.sourceId))) this.blocked.set(rule.ruleId, "必要依据尚未发布或缺少正文。")
     }
-    if (!this.planned.length) this.result.errors.push({ code: "REVIEW_RULES_UNAVAILABLE", message: new ReviewError("REVIEW_RULES_UNAVAILABLE").message, ruleIds: [] })
+    if (!this.planned.length) {
+      // 区分"条件不符"与"规则没命中内容"，两种原因给用户的下一步动作不同。
+      const code = !rules.length ? "REVIEW_RULES_UNAVAILABLE" : excluded ? "REVIEW_CONTEXT_UNMATCHED" : "REVIEW_RULES_UNMATCHED"
+      this.result.errors.push({ code, message: new ReviewError(code).message, ruleIds: [] })
+    }
   }
 
   get loaded() { return this.result.agent!.skill.loaded }

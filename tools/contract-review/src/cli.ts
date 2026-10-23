@@ -6,6 +6,7 @@ import { createGatewayAskModel } from "./gateway"
 import { matchRules } from "./match"
 import { loadRulePack, publishedRules } from "./pack"
 import { toJson, toMarkdown } from "./report"
+import { defaultSceneId, isSceneId, sceneContext, sceneOf } from "./scenes"
 import { reviewContract } from "./review"
 import { buildOutline, buildSegments } from "./segments"
 import type { ReviewContext } from "./types"
@@ -21,16 +22,17 @@ const usage = [
   "--debug / --include-unpublished：显式使用未核对资料，仅供开发联调",
   "--dry-run：只查看必检规则和关键词线索，不调用模型",
   "--rules <目录>  --out <目录>  --format json|markdown|both  --title <标题>",
-  "--role <确认的审查立场>  --project-type <确认的项目类型>  --region <确认的地域>",
+  "--role <确认的审查立场>  --scene <场景标识>  --region <确认的地域>",
   "--batch <1到20>：固定编排每批规则数，默认7；固定编排合计最多3次请求",
-  "--agent：使用 AI SDK Agent + skill + 工具；联调默认最多8次模型请求，可配置 AI_AGENT_MAX_CALLS（1–16）",
+  "--agent：使用 AI SDK Agent + skill + 工具；联调默认最多8次模型请求，可配置 AI_AGENT_MAX_CALLS（1–25）",
   "真实审查会发送所选合同文字并产生模型费用。调试结果必须人工核对。",
 ].join("\n")
 
 function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
-    file: "", rules: "tools/contract-review/rules", outDir: "tools/contract-review/output",
-    format: "both", dryRun: false, debug: false, agent: false, batchSize: 7, context: {},
+    file: "", rules: sceneOf(defaultSceneId).rulesDir, outDir: "tools/contract-review/output",
+    format: "both", dryRun: false, debug: false, agent: false, batchSize: 7,
+    context: sceneContext(defaultSceneId),
   }
   for (let i = 0; i < argv.length; i++) {
     const next = () => {
@@ -44,6 +46,12 @@ function parseArgs(argv: string[]): CliOptions {
       case "--rules": options.rules = next(); break
       case "--out": options.outDir = next(); break
       case "--title": options.title = next(); break
+      case "--scene": {
+        const value = next()
+        if (!isSceneId(value)) throw new ReviewError("REVIEW_INPUT_INVALID")
+        Object.assign(options.context, sceneContext(value))
+        break
+      }
       case "--role": options.context.role = next(); break
       case "--project-type": options.context.projectType = next(); break
       case "--region": options.context.region = next(); break
@@ -91,10 +99,10 @@ async function main(): Promise<void> {
     pack, paragraphs: parsed.paragraphs, complete: parsed.complete, context: options.context,
     documentTitle: options.title ?? basename(options.file),
     mode: options.debug ? "debug" as const : "published" as const,
-    maxPromptChars: configured ? Number(configured) : 24000,
+    maxPromptChars: configured ? Number(configured) : 240000,
   }
   const result = options.agent
-    ? await reviewWithAgent({ ...common, maxCalls: Number(process.env.AI_AGENT_MAX_CALLS ?? 8) })
+    ? await reviewWithAgent({ ...common, maxCalls: Number(process.env.AI_AGENT_MAX_CALLS ?? 25) })
     : await reviewContract({ ...common, segments, batchSize: options.batchSize,
       model: createGatewayAskModel(), modelName: process.env.AI_MODEL?.trim() || "glm-5.3-flash" })
   const title = result.documentTitle.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/[ .]+$/g, "").slice(0, 80) || "contract"

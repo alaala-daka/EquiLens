@@ -4,6 +4,7 @@ import { paragraphsFromString } from "../../../tools/contract-review/src/documen
 import { ReviewError } from "../../../tools/contract-review/src/errors"
 import { createGatewayAskModel } from "../../../tools/contract-review/src/gateway"
 import { loadRulePack } from "../../../tools/contract-review/src/pack"
+import { defaultSceneId, sceneOf } from "../../../tools/contract-review/src/scenes"
 import { reviewContract, type ReviewOptions } from "../../../tools/contract-review/src/review"
 import { buildSegments } from "../../../tools/contract-review/src/segments"
 import { reviewWithAgent, type AgentSettings } from "../../../tools/contract-review/src/agent"
@@ -26,8 +27,8 @@ export type ReviewTextSettings = Pick<ReviewOptions,
 export async function reviewText(input: ReviewTextInput, settings: ReviewTextSettings = {}) {
   const configured = process.env.AI_REVIEW_MAX_PROMPT_CHARS?.trim()
   if ((input.mode ?? "published") === "published" && !configured) throw new ReviewError("REVIEW_BUDGET_UNVERIFIED")
-  const maxPromptChars = configured ? Number(configured) : 24000
-  const pack = await loadRulePack(resolve(process.cwd(), "tools/contract-review/rules"))
+  const maxPromptChars = configured ? Number(configured) : 240000
+  const pack = await loadRulePack(resolve(process.cwd(), sceneOf(defaultSceneId).rulesDir))
     .catch(() => { throw new ReviewError("REVIEW_RULE_PACK_INVALID") })
   // 按条款块定向取材：每批只送相关块与全文目录，长合同不再因整篇超限而失败。
   const segments = buildSegments(paragraphsFromString(input.documentText))
@@ -44,11 +45,11 @@ async function runAgent(input: ReviewInput, settings: AgentReviewSettings) {
   const snapshot = structuredClone(input)
   const configured = process.env.AI_REVIEW_MAX_PROMPT_CHARS?.trim()
   if ((snapshot.mode ?? "published") === "published" && !configured) throw new ReviewError("REVIEW_BUDGET_UNVERIFIED")
-  const pack = await loadRulePack(resolve(process.cwd(), "tools/contract-review/rules"))
+  const pack = await loadRulePack(resolve(process.cwd(), sceneOf(defaultSceneId).rulesDir))
     .catch(() => { throw new ReviewError("REVIEW_RULE_PACK_INVALID") })
   return reviewWithAgent({
-    ...snapshot, ...settings, pack, maxPromptChars: configured ? Number(configured) : 24000,
-    maxCalls: settings.maxCalls ?? Number(process.env.AI_AGENT_MAX_CALLS ?? 8),
+    ...snapshot, ...settings, pack, maxPromptChars: configured ? Number(configured) : 240000,
+    maxCalls: settings.maxCalls ?? Number(process.env.AI_AGENT_MAX_CALLS ?? 25),
   })
 }
 

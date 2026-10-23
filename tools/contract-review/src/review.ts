@@ -92,7 +92,7 @@ export async function reviewContract(options: ReviewOptions & { pack: LoadedPack
   if (Object.values(context).some(value => typeof value !== "string" || !value.trim() || value.length > 200)) throw new ReviewError("REVIEW_INPUT_INVALID")
   const batchSize = integer(options.batchSize ?? 7, 1, 20)
   const maxCalls = integer(options.maxCalls ?? 3, 1, 3)
-  const maxPromptChars = integer(options.maxPromptChars ?? 24000, 1000, 240000)
+  const maxPromptChars = integer(options.maxPromptChars ?? 240000, 1000, 240000)
   const timeoutMs = integer(options.timeoutMs ?? 600000, 1, 600000)
   const mode = options.mode ?? (options.includeUnpublished ? "debug" : "published")
   if (mode !== "published" && mode !== "debug") throw new ReviewError("REVIEW_INPUT_INVALID")
@@ -117,9 +117,10 @@ export async function reviewContract(options: ReviewOptions & { pack: LoadedPack
   const sourceIds = new Set(sources.map(source => source.sourceId))
   const planned: TriggeredRule[] = []
   const executable: TriggeredRule[] = []
+  let excluded = 0
   for (const rule of rules) {
     const applies = applicability(rule, context)
-    if (applies === "excluded") { result.warnings.push(rule.ruleId + "：调用方确认的适用条件不符，本次排除。"); continue }
+    if (applies === "excluded") { excluded++; result.warnings.push(rule.ruleId + "：调用方确认的适用条件不符，本次排除。"); continue }
     const entry = matchRules([{ ...rule, appliesTo: {} }], paragraphs)[0]
     if (!entry) {
       // 非必检规则没有命中线索时必须留痕，否则"没查"与"查过没问题"无法区分。
@@ -148,6 +149,10 @@ export async function reviewContract(options: ReviewOptions & { pack: LoadedPack
     }
   }
   if (!rules.length) result.errors.push({ ...safeError(new ReviewError("REVIEW_RULES_UNAVAILABLE")), ruleIds: [] })
+  // 区分"条件不符"与"规则没命中内容"：两种原因给用户的下一步动作不同，不能静默返回空成功。
+  else if (!executable.length) result.errors.push({
+    ...safeError(new ReviewError(excluded ? "REVIEW_CONTEXT_UNMATCHED" : "REVIEW_RULES_UNMATCHED")), ruleIds: [],
+  })
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(new ReviewError("REVIEW_TIMEOUT")), timeoutMs)
   const externalAbort = () => controller.abort(new ReviewError("REVIEW_CANCELLED"))
