@@ -31,6 +31,8 @@
 
 使用 **Node.js 24** 和 **pnpm 11.6.0**。
 
+当前本地目录的配置、样本及逐步操作见[本地复现指南](docs/local-development.md)。
+
 ```bash
 git clone https://github.com/alaala-daka/EquiLens.git
 cd EquiLens
