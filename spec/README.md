@@ -6,6 +6,7 @@ SQLite 已有本地行为测试；GaussDB 真机及业务流程、其他华为�
 合同审查新增 AI SDK Agent / skill / 工具入口及匿名会话网页/持久化任务，保留固定编排。
 本地主分支整合验证见 [验证记录](../docs/reviews/2026-10-23-contract-review-main-integration.md)。
 真实模型、GaussDB、Linux 容器和法律业务验收单独记录，不计为正式项目授权已实现。
+受控账号/会话/限流和业务迁移已有本地基础及合成 SQLite 测试，见[认证验证记录](../docs/reviews/2026-10-24-auth-local-validation.md)；尚未接入登录页面和项目权限，不计 AC-01 通过。
 
 ## 阅读顺序与归属
 
