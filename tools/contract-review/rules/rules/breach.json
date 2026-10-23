@@ -1,0 +1,105 @@
+[
+  {
+    "ruleId": "BREACH-001",
+    "category": "违约责任",
+    "title": "违约责任对等性",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
+    },
+    "trigger": {
+      "tags": [
+        "违约责任"
+      ],
+      "keywords": [
+        "违约责任",
+        "违约金",
+        "赔偿",
+        "违约方"
+      ]
+    },
+    "requirement": "双方违约责任应大体对等；一方责任畸重而另一方缺失的，应指出失衡风险。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "LAW-CivilCode-577"
+      },
+      {
+        "sourceId": "LAW-CivilCode-585"
+      }
+    ],
+    "expectedSamples": [
+      "任何一方违约的，应向守约方支付合同总价 5% 的违约金"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "BREACH-002",
+    "category": "违约责任",
+    "title": "违约金比例与上限",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
+    },
+    "trigger": {
+      "tags": [
+        "违约金比例"
+      ],
+      "keywords": [
+        "违约金",
+        "逾期一日",
+        "每日",
+        "万分之",
+        "每日历天"
+      ]
+    },
+    "requirement": "违约金比例应明确具体数值，比例明显偏高时提示可能调整，过低时提示保护不足。",
+    "severity": "提示",
+    "basis": [
+      {
+        "sourceId": "LAW-CivilCode-585"
+      }
+    ],
+    "expectedSamples": [
+      "每逾期一日按合同总价的万分之三计付违约金，累计不超过合同总价的 10%"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "BREACH-003",
+    "category": "违约责任",
+    "title": "不可抗力与情势变更",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
+    },
+    "trigger": {
+      "tags": [
+        "不可抗力"
+      ],
+      "keywords": [
+        "不可抗力",
+        "情势变更",
+        "疫情",
+        "自然灾害"
+      ]
+    },
+    "requirement": "应约定不可抗力的范围、通知义务、证明方式与后果分担；完全缺失时应提示风险。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "LAW-CivilCode-509"
+      },
+      {
+        "sourceId": "LAW-CivilCode-804"
+      }
+    ],
+    "expectedSamples": [
+      "因不可抗力致使合同无法履行的，双方互不承担违约责任，受影响方应在 7 日内通知对方并提供证明"
+    ],
+    "mandatory": true
+  }
+]

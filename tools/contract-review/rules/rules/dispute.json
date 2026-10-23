@@ -1,0 +1,102 @@
+[
+  {
+    "ruleId": "DISPUTE-001",
+    "category": "争议约定",
+    "title": "争议解决方式唯一性",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
+    },
+    "trigger": {
+      "tags": [
+        "争议解决"
+      ],
+      "keywords": [
+        "争议解决",
+        "仲裁",
+        "诉讼",
+        "人民法院",
+        "管辖"
+      ]
+    },
+    "requirement": "争议解决方式只能选择诉讼或仲裁之一并写明具体管辖法院或仲裁委员会；同时约定两种方式的条款可能无效。",
+    "severity": "重大关注",
+    "basis": [
+      {
+        "sourceId": "ENT-DISPUTE-POLICY"
+      },
+      {
+        "sourceId": "STD-GF-2017-0201-DISPUTE"
+      }
+    ],
+    "expectedSamples": [
+      "因本合同发生的争议，双方应协商解决；协商不成的，任何一方均可向公司所在地有管辖权的人民法院提起诉讼"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "DISPUTE-002",
+    "category": "争议约定",
+    "title": "管辖法院或仲裁机构明确性",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
+    },
+    "trigger": {
+      "tags": [
+        "管辖"
+      ],
+      "keywords": [
+        "仲裁委员会",
+        "人民法院",
+        "管辖法院",
+        "仲裁机构"
+      ]
+    },
+    "requirement": "写明的管辖法院或仲裁委员会应具体到名称与所在地，不能只写“当地法院”或“有关部门”。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "ENT-DISPUTE-POLICY"
+      }
+    ],
+    "expectedSamples": [
+      "提交公司所在地有管辖权的人民法院诉讼解决"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "DISPUTE-003",
+    "category": "争议约定",
+    "title": "协商与调解前置程序",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
+    },
+    "trigger": {
+      "tags": [
+        "协商"
+      ],
+      "keywords": [
+        "协商",
+        "调解",
+        "先行协商",
+        "友好解决"
+      ]
+    },
+    "requirement": "争议解决前应约定协商或调解程序及期限，明确到期未果即可进入下一程序。",
+    "severity": "提示",
+    "basis": [
+      {
+        "sourceId": "STD-GF-2017-0201-DISPUTE"
+      }
+    ],
+    "expectedSamples": [
+      "争议发生后 15 日内先行协商，协商不成的进入仲裁或诉讼程序"
+    ],
+    "mandatory": true
+  }
+]

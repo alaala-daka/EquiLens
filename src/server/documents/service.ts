@@ -31,4 +31,9 @@ export async function documentServices(): Promise<DocumentServices> {
   return initializeDocumentServices()
 }
 
+export async function documentReviewServices() {
+  await retentionRuntimeReady()
+  return initializeDocumentServices()
+}
+
 export async function documentRepository() { return (await documentServices()).documents }

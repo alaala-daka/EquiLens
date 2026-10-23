@@ -7,7 +7,7 @@ import { retentionExpiry, sessionAccess, type RetentionPolicy, type StoredAnonym
 
 export type SessionRepositoryOptions = { now: () => Date; readPolicy: () => RetentionPolicy | null }
 export type LegacyRetentionRegistration = { owner: string; retentionDays: number; exportUntil: string; notifiedAt: string; operator: string; purpose: string }
-type SessionAction = "read" | "download" | "save" | "create" | "copy"
+type SessionAction = "read" | "download" | "save" | "create" | "copy" | "review"
 
 const stored = (row: Row): StoredAnonymousSession => ({
   owner: String(row.owner), contextId: String(row.context_id), firstCreatedAt: row.first_created_at === null ? null : String(row.first_created_at),

@@ -10,6 +10,10 @@ export class DocumentSessionError extends Error {
 
 let documentContext = ""
 export function setDocumentContext(contextId: string): void { documentContext = contextId }
+export function getDocumentContext(): string { return documentContext }
+export function documentSessionFailure(value: { code?: DocumentSessionCode; error?: string; session?: AnonymousSessionView }, status: number): DocumentSessionError | null {
+  return value.code && sessionCodes.includes(value.code) ? new DocumentSessionError(value.error || "会话操作失败。", status, value.code, value.session) : null
+}
 const sessionCodes: readonly DocumentSessionCode[] = ["RETENTION_UNCONFIGURED", "RETENTION_EXPIRED", "LEGACY_RETENTION_PENDING", "SESSION_CONTEXT_REQUIRED", "SESSION_CHANGED", "RETENTION_CONSENT_REQUIRED", "RETENTION_CONFIRMATION_CHANGED", "RETENTION_READ_ONLY", "SESSION_RESTART_NOT_ALLOWED"]
 
 export class RevisionConflict extends Error {

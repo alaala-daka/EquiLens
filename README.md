@@ -10,7 +10,8 @@
 > **项目状态：**提供文档/规范库工作台和浏览器 Word 编辑器，支持新建、导入、编辑、保存、重开及导出 DOCX。
 > 文档原件和保存版本存入服务端数据库，支持 SQLite / GaussDB 配置。SQLite 已有行为测试；GaussDB 尚未连接真实实例验证。
 > 匿名固定期限、到期拒绝访问、服务内清理及私有维护工具已实现；Linux 日志持久性与容器恢复仍待本版验证。
-> Agent、OBS、MaaS、OCR 及四个业务模块尚未接入，当前不执行法律业务分析。
+> 合同审查 Agent 已接入匿名 DOCX 工作区与持久化任务，仅供授权联调；内置资料均待核对，正式模式拒绝使用。
+> OBS、MaaS、OCR 及其余业务模块仍待接入，账号/项目授权和法律业务验收尚未完成。
 
 [在线使用](https://equilens.zeabur.app) · [部署说明](docs/deployment.md)
 
@@ -30,6 +31,8 @@
 
 使用 **Node.js 24** 和 **pnpm 11.6.0**。
 
+当前本地目录的配置、样本及逐步操作见[本地复现指南](docs/local-development.md)。
+
 ```bash
 git clone https://github.com/alaala-daka/EquiLens.git
 cd EquiLens
@@ -48,8 +51,8 @@ pnpm dev
 保存按钮及 `Ctrl/Cmd+S` 提交不可变 DOCX 版本；有修改时导出会先保存，再下载该版本的同一份字节。
 标题、正文和 Agent 待发送输入共用保存状态；没有修改时保存禁用，快捷键不新增版本。
 桌面编辑器与 Agent 默认按 70/30 排列，可拖动或用分隔柄键盘调整；窄屏按相同比例上下排列，区域分别滚动。
-正文中按 `F6` 转到 Agent 消息，按 `Shift+F6` 转到文档操作；菜单打开或组合输入期间保留原有按键处理。
-Agent 输入随当前文档保存，发送保持禁用。离开编辑器前可保存并离开、放弃更改或取消，保存失败留在当前文档。
+正文中按 `F6` 转到右侧备注，按 `Shift+F6` 转到文档操作；菜单打开或组合输入期间保留原有按键处理。
+备注随当前文档保存，自由会话发送保持禁用。离开编辑器前可保存并离开、放弃更改或取消，保存失败留在当前文档。
 加载失败时可重新加载；未保存修改先经确认。多标签页保存冲突时保留当前编辑，可另存为新文档。
 只有保存成功的版本能在刷新后恢复，导入原件不会被编辑覆盖。
 
@@ -72,7 +75,21 @@ cookie 只提供访问凭据，清除或过期不会触发服务端删除，也�
 第三方许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 项目采用 [AGPL-3.0-only](LICENSE)，保留 SuperDoc 等第三方许可；页面“源代码”链接对应部署版本。
 
-## 数据库
+## 合同审查联调
+
+先配置匿名资料保留期限，再在忽略的 `.env.local` 配置 `AI_BASE_URL`、`AI_MODEL`、`AI_API_KEY`。
+内置规则未完成领域核对，只能显式使用 `AI_REVIEW_MODE=debug` 联调；生产默认 `published` 会拒绝这些资料。
+打开已保存 DOCX 后，在右侧「合同审查」确认地域、所选版本、发送目标和外发授权。
+保存版本变化后需要重新确认。审查记录最多按 `AI_REVIEW_RETENTION_DAYS` 保留，原资料先到期时一并停止访问和清理。
+生产须显式设置 1–365 天的审查期限及经验证的 `AI_REVIEW_MAX_PROMPT_CHARS`。
+Agent 累计请求上限为 25 次，可配置 1–25；重试与恢复不重置预算。真实审查会发送合同并可能产生费用。
+
+任务与文档共用会话上下文、删除日志就绪屏障和期限守卫；撤销、到期及只读导出窗口阻止新处理。
+网页任务用法见[交接说明](docs/contract-review-web.md)，CLI 和后端入口见[模块说明](tools/contract-review/README.md)。
+`pnpm ai:smoke` 仅发送一次固定合成消息验证模型连接；`pnpm review:contract:example` 使用离线合成桩。
+本地整合验证见[验证记录](docs/reviews/2026-10-23-contract-review-main-integration.md)，不计为法律业务准确率验收。
+
+## 数据库配置
 
 默认不需要云端数据库即可启动，SQLite 文件位于 `data/equilens.sqlite`。
 配置示例见 [.env.example](.env.example)，开发时复制为 `.env.local`。

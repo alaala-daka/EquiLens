@@ -1,13 +1,14 @@
 "use client"
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react"
-import { ArrowLeftIcon, ArrowUpIcon, BotIcon, DownloadIcon, FileTextIcon, LoaderCircleIcon, SaveIcon } from "lucide-react"
+import { ArrowLeftIcon, BotIcon, DownloadIcon, FileTextIcon, LoaderCircleIcon, SaveIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { EditorLeaveDialog } from "@/components/editor-leave-dialog"
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
+import { InputGroup, InputGroupTextarea } from "@/components/ui/input-group"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ContractReviewPanel } from "@/components/contract-review-panel"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Separator } from "@/components/ui/separator"
 import { WordCanvas, type WordCanvasHandle } from "@/components/word-canvas"
@@ -85,8 +86,9 @@ const phaseLabel = {
 
 type LeaveTarget = "list" | "reload"
 
-export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnavailable, onDirtyChange }: {
+export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnavailable, onDirtyChange, initialReviewTaskId }: {
   opened: OpenDocument
+  initialReviewTaskId?: string
 } & EditorCallbacks) {
   const isMobile = useIsMobile()
   const [{ bridge, session }] = useState(() => {
@@ -111,6 +113,7 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
   const leaveTrigger = useRef<HTMLButtonElement | null>(null)
   const backButton = useRef<HTMLButtonElement>(null)
   const agentInput = useRef<HTMLTextAreaElement>(null)
+  const [agentTab, setAgentTab] = useState("review")
 
   const keyboardHelpId = useId()
   const dialogError = useRef<HTMLDivElement>(null)
@@ -220,9 +223,19 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
           <section aria-label="文档编辑器" aria-describedby={keyboardHelpId} aria-keyshortcuts="F6 Shift+F6" className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden" inert={busy}
 >
             <h1 className="sr-only">文档编辑器</h1>
-            <p id={keyboardHelpId} className="shrink-0 border-b px-4 py-2 text-xs text-muted-foreground">正文中按 F6 转到 Agent 消息，Shift+F6 转到文档操作。</p>
+            <p id={keyboardHelpId} className="shrink-0 border-b px-4 py-2 text-xs text-muted-foreground">正文中按 F6 转到备注，Shift+F6 转到文档操作。</p>
             {engine === "loading" && <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background text-sm" aria-hidden="true"><LoaderCircleIcon className="size-4 animate-spin" />正在打开文档</div>}
-            <WordCanvas ref={attachCanvas} initialBlob={load.blob} reloadToken={load.token} onStateChange={engineChanged} onChange={markChanged} keyboardHelpId={keyboardHelpId} keyboardBlocked={busy || !!leaveTarget} onFocusShortcut={destination => { const control = destination === "agent" ? agentInput.current : backButton.current; if (!control || control.disabled) return false; control.focus(); return document.activeElement === control }} />
+            <WordCanvas ref={attachCanvas} initialBlob={load.blob} reloadToken={load.token} onStateChange={engineChanged} onChange={markChanged} keyboardHelpId={keyboardHelpId} keyboardBlocked={busy || !!leaveTarget} onFocusShortcut={destination => {
+              if (destination === "agent") {
+                setAgentTab("notes")
+                requestAnimationFrame(() => agentInput.current?.focus())
+                return true
+              }
+              const control = backButton.current
+              if (!control || control.disabled) return false
+              control.focus()
+              return document.activeElement === control
+            }} />
           </section>
         </ResizablePanel>
         <ResizableHandle withHandle aria-label="调整编辑器与会话区域大小" />
@@ -232,11 +245,15 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
             <div className="flex min-h-full min-w-0 flex-col">
               <header className="flex shrink-0 items-center justify-between border-b px-4 py-3"><h2 className="flex items-center gap-2 text-sm font-medium"><BotIcon className="size-4" />Agent</h2></header>
               <div className="flex min-w-0 shrink-0 items-start gap-2 border-b px-4 py-3 text-xs text-muted-foreground"><FileTextIcon className="size-3.5 shrink-0" /><span className="min-w-0 whitespace-normal break-all">{documentTitle(title)}</span></div>
-              <div className="flex flex-1"><Empty><EmptyHeader><EmptyMedia variant="icon"><BotIcon /></EmptyMedia><EmptyTitle>暂无会话</EmptyTitle></EmptyHeader></Empty></div>
-              <div className="shrink-0 p-4" inert={busy}><InputGroup>
-                <InputGroupTextarea ref={agentInput} aria-label="Agent 消息" placeholder="输入消息…" value={prompt} disabled={busy} onChange={event => session.editPrompt(event.target.value)} />
-                <InputGroupAddon align="block-end"><InputGroupButton type="button" size="icon-sm" variant="default" className="ml-auto" disabled aria-label="发送消息"><ArrowUpIcon /></InputGroupButton></InputGroupAddon>
-              </InputGroup></div>
+              <Tabs value={agentTab} onValueChange={setAgentTab} className="flex-1">
+                <TabsList className="mx-4 mt-3"><TabsTrigger value="review">合同审查</TabsTrigger><TabsTrigger value="notes">备注</TabsTrigger></TabsList>
+                <TabsContent value="review" forceMount hidden={agentTab !== "review"}>
+                  <ContractReviewPanel documentId={state.saved.document.id} revisionId={state.saved.revision.id} dirty={dirty} busy={busy || !ready || conflict} initialTaskId={initialReviewTaskId} onSessionUnavailable={onSessionUnavailable} />
+                </TabsContent>
+                <TabsContent value="notes" forceMount hidden={agentTab !== "notes"} className="p-4" inert={busy}><InputGroup>
+                  <InputGroupTextarea ref={agentInput} aria-label="文档备注" placeholder="输入备注…" value={prompt} disabled={busy} onChange={event => session.editPrompt(event.target.value)} />
+                </InputGroup></TabsContent>
+              </Tabs>
             </div>
           </aside>
         </ResizablePanel>

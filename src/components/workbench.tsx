@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { BookOpenIcon, FileTextIcon, PlusIcon, ScaleIcon, UploadIcon, LoaderCircleIcon } from "lucide-react"
 
 import { DocumentEditor } from "@/components/document-editor"
+import { ContractReviewHistory } from "@/components/contract-review-history"
 import { DocumentList } from "@/components/document-list"
 import { DocumentSessionDialog, type RetentionConfirmationRequest } from "@/components/document-session-dialog"
 import { blankDocx } from "@/lib/documents/docx"
@@ -72,6 +73,7 @@ export function Workbench() {
   }))
   const list = useSyncExternalStore(listStore.subscribe, listStore.getSnapshot, listStore.getSnapshot)
   const [opened, setOpened] = useState<OpenDocument | null>(null)
+  const [reviewSelection, setReviewSelection] = useState<{ documentId: string; taskId: string } | null>(null)
   const [operations] = useState(() => createDocumentOperations({
     list: listStore,
     blank: blankDocx,
@@ -129,6 +131,7 @@ export function Workbench() {
     if (dirty.current) setUnsavedNotice(true)
     dirty.current = false
     setOpened(null); setQuery(""); setActiveTab("documents"); setRestartDialog(false)
+    setReviewSelection(null)
     if (fileInput.current) fileInput.current.value = ""
   }, [operations, listStore])
   const acceptSession = useCallback((view: AnonymousSessionView) => {
@@ -276,7 +279,7 @@ export function Workbench() {
   const editorDirtyChanged = useCallback((value: boolean) => { dirty.current = value }, [])
 
   if (opened && session?.canSave) {
-    return <DocumentEditor key={opened.document.id} opened={opened} onSaved={recordSaved} onBack={editorBack} onCopy={editorCopy} onSessionUnavailable={unavailable} onDirtyChange={editorDirtyChanged} />
+    return <DocumentEditor key={opened.document.id} opened={opened} onSaved={recordSaved} onBack={editorBack} onCopy={editorCopy} onSessionUnavailable={unavailable} onDirtyChange={editorDirtyChanged} initialReviewTaskId={reviewSelection?.documentId === opened.document.id ? reviewSelection.taskId : undefined} />
   }
 
   return (
@@ -345,8 +348,9 @@ export function Workbench() {
                     <Button variant="outline" onClick={() => setQuery("")}>清空搜索</Button>
                   </EmptyContent>
                 </Empty>
-              ) : <DocumentList documents={visibleDocuments} busy={busy || sessionRefreshNeeded} onOpen={session.state === "legacy_export" ? undefined : id => void operations.open(id)} onDownload={session.state === "legacy_export" ? id => void downloadSaved(id) : undefined} />
+              ) : <DocumentList documents={visibleDocuments} busy={busy || sessionRefreshNeeded} onOpen={session.state === "legacy_export" ? undefined : id => { setReviewSelection(null); void operations.open(id) }} onDownload={session.state === "legacy_export" ? id => void downloadSaved(id) : undefined} />
             )}
+            {listReady && session?.canSave && <ContractReviewHistory key={session.contextId} busy={busy} onSessionUnavailable={unavailable} onOpen={(documentId, taskId) => { setReviewSelection({ documentId, taskId }); void operations.open(documentId) }} />}
           </TabsContent>
           <TabsContent value="standards" className="flex flex-col gap-6">
             <h1 className="text-lg font-semibold">规范库</h1>

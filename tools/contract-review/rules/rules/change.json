@@ -1,0 +1,106 @@
+[
+  {
+    "ruleId": "CHANGE-001",
+    "category": "变更签证",
+    "title": "变更指令的书面形式与生效要件",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
+    },
+    "trigger": {
+      "tags": [
+        "变更"
+      ],
+      "keywords": [
+        "变更",
+        "变更指示",
+        "设计变更",
+        "签证",
+        "洽商"
+      ]
+    },
+    "requirement": "应明确变更须以书面指示或经授权人员签认后生效，并写明变更范围、内容、价款计算方法与工期影响。",
+    "severity": "重大关注",
+    "basis": [
+      {
+        "sourceId": "STD-GF-2017-0201-CHANGE"
+      },
+      {
+        "sourceId": "LAW-CivilCode-509"
+      }
+    ],
+    "expectedSamples": [
+      "承包人未经发包人书面变更指示擅自变更施工内容的，变更价款不予增加"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "CHANGE-002",
+    "category": "变更签证",
+    "title": "变更价款确认时限",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
+    },
+    "trigger": {
+      "tags": [
+        "变更价款"
+      ],
+      "keywords": [
+        "变更价款",
+        "变更费用",
+        "签证单",
+        "变更计价"
+      ]
+    },
+    "requirement": "变更价款的计算方法与确认时限应写明，避免变更完成后因无计价依据产生争议。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "LAW-CivilCode-509"
+      },
+      {
+        "sourceId": "STD-GF-2017-0201-CHANGE"
+      }
+    ],
+    "expectedSamples": [
+      "变更价款按变更后工程量乘以合同约定单价计算，承包人在变更指示发出后 14 日内提交变更价款报告"
+    ],
+    "mandatory": true
+  },
+  {
+    "ruleId": "CHANGE-003",
+    "category": "变更签证",
+    "title": "变更权限与人员授权",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "mep-sub-2026",
+      "role": "专业分包人"
+    },
+    "trigger": {
+      "tags": [
+        "授权"
+      ],
+      "keywords": [
+        "授权",
+        "有权代表",
+        "项目经理",
+        "签署",
+        "签认"
+      ]
+    },
+    "requirement": "应明确有权发出变更指示、发包人代表与监理人的权限边界，防止无权签署被认定为有效变更。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "STD-GF-2017-0201-CHANGE"
+      }
+    ],
+    "expectedSamples": [
+      "除发包人另有书面授权外，承包人项目经理无权代表发包人确认变更价款"
+    ],
+    "mandatory": true
+  }
+]
