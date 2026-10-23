@@ -1,6 +1,7 @@
 // 离线交接示例：合成桩仅演示参数和返回格式，不调用真实模型、不作合同判断。
 import { loadRulePack } from "../src/pack"
 import { reviewContract, type AskModel } from "../src/review"
+import { defaultSceneId, sceneContext } from "../src/scenes"
 
 const syntheticModel: AskModel = async ({ user }) => ({
   text: JSON.stringify({
@@ -16,7 +17,7 @@ const result = await reviewContract({
   pack: await loadRulePack("tools/contract-review/rules"),
   documentText: "【合成合同片段】工程验收后，发包人应及时向专业分包人支付工程款。",
   documentTitle: "离线交接示例",
-  context: { role: "专业分包人", projectType: "房建机电安装专业分包", region: "上海" },
+  context: sceneContext(defaultSceneId, "上海"),
   mode: "debug", model: syntheticModel, modelName: "synthetic-offline",
 })
 console.log(JSON.stringify(result, null, 2))

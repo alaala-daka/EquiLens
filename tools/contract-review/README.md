@@ -47,19 +47,21 @@ DOCX 校验器和现有依赖，不能只复制 tools/contract-review。
 
 ```ts
 import { reviewTextWithAgent } from "@/server/contract-review"
+import { defaultSceneId, sceneContext } from "../../../tools/contract-review/src/scenes"
 
 const result = await reviewTextWithAgent({
   documentText: "【合成示例】工程款在验收后支付。",
   documentTitle: "合成联调合同",
   documentVersionId: "由调用方提供的真实文档版本ID",
   parseSnapshotId: "由调用方提供的真实解析快照ID",
-  context: { role: "专业分包人", projectType: "房建机电安装专业分包", region: "上海" },
+  context: sceneContext(defaultSceneId, "上海"),
   mode: "debug",
   complete: true,
 })
 ```
 
 以上是调用示例，没有运行。实际调用会发送所选文字并产生模型费用。
+`scene` 使用 `tools/contract-review/src/scenes` 登记的标识；`sceneContext` 同时填入该场景的立场与展示名称，展示名称不参与匹配。
 已有解析快照时用 `reviewSnapshotWithAgent({ paragraphs, ... })`，保留 DOCX 表格行列及原编号。
 纯模块入口为 `tools/contract-review/src/agent` 导出的 `reviewWithAgent({ pack, ... })`，便于 CLI 共用。
 旧 `reviewText` / `reviewContract` 继续使用固定编排，不会自动切到 Agent。
@@ -103,15 +105,12 @@ standalone 打包同时复制 skills/ 与 rules/。依赖锁定为 ai@7.0.148、
 仅在 Next.js 的 Node.js 后端、已完成项目权限校验的任务中调用：
 
     import { reviewText } from "@/server/contract-review"
+    import { defaultSceneId, sceneContext } from "../../../tools/contract-review/src/scenes"
 
     const result = await reviewText({
       documentText: "【合成合同片段】验收后应及时支付工程款。",
       documentTitle: "合成联调合同",
-      context: {
-        role: "专业分包人",
-        projectType: "房建机电安装专业分包",
-        region: "上海",
-      },
+      context: sceneContext(defaultSceneId, "上海"),
       mode: "debug",
       complete: true,
     })
@@ -128,7 +127,7 @@ Next.js 自动读取本机 .env.local；字段见根目录 .env.example。
 | --- | --- |
 | documentText | 必填，实际选中文档的合同文字 |
 | documentTitle | 可选，显示标题 |
-| context | 调用方已明确确认的立场、项目类型、地域；不能从甲乙方或文字猜测 |
+| context | 调用方已明确确认的场景标识（scene）、立场、项目类型、地域；scene 是规则判定依据，缺失时会排除带适用场景的规则，不能从甲乙方或文字猜测 |
 | documentVersionId / parseSnapshotId | 可选，集成时传入实际已保存版本与快照 ID |
 | complete | 输入解析是否完整，默认 true；后端必须根据实际解析状态填写 |
 | mode | published 或 debug，默认 published；由可信后端固定，不能直接使用客户端传入的开关 |
