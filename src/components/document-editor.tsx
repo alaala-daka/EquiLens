@@ -11,7 +11,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Separator } from "@/components/ui/separator"
 import { WordCanvas, type WordCanvasHandle } from "@/components/word-canvas"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { createDocument, RevisionConflict, saveDocument } from "@/lib/documents/client"
+import { createDocument, DocumentSessionError, preflightEditorAccess, RevisionConflict, saveDocument } from "@/lib/documents/client"
 import { documentTitle, downloadName, errorMessage, type OpenDocument } from "@/lib/documents/types"
 
 function download(blob: Blob, title: string) {
@@ -25,11 +25,13 @@ function download(blob: Blob, title: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60000)
 }
 
-export function DocumentEditor({ opened, onSaved, onBack, onCopy }: {
+export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnavailable, onDirtyChange }: {
   opened: OpenDocument
   onSaved: (saved: OpenDocument) => void
   onBack: () => void
   onCopy: (saved: OpenDocument) => void
+  onSessionUnavailable?: (error: DocumentSessionError) => void
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   const isMobile = useIsMobile()
   const [saved, setSaved] = useState(opened)
@@ -46,11 +48,13 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy }: {
   const generation = useRef(0)
   const pending = useRef(false)
   const mounted = useRef(true)
+  const request = useRef<AbortController | null>(null)
 
   useEffect(() => {
     mounted.current = true
-    return () => { mounted.current = false }
+    return () => { mounted.current = false; request.current?.abort() }
   }, [])
+  useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
   const markChanged = useCallback(() => { generation.current++; setDirty(true) }, [])
   const editorReady = useCallback(() => setReady(true), [])
   const editorError = useCallback((message: string) => setError(message), [])
@@ -68,15 +72,21 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy }: {
     setBusy(true)
     setError("")
     const change = generation.current
+    const controller = new AbortController()
+    request.current = controller
     try {
+      // This check must precede both cached downloads and engine serialization.
+      await preflightEditorAccess(saved.document.id, { signal: controller.signal, copy: asCopy })
+      if (!mounted.current) return
       let result = saved
       if (dirty || asCopy) {
         if (!canvas.current) throw new Error("文档尚未就绪。")
         const blob = await canvas.current.serialize()
+        controller.signal.throwIfAborted()
         if (!mounted.current) return
         result = asCopy
-          ? await createDocument(blob, `${documentTitle(title)} 副本`, "copy", undefined, prompt, { documentId: saved.document.id, revisionId: saved.revision.id })
-          : await saveDocument({ documentId: saved.document.id, baseRevision: saved.revision.id, operationId: crypto.randomUUID(), title, prompt, blob })
+          ? await createDocument(blob, `${documentTitle(title)} 副本`, "copy", undefined, prompt, { documentId: saved.document.id, revisionId: saved.revision.id }, { signal: controller.signal })
+          : await saveDocument({ documentId: saved.document.id, baseRevision: saved.revision.id, operationId: crypto.randomUUID(), title, prompt, blob }, { signal: controller.signal })
         if (!mounted.current) return
         setSaved(result)
         if (change === generation.current) { setDirty(false); setTitle(result.document.title) }
@@ -89,12 +99,13 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy }: {
       if (mounted.current) {
         setError(errorMessage(failure))
         setConflict(failure instanceof RevisionConflict)
+        if (failure instanceof DocumentSessionError) onSessionUnavailable?.(failure)
       }
     } finally {
       pending.current = false
       if (mounted.current) setBusy(false)
     }
-  }, [ready, saved, dirty, title, prompt, onSaved, onBack, onCopy])
+  }, [ready, saved, dirty, title, prompt, onSaved, onBack, onCopy, onSessionUnavailable])
 
   useEffect(() => {
     const saveShortcut = (event: KeyboardEvent) => {

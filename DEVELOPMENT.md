@@ -29,6 +29,10 @@ pnpm 版本固定在 `package.json`；提交 `pnpm-lock.yaml` 和 `pnpm-workspac
 
 工作台采用文档/规范库两个页签，文档打开后为编辑器与右侧 Agent 会话；以 [界面规格](spec/02-workbench-ui.md) 为准，替代历史布局 A。
 当前工作台不展示虚构的业务处理结果；Agent 发送保持禁用，不添加开发状态标签。
+前端按工作台规格依次完善文档工作台、编辑器和业务交互。前两步沿用现有会话文档服务；
+业务入口仅在对应服务端权限、版本、任务、来源与预算契约验证后开放；
+本轮会话区域可展示真实任务事件及成果摘要，普通消息发送保持禁用。
+UI、WD、DB 与业务 AC 分别记录，不以界面完成代替业务验收；不为视觉扩展推迟首条真实业务闭环。
 中文文案保持简洁，提供可访问标签、键盘操作和明确的失败、缺证及未覆盖状态。
 字体优先使用本地系统字体，构建不依赖下载外部字体。
 
@@ -44,8 +48,18 @@ pnpm build
 `pnpm check` 执行 ESLint 和 Next.js 路由类型生成、TypeScript 检查。
 `pnpm test` 使用 Node.js test runner、tsx 与 fake-indexeddb 验证 DOCX 拒绝条件、版本、冲突与导出失败保护。
 `pnpm smoke` 检查运行中的应用，可用 `pnpm smoke http://127.0.0.1:18080` 指定入口。
+`node scripts/smoke-database.mjs http://127.0.0.1:18080 <private-checkpoint.json>` 仅用于隔离合成库，
+先获取独立 A/B cookie 和 contextId，确认期限后测试保存、竞争、严格 404 归属隔离、Origin 与无效 DOCX。
+checkpoint 含访问凭据，以 600 独占创建，放在 public/Git 之外且不打印；重启同一卷后加 `--verify` 核对
+上下文、固定到期时刻、版本摘要和原件引用。原件历史字节的不可变性另由仓储测试验证，不以 HTTP 引用检查代替。
+CI 的两次容器运行仅为夹具设置 `ANONYMOUS_DATA_RETENTION_DAYS=2`，不成为运行默认或生产策略。
 冒烟检查不等于业务质量评测。业务测试随实际功能加入，使用 `*.test.ts` / `*.test.tsx`，
 并映射到 [AC-01—AC-26](spec/01-product.md#12-验收标准)。
+
+步骤一实际命令、合成输入、浏览器截图和未执行项见
+[工作台验证记录](docs/reviews/2026-10-22-workbench-step-one-validation.md)。
+工程测试、浏览器检查及平台恢复分别记录；缩小 CSS 视口不作为浏览器 200% 缩放证据，
+Windows 进程重启不作为 Linux 容器或文件/目录同步持久性证据。
 
 使用两空格缩进，组件使用 PascalCase，函数使用 camelCase。
 不为低影响的静态内容添加镜像实现的测试；对权限、金额、来源、版本及任务恢复编写行为测试。
@@ -68,3 +82,9 @@ pnpm build
 SQLite 单实例使用持久卷，GaussDB 默认校验证书。测试覆盖 SQLite，不将其作为 GaussDB 真机验证。
 上传校验使用有内存限制和超时的短生命周期子进程，不在主进程解析不可信 DOCX。
 `scripts/generated/` 是构建生成的校验程序，不提交 Git、不对生成代码运行 lint。
+匿名资料期限及清理由数据库规格 DB-08 负责；固定期限、会话确认、到期守卫、清理生命周期、
+存量登记和恢复重放已有实现。无默认资料期限；可选空会话窗口须显式登记，未设不清理、非法值使资料就绪失败。
+构建/健康接口不连接数据库或启动清理；清理由显式 Node.js 生命周期初始化，每小时非重叠执行，
+文档接口等待日志重放就绪。所有文档请求携带 X-Document-Context，同源写入并按 code 区分 409。
+维护入口、停机恢复、日志备份及通知登记见[部署说明](docs/deployment.md#匿名资料维护与恢复)。
+SQLite 合成逻辑测试不证明 Linux 文件/目录同步、容器持久性或 GaussDB 真机兼容，未执行的检查单独留缺口。

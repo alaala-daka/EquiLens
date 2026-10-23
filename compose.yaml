@@ -4,9 +4,13 @@ services:
     build: .
     init: true
     environment:
-      DATABASE_PROVIDER: ${DATABASE_PROVIDER:-sqlite}
-      SQLITE_PATH: /data/equilens.sqlite
-      APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:3000}
+      - DATABASE_PROVIDER=${DATABASE_PROVIDER:-sqlite}
+      - SQLITE_PATH=/data/equilens.sqlite
+      - APP_ORIGIN=${APP_ORIGIN:-http://127.0.0.1:3000}
+      - ANONYMOUS_DATA_RETENTION_DAYS=${ANONYMOUS_DATA_RETENTION_DAYS:-}
+      - ANONYMOUS_DELETION_JOURNAL_DIR=/data/retention-journal
+      # Unset is omitted, not passed as an invalid empty string. No duration default.
+      - ANONYMOUS_EMPTY_SESSION_RETENTION_DAYS
     volumes:
       - equilens-data:/data
     restart: unless-stopped

@@ -3,6 +3,7 @@ import { test } from "node:test"
 import { NextRequest, NextResponse } from "next/server"
 import { failureResponse, inputBody, sameOrigin, session } from "./http"
 import { blankDocx } from "../../lib/documents/docx"
+import { StoreError } from "./errors"
 
 test("DB-03: require same-origin writes and issue private HttpOnly session cookies", () => {
   assert.throws(() => sameOrigin(new Request("https://equilens.invalid/api/documents")), { status: 403 })
@@ -18,6 +19,10 @@ test("DB-03: require same-origin writes and issue private HttpOnly session cooki
   assert.equal(session(new NextRequest("https://equilens.invalid/api/documents", { headers: { Cookie: cookie } })).owner, first.owner)
   assert.notEqual(session(new NextRequest("https://equilens.invalid/api/documents")).owner, first.owner)
   assert.equal(response.headers.get("cache-control"), "private, no-store")
+  const plain = session(new NextRequest("http://equilens.invalid/api/documents")).apply(NextResponse.json([]))
+  assert.doesNotMatch(plain.headers.get("set-cookie")!, /Secure/i)
+  const rotated = session(new NextRequest("https://equilens.invalid/api/documents", { headers: { Cookie: cookie } }), { rotate: true }).apply(NextResponse.json([]))
+  assert.notEqual(rotated.headers.get("set-cookie")!.split(";")[0], cookie)
 })
 
 test("DB-04: upload parsing is isolated and rejects invalid files and oversized requests", async () => {
@@ -30,4 +35,6 @@ test("DB-04: upload parsing is isolated and rejects invalid files and oversized 
   const response = failureResponse(new Error("sensitive SQL password"))
   assert.equal(response.status, 503)
   assert.doesNotMatch(await response.text(), /password|SQL/)
+  const coded = failureResponse(new StoreError(409, "版本冲突", "REVISION_CONFLICT"))
+  assert.deepEqual(await coded.json(), { error: "版本冲突", code: "REVISION_CONFLICT" })
 })
