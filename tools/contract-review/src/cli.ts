@@ -24,7 +24,7 @@ const usage = [
   "--rules <目录>  --out <目录>  --format json|markdown|both  --title <标题>",
   "--role <确认的审查立场>  --scene <场景标识>  --region <确认的地域>",
   "--batch <1到20>：固定编排每批规则数，默认7；固定编排合计最多3次请求",
-  "--agent：使用 AI SDK Agent + skill + 工具；联调默认最多8次模型请求，可配置 AI_AGENT_MAX_CALLS（1–25）",
+  "--agent：使用 AI SDK Agent + skill + 工具；联调默认最多25次模型请求，可配置 AI_AGENT_MAX_CALLS（1–25）",
   "真实审查会发送所选合同文字并产生模型费用。调试结果必须人工核对。",
 ].join("\n")
 

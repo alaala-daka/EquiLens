@@ -14,7 +14,7 @@ export async function validateUpload(bytes: Buffer): Promise<void> {
     const validatorPath = /* turbopackIgnore: true */ resolve(process.cwd(), "scripts/generated/docx-validator.mjs")
     if (!existsSync(validatorPath)) throw missing()
     await new Promise<void>((accept, reject) => {
-      const child = fork(validatorPath, [], { execArgv: ["--max-old-space-size=192"], stdio: ["ignore", "ignore", "pipe", "ipc"], env: { NODE_ENV: "production" }, windowsHide: true })
+      const child = fork(/* turbopackIgnore: true */ validatorPath, [], { execArgv: ["--max-old-space-size=192"], stdio: ["ignore", "ignore", "pipe", "ipc"], env: { NODE_ENV: "production" }, windowsHide: true })
       let settled = false
       let stderr = ""
       child.stderr?.setEncoding("utf8")

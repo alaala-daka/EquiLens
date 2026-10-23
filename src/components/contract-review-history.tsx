@@ -6,8 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { listReviewTasks } from "@/lib/contract-reviews/client"
 import { taskStateLabel, type ReviewTask } from "@/lib/contract-reviews/types"
 import { errorMessage } from "@/lib/documents/types"
+import { DocumentSessionError } from "@/lib/documents/client"
 
-export function ContractReviewHistory({ onOpen, busy }: { onOpen: (documentId: string, taskId: string) => void; busy: boolean }) {
+export function ContractReviewHistory({ onOpen, busy, onSessionUnavailable }: { onOpen: (documentId: string, taskId: string) => void; busy: boolean; onSessionUnavailable?: (failure: DocumentSessionError) => void }) {
   const [tasks, setTasks] = useState<ReviewTask[]>([])
   const [error, setError] = useState("")
   const [reload, setReload] = useState(0)
@@ -17,12 +18,12 @@ export function ContractReviewHistory({ onOpen, busy }: { onOpen: (documentId: s
     let timer: ReturnType<typeof setTimeout> | undefined
     async function refresh() {
       try { const value = await listReviewTasks(undefined, controller.signal); if (!disposed) { setTasks(value.tasks); setError("") } }
-      catch (failure) { if (!disposed && !controller.signal.aborted) setError(errorMessage(failure)) }
+      catch (failure) { if (!disposed && !controller.signal.aborted) { setError(errorMessage(failure)); if (failure instanceof DocumentSessionError) onSessionUnavailable?.(failure) } }
       finally { if (!disposed) timer = setTimeout(() => void refresh(), 5000) }
     }
     void refresh()
     return () => { disposed = true; controller.abort(); clearTimeout(timer) }
-  }, [reload])
+  }, [reload, onSessionUnavailable])
   if (!tasks.length && !error) return null
   return <section aria-label="合同审查任务" className="flex flex-col gap-3">
     <h2 className="text-base font-semibold">合同审查任务</h2>

@@ -25,6 +25,8 @@ export function reviewFailure(failure: unknown) {
   const known = failure instanceof StoreError || failure instanceof ReviewError
   const status = failure instanceof StoreError ? failure.status : 503
   return NextResponse.json({ error: known ? failure.message : "审查服务暂时不可用，请稍后重试。",
+    ...(failure instanceof StoreError && failure.code ? { code: failure.code } : {}),
+    ...(failure instanceof StoreError && failure.session ? { session: failure.session } : {}),
     ...(failure instanceof ReviewError ? { code: safeError(failure).code } : {}) },
   { status, headers: { "Cache-Control": "private, no-store" } })
 }

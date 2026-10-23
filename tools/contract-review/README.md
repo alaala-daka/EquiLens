@@ -70,9 +70,9 @@ CLI 从仓库根目录运行（本轮未运行）：
 pnpm review:contract:agent --contract tools/contract-review/fixtures/sample-contract.txt --debug --role 专业分包人 --project-type 房建机电安装专业分包 --region 上海
 ```
 
-使用现有 AI_BASE_URL、AI_API_KEY、AI_MODEL。AI_AGENT_MAX_CALLS 为 Agent 联调预算，默认 8，
-可信后端允许 1–16；每次实际 HTTP 请求计次，SDK 自动重试关闭，工具调用本身不另算模型请求。
-单次默认 90 秒、总计最多 600 秒；提示上限沿用 AI_REVIEW_MAX_PROMPT_CHARS，未配置的调试模式暂用 24000 字符。
+使用现有 AI_BASE_URL、AI_API_KEY、AI_MODEL。AI_AGENT_MAX_CALLS 为 Agent 联调预算，默认 25，
+可信后端允许 1–25；每次实际 HTTP 请求计次，SDK 自动重试关闭，工具调用本身不另算模型请求。
+单次默认 90 秒、总计最多 600 秒；提示上限沿用 AI_REVIEW_MAX_PROMPT_CHARS，未配置的调试模式暂用 240000 字符。
 上限包含工具定义和累计会话；工具结果单次默认最多 16000 字符，超限时明确失败并可减少本次读取段落数。
 这些是保护值，不是模型工具能力或容量验证结果。正式模式仍要求显式预算配置和已发布资料。
 

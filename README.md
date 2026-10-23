@@ -9,7 +9,9 @@
 
 > **项目状态：**提供文档/规范库工作台和浏览器 Word 编辑器，支持新建、导入、编辑、保存、重开及导出 DOCX。
 > 文档原件和保存版本存入服务端数据库，支持 SQLite / GaussDB 配置。SQLite 已有行为测试；GaussDB 尚未连接真实实例验证。
-> 合同审查 Agent 已接入网页及持久化后台任务，当前为匿名会话联调范围，内置资料待核对，尚未完成业务验收。OBS、MaaS、OCR 和其他业务模块仍待接入。
+> 匿名固定期限、到期拒绝访问、服务内清理及私有维护工具已实现；Linux 日志持久性与容器恢复仍待本版验证。
+> 合同审查 Agent 已接入匿名 DOCX 工作区与持久化任务，仅供授权联调；内置资料均待核对，正式模式拒绝使用。
+> OBS、MaaS、OCR 及其余业务模块仍待接入，账号/项目授权和法律业务验收尚未完成。
 
 [在线使用](https://equilens.zeabur.app) · [部署说明](docs/deployment.md)
 
@@ -33,6 +35,7 @@
 git clone https://github.com/alaala-daka/EquiLens.git
 cd EquiLens
 pnpm install --frozen-lockfile
+# Copy .env.example to .env.local and register ANONYMOUS_DATA_RETENTION_DAYS before creating documents.
 pnpm dev
 ```
 
@@ -41,46 +44,50 @@ pnpm dev
 页签、列表和对话框使用官方 shadcn/ui 组件；Word 画布和工具栏使用固定版本的 SuperDoc 1.47.2。
 支持中文段落、基础格式、标题、列表和普通表格文字编辑。单个 DOCX 不超过 20 MiB；
 宏、加密、外部资源、图片、页眉页脚、域、批注、修订和复杂合并表格按当前范围拒绝。
-不承诺任意 Word 版式无损还原；Microsoft Word 人工核对和大文档性能验证见验证记录。
+不承诺任意 Word 版式无损还原；Microsoft Word 自动打开与渲染核对、大文档单次实测和人工验收缺口见验证记录。
 
 保存按钮及 `Ctrl/Cmd+S` 提交不可变 DOCX 版本；有修改时导出会先保存，再下载该版本的同一份字节。
-离开编辑器前可保存、放弃或取消。多标签页保存冲突时保留当前编辑，可另存为新文档。
+标题、正文和 Agent 待发送输入共用保存状态；没有修改时保存禁用，快捷键不新增版本。
+桌面编辑器与 Agent 默认按 70/30 排列，可拖动或用分隔柄键盘调整；窄屏按相同比例上下排列，区域分别滚动。
+正文中按 `F6` 转到右侧备注，按 `Shift+F6` 转到文档操作；菜单打开或组合输入期间保留原有按键处理。
+备注随当前文档保存，自由会话发送保持禁用。离开编辑器前可保存并离开、放弃更改或取消，保存失败留在当前文档。
+加载失败时可重新加载；未保存修改先经确认。多标签页保存冲突时保留当前编辑，可另存为新文档。
 只有保存成功的版本能在刷新后恢复，导入原件不会被编辑覆盖。
 
 服务端使用 HttpOnly 会话 cookie 隔离文档；其他浏览器、设备或隐私窗口有独立列表。
 当前没有账号登录，清除 cookie 会失去该会话的文件访问入口，请下载需要保留的文件。
 历史 IndexedDB 文档不会删除或自动上传；可从旧版导出后重新导入。持久卷不替代备份。
 
+匿名资料按[数据库规格](spec/04-database-deployment.md)使用固定保留期限。负责人须先登记用途和天数；
+新建、导入前确认实际到期日期，同会话后续操作及配置调整不续期。到期立即停止旧资料读写与下载；
+请在到期前打开文档，使用“导出 Word”保存需要保留的版本。到期后可“开始新会话”，新列表不继承旧资料。
+cookie 只提供访问凭据，清除或过期不会触发服务端删除，也不能恢复访问入口。
+服务启动重放删除日志后开放资料访问，并在启动及每小时尝试清理到期资料；故障期间仍拒绝过期访问。
+存量资料须先通知并登记导出窗口，窗口内仅原会话可读和导出，结束后拒绝访问。
+窗口登记、私有删除日志及恢复重放见[部署说明](docs/deployment.md#匿名资料维护与恢复)。
+
 来源和边界见 [工作台界面规格](spec/02-workbench-ui.md)、[Word 编辑规格](spec/03-word-editing.md)
-及[验证记录](docs/reviews/2026-10-22-word-editing-validation.md)，
+及 [Word 验证记录](docs/reviews/2026-10-22-word-editing-validation.md)、
+[工作台步骤一验证记录](docs/reviews/2026-10-22-workbench-step-one-validation.md)、
+[编辑器步骤二验证记录](docs/reviews/2026-10-23-editor-step-two-validation.md)，
 第三方许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 项目采用 [AGPL-3.0-only](LICENSE)，保留 SuperDoc 等第三方许可；页面“源代码”链接对应部署版本。
 
-## 模型连接测试
+## 合同审查联调
 
-在本机 `.env.local` 或服务端环境中配置 `AI_BASE_URL`、`AI_MODEL` 和 `AI_API_KEY`。
-当前网关为 `https://aigw.saurlax.com/v1`，模型暂定 `glm-5.3-flash`；配置字段见 `.env.example`。
-密钥不提交 Git，也不使用 `NEXT_PUBLIC_` 前缀。
+先配置匿名资料保留期限，再在忽略的 `.env.local` 配置 `AI_BASE_URL`、`AI_MODEL`、`AI_API_KEY`。
+内置规则未完成领域核对，只能显式使用 `AI_REVIEW_MODE=debug` 联调；生产默认 `published` 会拒绝这些资料。
+打开已保存 DOCX 后，在右侧「合同审查」确认地域、所选版本、发送目标和外发授权。
+保存版本变化后需要重新确认。审查记录最多按 `AI_REVIEW_RETENTION_DAYS` 保留，原资料先到期时一并停止访问和清理。
+生产须显式设置 1–365 天的审查期限及经验证的 `AI_REVIEW_MAX_PROMPT_CHARS`。
+Agent 累计请求上限为 25 次，可配置 1–25；重试与恢复不重置预算。真实审查会发送合同并可能产生费用。
 
-```bash
-pnpm ai:smoke
-```
+任务与文档共用会话上下文、删除日志就绪屏障和期限守卫；撤销、到期及只读导出窗口阻止新处理。
+网页任务用法见[交接说明](docs/contract-review-web.md)，CLI 和后端入口见[模块说明](tools/contract-review/README.md)。
+`pnpm ai:smoke` 仅发送一次固定合成消息验证模型连接；`pnpm review:contract:example` 使用离线合成桩。
+本地整合验证见[验证记录](docs/reviews/2026-10-23-contract-review-main-integration.md)，不计为法律业务准确率验收。
 
-此命令只发送一次固定测试消息“请只回复：连接成功”，可能产生少量模型费用。
-它显示模型回复和可用的 Token 用量；错误时返回明确原因，不输出密钥或服务端响应正文。
-服务端业务可从 `@/server/ai` 导入 `askModel`。模块导入及构建不会调用模型。
-此入口只验证模型连接；网页合同审查通过独立的持久化任务接口调用 Agent。
-实际验证与构建限制见[模型连接验证记录](docs/reviews/2026-10-22-model-gateway-validation.md)。
-
-## 合同审查开发交接
-
-后端固定入口为 `@/server/contract-review` 的 `reviewText`，本地入口为 `pnpm review:contract`。
-先阅读[交接说明与调用示例](tools/contract-review/README.md)，其中列明前后端职责、环境配置、
-返回状态、规则发布边界和待执行检查。内置规则仅供显式调试模式使用。
-`pnpm review:contract:example` 使用离线合成桩，不调用模型；真实 CLI 会发送合同并产生费用。
-本次未运行测试、真实模型调用或生产构建，不能据此认定已满足合同审查业务验收。
-
-## 数据库
+## 数据库配置
 
 默认不需要云端数据库即可启动，SQLite 文件位于 `data/equilens.sqlite`。
 配置示例见 [.env.example](.env.example)，开发时复制为 `.env.local`。
@@ -89,12 +96,17 @@ pnpm ai:smoke
 | --- | --- |
 | `DATABASE_PROVIDER=sqlite` | 使用 SQLite，默认值 |
 | `SQLITE_PATH` | SQLite 文件路径，Zeabur 使用 `/data/equilens/equilens.sqlite` |
+| `ANONYMOUS_DATA_RETENTION_DAYS` | 新建、导入、复制必需，正整数天数，无默认值；负责人登记用途和期限 |
+| `ANONYMOUS_DELETION_JOURNAL_DIR` | 私有持久删除日志；SQLite 默认数据库旁 retention-journal，GaussDB 必须显式配置 |
+| `ANONYMOUS_EMPTY_SESSION_RETENTION_DAYS` | 可选、另行登记的空会话窗口，正整数，无默认值；未设不清理空行，显式空值或非法值使资料就绪失败 |
 | `DATABASE_PROVIDER=gaussdb` | 使用 GaussDB 集中式，连接失败不回退 |
 | `GAUSSDB_HOST/PORT/DATABASE/USER/PASSWORD` | GaussDB 连接配置，端口默认 `8000` |
 | `GAUSSDB_CA_PATH` | 可选 CA 文件，TLS 始终校验证书 |
 | `APP_ORIGIN` | 远程部署的完整 HTTPS origin，用于写请求校验 |
 
-数据库首次访问时建立初始表，生产构建不连接数据库。切换 provider 不会自动迁移已有文档。
+运行期显式初始化数据库和删除日志，生产构建不连接数据库或启动清理。切换 provider 不会自动迁移已有文档。
+资料期限缺失或非法时新建返回 503；已有有效期限仍可读取、保存和下载，到期后立即拒绝。
+删除日志初始化或重放失败时资料接口返回 503；健康接口仍独立可用。
 存储边界与独立 GaussDB 验收见[数据库规格](spec/04-database-deployment.md)。
 
 生产构建与启动：
@@ -107,18 +119,6 @@ pnpm start
 `GET /healthz` 返回应用存活状态。它不检查数据库或外部服务，也不表示业务流程已可用。
 
 ## 开发
-
-合同审查新增 AI SDK Agent 模块：支持按需加载 skill、读取条款/依据、结构化提交与引文校验。
-新后端入口 `reviewTextWithAgent`、CLI `pnpm review:contract:agent` 的用法见
-[模块说明](tools/contract-review/README.md#ai-sdk-agent-入口)。旧固定审查入口保留。
-2026-10-23 已接编辑器审查栏、会话内任务列表及数据库队列。类型检查通过，未运行测试、构建、浏览器或真实模型验证。
-
-本地使用：在忽略的 `.env.local` 配置 AI_BASE_URL、AI_MODEL、AI_API_KEY，运行 `pnpm dev`。
-导入基础 DOCX → 编辑器右侧「合同审查」→ 保存修改 → 确认地域、审查条件及外发授权 → 开始审查。
-开发环境默认 debug，须确认未核对资料；生产默认 published，规则未发布时拒绝提交。
-页面关闭不取消入库任务；返回文档列表可查看历史任务，点击报告引文查看原版本段落。
-生产需显式配置 AI_REVIEW_RETENTION_DAYS（1–365 天）及经验证的 AI_REVIEW_MAX_PROMPT_CHARS。
-网页当前只接 DOCX；TXT 继续通过 CLI 使用。账号/项目权限、人工修订和正式法律业务验收仍未实现。
 
 | 工作 | 命令 |
 | --- | --- |
@@ -154,6 +154,14 @@ GitHub Actions 构建并验证镜像；完成许可安排并启用发布开关�
 ## 规格
 
 [规格索引](spec/README.md)是当前架构、业务行为和验收要求的入口。
+前端开发按[工作台界面规格](spec/02-workbench-ui.md)依次完善工作台、编辑器，再接入业务交互，
+从合同审查推进到款项核对、证据整理和催款函。步骤一已实现标题检索、列表状态、操作取消和会话期限交互，
+并完成本地 SQLite 工程与部分浏览器验证，历史缺口见
+[步骤一验证记录](docs/reviews/2026-10-22-workbench-step-one-validation.md)。步骤二已实现编辑状态、统一保存与导出、
+离开保护和面板响应式；工程检查、SQLite 重启、实际浏览器多视口与原生 200% 缩放、Word 自动往返检查已执行，
+完整 UI/WD 验收及平台缺口见[步骤二验证记录](docs/reviews/2026-10-23-editor-step-two-validation.md)。
+当前 Word 正文的 Tab/Shift+Tab 焦点无法退出，序列化超时后状态标签误报打开失败，UI-13 尚未通过；
+Windows 中文输入法候选选字、人工 Word 验收及平台恢复仍待验证。步骤三业务验收尚未完成。
 `spec/` 保存已接受的契约，`docs/` 保存使用说明与历史资料，未决方案及任务通过 GitHub Issues 管理。
 
 项目用于华为 ICT 大赛创新赛，按实际开工日起十二天 Demo、随后一个月完善的两阶段范围交付。

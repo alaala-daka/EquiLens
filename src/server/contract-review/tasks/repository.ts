@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import type { Database, Connection, Row } from "../../database/connection"
 import { StoreError } from "../../documents/repository"
+import type { DocumentSessionRepository } from "../../documents/session-repository"
 import type { ReviewTask, ReviewResult, SubmitReview } from "../../../lib/contract-reviews/types"
 import type { LoadedPack, Paragraph, ReviewContext } from "../../../../tools/contract-review/src/types"
 import type { ReviewSkill } from "../../../../tools/contract-review/src/agent/skill"
@@ -10,6 +11,7 @@ export type TaskInput = Omit<SubmitReview, "context"> & {
   context: ReviewContext
   title: string; revisionHash: string; pack: LoadedPack; packSha256: string; skill: ReviewSkill
   mode: "debug" | "published"; model: string; baseURL: string; maxPromptChars: number; consentAt: string
+  documentContextId: string
 }
 export type ParseSnapshot = { id: string; paragraphs: Paragraph[]; complete: boolean; textSha256: string }
 export type ClaimedReview = {
@@ -43,7 +45,13 @@ const schema = [
 ]
 
 export class ReviewTaskRepository {
-  constructor(private readonly database: Database) {}
+  constructor(private readonly database: Database, private readonly sessions: DocumentSessionRepository) {}
+  private async guard(c: Connection, owner: string, contextId: string, action: "read" | "review" = "read") {
+    const record = await this.sessions.guardIn(c, owner, action)
+    if (!contextId) throw new StoreError(400, "缺少会话上下文。", "SESSION_CONTEXT_REQUIRED")
+    if (record.contextId !== contextId) throw new StoreError(409, "会话已变更，请重新载入。", "SESSION_CHANGED")
+    return record
+  }
   async initialize() {
     await this.database.transaction(async c => {
       await c.query(schema[0])
@@ -54,18 +62,20 @@ export class ReviewTaskRepository {
       if (!(await c.query("SELECT id FROM equilens_review_runner WHERE id=1")).rows.length) await c.query("INSERT INTO equilens_review_runner(id,token,lease_until) VALUES (1,NULL,NULL)")
     })
   }
-  private async owned(c: Connection, owner: string, id: string) {
+  private async owned(c: Connection, owner: string, id: string, contextId: string, action: "read" | "review" = "read") {
+    await this.guard(c, owner, contextId, action)
     const { rows } = await c.query("SELECT t.* FROM equilens_review_tasks t JOIN equilens_documents d ON d.owner=t.owner AND d.id=t.document_id WHERE t.owner=$1 AND t.id=$2 AND t.expires_at>$3", [owner, id, now()])
     if (!rows.length) throw noAccess()
     return rows[0]
   }
   private async executing(c: Connection, job: ClaimedReview) {
-    const row = await this.owned(c, job.owner, job.id)
+    const row = await this.owned(c, job.owner, job.id, job.input.documentContextId, "review")
     if (row.state !== "running" || row.execution_token !== job.token || String(row.lease_until) <= now()) throw lost()
     return row
   }
-  async readRevision(owner: string, documentId: string, revisionId: string) {
+  async readRevision(owner: string, documentId: string, revisionId: string, contextId: string) {
     return this.database.transaction(async c => {
+      await this.guard(c, owner, contextId, "review")
       const { rows } = await c.query("SELECT r.payload,r.metadata,d.metadata AS document_metadata FROM equilens_revisions r JOIN equilens_documents d ON d.owner=r.owner AND d.id=r.document_id WHERE r.owner=$1 AND r.document_id=$2 AND r.id=$3", [owner, documentId, revisionId])
       if (!rows.length) throw noAccess()
       const bytes = Buffer.from(String(rows[0].payload), "base64")
@@ -74,41 +84,45 @@ export class ReviewTaskRepository {
       return { bytes, hash: revision.hash, title: parse<{ title: string }>(rows[0].document_metadata).title }
     })
   }
-  list(owner: string, documentId?: string) {
+  list(owner: string, documentId: string | undefined, contextId: string) {
     return this.database.transaction(async c => {
+      await this.guard(c, owner, contextId)
       const values = documentId ? [owner, now(), documentId] : [owner, now()]
       const { rows } = await c.query("SELECT t.* FROM equilens_review_tasks t JOIN equilens_documents d ON d.owner=t.owner AND d.id=t.document_id WHERE t.owner=$1 AND t.expires_at>$2" + (documentId ? " AND t.document_id=$3" : "") + " ORDER BY t.created_at DESC,t.id DESC LIMIT 50", values)
       return rows.map(row => view(row))
     })
   }
-  get(owner: string, id: string) { return this.database.transaction(async c => view(await this.owned(c, owner, id), true)) }
-  existing(owner: string, key: string, request: SubmitReview) {
+  get(owner: string, id: string, contextId: string) { return this.database.transaction(async c => view(await this.owned(c, owner, id, contextId), true)) }
+  existing(owner: string, key: string, request: SubmitReview, contextId: string) {
     return this.database.transaction(async c => {
+      await this.guard(c, owner, contextId, "review")
       const row = (await c.query("SELECT * FROM equilens_review_tasks WHERE owner=$1 AND idempotency_key=$2", [owner, key])).rows[0]
       if (!row) return null
       if (row.request_hash !== digest(JSON.stringify(request))) throw new StoreError(409, "此提交标识已用于不同的审查输入。")
-      return view(await this.owned(c, owner, String(row.id)), true)
+      return view(await this.owned(c, owner, String(row.id), contextId, "review"), true)
     })
   }
   async create(owner: string, key: string, request: SubmitReview, input: TaskInput, maxCalls: number, retentionDays: number): Promise<ReviewTask> {
     const requestHash = digest(JSON.stringify(request)), payload = JSON.stringify(input)
     const create = () => this.database.transaction(async c => {
+      const sourceSession = await this.guard(c, owner, input.documentContextId, "review")
       // 无副作用的短行锁，使跨连接的队列限额与幂等检查串行。
       await c.query("UPDATE equilens_review_runner SET id=id WHERE id=1")
       const prior = (await c.query("SELECT * FROM equilens_review_tasks WHERE owner=$1 AND idempotency_key=$2", [owner, key])).rows[0]
       if (prior) {
         if (prior.request_hash !== requestHash) throw new StoreError(409, "此提交标识已用于不同的审查输入。")
         if (String(prior.expires_at) <= now()) throw noAccess()
-        return view(await this.owned(c, owner, String(prior.id)), true)
+        return view(await this.owned(c, owner, String(prior.id), input.documentContextId, "review"), true)
       }
       const access = await c.query("SELECT id FROM equilens_revisions WHERE owner=$1 AND document_id=$2 AND id=$3", [owner, request.documentId, request.revisionId])
       if (!access.rows.length) throw noAccess()
       const total = await c.query("SELECT owner FROM equilens_review_tasks WHERE state IN ('queued','running') AND expires_at>$1", [now()])
       if (total.rows.length >= 20 || total.rows.filter(row => row.owner === owner).length >= 3) throw new StoreError(429, "审查队列已满，请稍后提交。")
-      const id = randomUUID(), created = now(), expires = new Date(Date.now() + retentionDays * 86400000).toISOString()
+      if (!sourceSession.expiresAt) throw noAccess()
+      const id = randomUUID(), created = now(), expires = new Date(Math.min(Date.now() + retentionDays * 86400000, Date.parse(sourceSession.expiresAt))).toISOString()
       await c.query("INSERT INTO equilens_review_tasks(id,owner,document_id,revision_id,title,idempotency_key,request_hash,input_hash,input,state,stage,created_at,updated_at,expires_at,attempt,calls_used,max_calls,elapsed_ms,progress) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'queued','queued',$10,$11,$12,0,0,$13,0,$14)",
         [id, owner, request.documentId, request.revisionId, input.title, key, requestHash, digest(payload), payload, created, created, expires, maxCalls, JSON.stringify({ readParagraphCount: 0, paragraphCount: 0, submittedRuleCount: 0 })])
-      return view(await this.owned(c, owner, id), true)
+      return view(await this.owned(c, owner, id, input.documentContextId, "review"), true)
     })
     try { return await create() }
     catch (failure) { if ((failure as { code?: string }).code === "23505") return create(); throw failure }
@@ -135,11 +149,19 @@ export class ReviewTaskRepository {
         await c.query("UPDATE equilens_review_runner SET token=NULL,lease_until=NULL WHERE token=$1", [token])
         return null
       }
+      const input = parse<TaskInput>(row.input)
+      try { await this.guard(c, String(row.owner), input.documentContextId, "review") }
+      catch (failure) {
+        if (!(failure instanceof StoreError)) throw failure
+        await c.query("UPDATE equilens_review_tasks SET state='failed',stage='failed',execution_token=NULL,lease_until=NULL,error_code=$1,error_message=$2,updated_at=$3 WHERE id=$4", [failure.code ?? "REVIEW_INPUT_INVALID", failure.message, clock, String(row.id)])
+        await c.query("UPDATE equilens_review_runner SET token=NULL,lease_until=NULL WHERE token=$1", [token])
+        return null
+      }
       const attempt = Number(row.attempt) + 1
       const claimed = await c.query("UPDATE equilens_review_tasks SET state='running',stage='parsing',attempt=$1,execution_token=$2,lease_until=$3,attempt_started_at=$4,updated_at=$5,elapsed_ms=$6,error_code=NULL,error_message=NULL WHERE id=$7 AND state=$8 AND attempt=$9 AND (lease_until IS NULL OR lease_until<=$10)", [attempt, token, until, clock, clock, Math.floor(elapsed), String(row.id), String(row.state), Number(row.attempt), clock])
       if (claimed.changes !== 1) { await c.query("UPDATE equilens_review_runner SET token=NULL,lease_until=NULL WHERE token=$1", [token]); return null }
       return { id: String(row.id), owner: String(row.owner), token, attempt, callsUsed: Number(row.calls_used), maxCalls: Number(row.max_calls),
-        elapsedMs: Math.floor(elapsed), startedAt: clock, input: parse<TaskInput>(row.input), snapshot: row.parse_snapshot ? parse<ParseSnapshot>(row.parse_snapshot) : null, checkpoint: jsonResult(row) }
+        elapsedMs: Math.floor(elapsed), startedAt: clock, input, snapshot: row.parse_snapshot ? parse<ParseSnapshot>(row.parse_snapshot) : null, checkpoint: jsonResult(row) }
     })
   }
   async heartbeat(job: ClaimedReview, elapsedMs: number) {
@@ -197,9 +219,9 @@ export class ReviewTaskRepository {
     })
   }
   async release(job: ClaimedReview) { await this.database.transaction(async c => { await c.query("UPDATE equilens_review_runner SET token=NULL,lease_until=NULL WHERE id=1 AND token=$1", [job.token]) }) }
-  async action(owner: string, id: string, action: "cancel" | "retry") {
+  async action(owner: string, id: string, action: "cancel" | "retry", contextId: string) {
     return this.database.transaction(async c => {
-      const row = await this.owned(c, owner, id)
+      const row = await this.owned(c, owner, id, contextId, action === "retry" ? "review" : "read")
       if (action === "cancel") {
         if (["queued", "running"].includes(String(row.state))) await c.query("UPDATE equilens_review_tasks SET state='failed',stage='cancelled',execution_token=NULL,lease_until=NULL,error_code='REVIEW_CANCELLED',error_message=$1,updated_at=$2 WHERE owner=$3 AND id=$4 AND state IN ('queued','running')", ["审查已取消，不再发送新的模型请求。", now(), owner, id])
       } else {
@@ -207,7 +229,7 @@ export class ReviewTaskRepository {
         if (row.state === "success" || row.error_code === "REVIEW_CANCELLED" || Number(row.attempt) >= 3 || Number(row.calls_used) >= Number(row.max_calls) || Number(row.elapsed_ms) >= 600000) throw new StoreError(409, "原任务不能继续重试；如需新分析，请重新确认后提交。")
         await c.query("UPDATE equilens_review_tasks SET state='queued',stage='queued',updated_at=$1,error_code=NULL,error_message=NULL WHERE owner=$2 AND id=$3 AND state=$4 AND attempt=$5 AND execution_token IS NULL", [now(), owner, id, String(row.state), Number(row.attempt)])
       }
-      return view(await this.owned(c, owner, id), true)
+      return view(await this.owned(c, owner, id, contextId), true)
     })
   }
 }

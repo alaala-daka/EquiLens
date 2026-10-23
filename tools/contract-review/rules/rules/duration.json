@@ -3,7 +3,7 @@
     "ruleId": "DURATION-001",
     "category": "工期",
     "title": "工期总日历天数与开工条件",
-    "status": "已发布",
+    "status": "待核对",
     "appliesTo": {
       "scene": "mep-sub-2026",
       "role": "专业分包人"
@@ -36,7 +36,7 @@
     "ruleId": "DURATION-002",
     "category": "工期",
     "title": "工期顺延与延误责任",
-    "status": "已发布",
+    "status": "待核对",
     "appliesTo": {
       "scene": "mep-sub-2026",
       "role": "专业分包人"

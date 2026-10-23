@@ -33,7 +33,7 @@ async function execute(job: ClaimedReview) {
     controller.signal.throwIfAborted()
     if (!job.snapshot) {
       await repository.checkpoint(job, stage, progress, null, elapsed())
-      const revision = await repository.readRevision(job.owner, job.input.documentId, job.input.revisionId)
+      const revision = await repository.readRevision(job.owner, job.input.documentId, job.input.revisionId, job.input.documentContextId)
       if (revision.hash !== job.input.revisionHash) throw new ReviewError("REVIEW_DOCUMENT_INVALID")
       const paragraphs = await readDocxInChild(revision.bytes, controller.signal)
       controller.signal.throwIfAborted()

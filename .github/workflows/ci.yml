@@ -85,13 +85,13 @@ jobs:
         run: |
           volume="equilens-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           docker volume create "$volume"
-          container=$(docker run --detach --env APP_ORIGIN=http://127.0.0.1:18080 --mount "type=volume,source=$volume,target=/data" --publish 127.0.0.1:18080:3000 equilens:smoke)
+          container=$(docker run --detach --env APP_ORIGIN=http://127.0.0.1:18080 --env ANONYMOUS_DATA_RETENTION_DAYS=2 --env ANONYMOUS_DELETION_JOURNAL_DIR=/data/retention-journal --mount "type=volume,source=$volume,target=/data" --publish 127.0.0.1:18080:3000 equilens:smoke)
           trap 'docker logs "$container"; docker rm --force "$container"; docker volume rm "$volume"' EXIT
           node scripts/smoke.mjs http://127.0.0.1:18080
           test "$(docker exec "$container" id -u)" != "0"
           node scripts/smoke-database.mjs http://127.0.0.1:18080 "$RUNNER_TEMP/equilens-db-smoke.json"
           docker rm --force "$container"
-          container=$(docker run --detach --env APP_ORIGIN=http://127.0.0.1:18080 --mount "type=volume,source=$volume,target=/data" --publish 127.0.0.1:18080:3000 equilens:smoke)
+          container=$(docker run --detach --env APP_ORIGIN=http://127.0.0.1:18080 --env ANONYMOUS_DATA_RETENTION_DAYS=2 --env ANONYMOUS_DELETION_JOURNAL_DIR=/data/retention-journal --mount "type=volume,source=$volume,target=/data" --publish 127.0.0.1:18080:3000 equilens:smoke)
           node scripts/smoke.mjs http://127.0.0.1:18080
           node scripts/smoke-database.mjs http://127.0.0.1:18080 "$RUNNER_TEMP/equilens-db-smoke.json" --verify
       - name: Sign in to GHCR

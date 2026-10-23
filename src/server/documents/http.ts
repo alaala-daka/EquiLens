@@ -4,11 +4,12 @@ import { MAX_FILE_BYTES } from "../../lib/documents/docx"
 import { DOCX_TYPE, type OpenDocument, type DocumentRecord } from "../../lib/documents/types"
 import { StoreError } from "./repository"
 import { validateUpload } from "./validate"
+import type { RetentionConsent } from "../../lib/documents/session-types"
 
 const cookieName = "equilens_session"
-export function session(request: NextRequest) {
+export function session(request: NextRequest, options?: { rotate?: boolean }) {
   const existing = request.cookies.get(cookieName)?.value
-  const token = existing && /^[a-f0-9]{64}$/.test(existing) ? existing : randomBytes(32).toString("hex")
+  const token = !options?.rotate && existing && /^[a-f0-9]{64}$/.test(existing) ? existing : randomBytes(32).toString("hex")
   return { owner: createHash("sha256").update(token).digest("hex"), apply(response: NextResponse) {
     if (token !== existing) response.cookies.set(cookieName, token, { httpOnly: true, sameSite: "lax", secure: new URL(process.env.APP_ORIGIN ?? request.url).protocol === "https:", path: "/", maxAge: 365 * 86400 })
     response.headers.set("Cache-Control", "private, no-store")
@@ -23,8 +24,7 @@ export function sameOrigin(request: Request) {
   if (!origin || origin !== new URL(expected).origin) throw new StoreError(403, "请求来源无效。")
 }
 
-export async function inputBody(request: Request): Promise<Record<string, unknown> & { title: string; prompt: string; blob: Blob }> {
-  const limit = Math.ceil(MAX_FILE_BYTES * 4 / 3) + 128 * 1024
+export async function jsonBody(request: Request, limit: number): Promise<Record<string, unknown>> {
   if (!request.headers.get("content-type")?.startsWith("application/json")) throw new StoreError(415, "请求格式无效。")
   if (Number(request.headers.get("content-length")) > limit) throw new StoreError(413, "文档超过大小限制。")
   const reader = request.body?.getReader()
@@ -44,6 +44,11 @@ export async function inputBody(request: Request): Promise<Record<string, unknow
   try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")) }
   catch { throw new StoreError(400, "请求内容无效。") }
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new StoreError(400, "请求内容无效。")
+  return body
+}
+
+export async function inputBody(request: Request): Promise<Record<string, unknown> & { title: string; prompt: string; blob: Blob }> {
+  const body = await jsonBody(request, Math.ceil(MAX_FILE_BYTES * 4 / 3) + 128 * 1024)
   if (typeof body.title !== "string" || body.title.length > 200 || typeof body.prompt !== "string" || body.prompt.length > 20000 || typeof body.blob !== "string" || body.blob.length > Math.ceil(MAX_FILE_BYTES * 4 / 3) || /[^A-Za-z0-9+/=]/.test(body.blob)) throw new StoreError(400, "文档内容或字段无效。")
   const bytes = Buffer.from(body.blob, "base64")
   if (bytes.toString("base64") !== body.blob || bytes.length > MAX_FILE_BYTES) throw new StoreError(400, "文档内容无效。")
@@ -65,7 +70,13 @@ export function creation(body: Awaited<ReturnType<typeof inputBody>>) {
     const reference = body.copiedFrom as Record<string, unknown> | undefined
     copiedFrom = { documentId: identifier(reference?.documentId), revisionId: identifier(reference?.revisionId) }
   } else if (body.copiedFrom !== undefined) throw new StoreError(400, "复制来源无效。")
-  return { blob: body.blob, title: body.title, prompt: body.prompt, source, fileName: body.fileName as string | undefined, copiedFrom }
+  let retentionConsent: RetentionConsent | undefined
+  if (body.retentionConsent !== undefined && body.retentionConsent !== null) {
+    const consent = body.retentionConsent as Record<string, unknown>
+    if (typeof consent !== "object" || Array.isArray(consent) || typeof consent.contextId !== "string" || consent.contextId.length > 64 || typeof consent.policyVersion !== "string" || consent.policyVersion.length > 64 || typeof consent.expiresOn !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(consent.expiresOn)) throw new StoreError(400, "保留期限确认无效。")
+    retentionConsent = { contextId: consent.contextId, policyVersion: consent.policyVersion, expiresOn: consent.expiresOn }
+  }
+  return { blob: body.blob, title: body.title, prompt: body.prompt, source, fileName: body.fileName as string | undefined, copiedFrom, retentionConsent }
 }
 
 export async function wire(value: OpenDocument) {
@@ -73,7 +84,7 @@ export async function wire(value: OpenDocument) {
 }
 
 export function failureResponse(failure: unknown) {
-  if (failure instanceof StoreError) return NextResponse.json({ error: failure.message }, { status: failure.status, headers: { "Cache-Control": "private, no-store" } })
+  if (failure instanceof StoreError) return NextResponse.json({ error: failure.message, ...(failure.code ? { code: failure.code } : {}), ...(failure.session ? { session: failure.session } : {}) }, { status: failure.status, headers: { "Cache-Control": "private, no-store" } })
   console.error("Document storage request failed")
   return NextResponse.json({ error: "文档存储暂时不可用，请保留当前编辑并重试。" }, { status: 503, headers: { "Cache-Control": "private, no-store" } })
 }

@@ -1,20 +1,39 @@
 import "server-only"
 import { connectDatabase } from "../database/connection"
 import { DocumentRepository } from "./repository"
+import { DocumentSessionRepository } from "./session-repository"
+import { retentionPolicy } from "./retention-policy"
+import { retentionRuntimeReady } from "./retention-cleanup"
 
-const state = globalThis as typeof globalThis & { equilensRepository?: Promise<DocumentRepository> }
-const databaseState = globalThis as typeof globalThis & { equilensDocumentDatabase?: ReturnType<typeof connectDatabase> }
-export function documentDatabase() {
-  databaseState.equilensDocumentDatabase ??= connectDatabase().catch(failure => {
-    delete databaseState.equilensDocumentDatabase
+export type DocumentServices = { documents: DocumentRepository; sessions: DocumentSessionRepository }
+type InitializedDocumentServices = DocumentServices & { database: Awaited<ReturnType<typeof connectDatabase>> }
+const state = globalThis as typeof globalThis & { equilensDocumentServices?: Promise<InitializedDocumentServices> }
+
+async function createDocumentServices(): Promise<InitializedDocumentServices> {
+  const database = await connectDatabase()
+  const sessions = new DocumentSessionRepository(database, {
+    now: () => new Date(),
+    readPolicy: () => { try { return retentionPolicy() } catch { return null } },
+  })
+  return { database, sessions, documents: new DocumentRepository(database, sessions) }
+}
+
+export function initializeDocumentServices(): Promise<InitializedDocumentServices> {
+  state.equilensDocumentServices ??= createDocumentServices().catch(failure => {
+    delete state.equilensDocumentServices
     throw failure
   })
-  return databaseState.equilensDocumentDatabase
+  return state.equilensDocumentServices
 }
-export function documentRepository() {
-  state.equilensRepository ??= documentDatabase().then(db => new DocumentRepository(db)).catch(failure => {
-    delete state.equilensRepository
-    throw failure
-  })
-  return state.equilensRepository
+
+export async function documentServices(): Promise<DocumentServices> {
+  await retentionRuntimeReady()
+  return initializeDocumentServices()
 }
+
+export async function documentReviewServices() {
+  await retentionRuntimeReady()
+  return initializeDocumentServices()
+}
+
+export async function documentRepository() { return (await documentServices()).documents }

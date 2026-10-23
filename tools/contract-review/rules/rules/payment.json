@@ -78,7 +78,7 @@
     "ruleId": "PAY-003",
     "category": "付款条件与时间",
     "title": "逾期付款违约责任",
-    "status": "已发布",
+    "status": "待核对",
     "appliesTo": {
       "scene": "mep-sub-2026",
       "role": "专业分包人"

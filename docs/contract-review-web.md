@@ -2,7 +2,7 @@
 
 ## 使用
 
-1. 根目录安装锁定依赖，在忽略的 `.env.local` 填写 AI_BASE_URL、AI_MODEL、AI_API_KEY。
+1. 根目录安装锁定依赖，登记 ANONYMOUS_DATA_RETENTION_DAYS；在忽略的 `.env.local` 填写 AI_BASE_URL、AI_MODEL、AI_API_KEY。
 2. `pnpm dev` 自动打包 DOCX 子进程解析器，Node.js instrumentation 启动任务执行器。
 3. 导入基础 DOCX，或打开已有文档；修改后先保存。
 4. 在右侧「合同审查」确认立场、项目类型、地域、发送目标、记录保留时长及外发授权。
@@ -18,7 +18,7 @@
 | --- | --- |
 | AI_REVIEW_MODE | 后端固定 published/debug；开发默认 debug，生产默认 published |
 | AI_REVIEW_RETENTION_DAYS | 任务及派生记录固定保留天数，1–365；开发默认 7，生产必配 |
-| AI_REVIEW_MAX_PROMPT_CHARS | 单次完整序列化请求上限；调试暂用 24000，正式模式须显式配置 |
+| AI_REVIEW_MAX_PROMPT_CHARS | 单次完整序列化请求上限；调试默认 240000，正式模式须显式配置经验证的值，范围 1000–240000 |
 | AI_AGENT_MAX_CALLS | 原任务累计请求上限，默认 25，可配置 1–25，跨重试/恢复不清零 |
 
 内置规则尚未发布，published 模式会拒绝提交。debug 必须在网页明确确认未核对资料，报告保持该标记。
@@ -47,6 +47,7 @@
 | POST /api/contract-reviews/[id] | action=cancel，或 action=retry 且重新确认 externalProcessingConsent=true |
 
 写入同源检查，响应 private,no-store，参数和密钥不上前端日志。重复 key/同输入返回原任务，变化输入返回 409。
+所有请求携带 X-Document-Context；成功响应回传相同上下文，浏览器在解码和显示前检查，错误沿用文档会话 code。
 取消只撤销后续处理，不承诺已到模型服务的请求可撤回或不计费。
 
 ## 存储与恢复
@@ -63,12 +64,16 @@
 阶段结果与终态在短事务中保存，解析/模型不在事务内运行。到期立即拒读/执行/外发，后台清理任务及派生物。
 SQLite 备份包含上述表；恢复后按当前到期时间守卫，完整项目/法律业务恢复尚未验收。
 
-当前开发分支尚未合并主分支新增的匿名保留界面/会话上下文协议；整合时保留此任务独立 schema，
-将新任务入口同时接主分支会话守卫，不应以旧 cookie 接口绕过新上下文检查。
+任务复用主分支的数据库、会话仓储和删除日志就绪屏障，保持独立任务 schema。
+事务内检查上下文及 read/review 权限；领取、解析和每次预算预留均重新检查。
+到期取审查期限与原会话期限的较早值；只读导出窗口可读取已有结果和取消，不允许提交、重试或外发。
+缺少 documentContextId 的旧任务不能恢复外发，需重新确认后提交新任务。已有文档不会自动登记期限，
+存量仍须按部署说明通知、登记并完成导出窗口处理。
 
-## 本轮检查范围
+## 历史实现检查范围
 
 `node node_modules/typescript/bin/tsc --noEmit --incremental false` 通过；首次发现配置 mode 推断问题，修正后通过。
 按用户要求，没有运行测试、构建、浏览器、数据库迁移/恢复或真实模型请求。
 UI 采用官方 Blocks 目录和 Tabs 示例，沿用现有 Resizable 工作区；无专用审查 block，使用已有官方组件组合。
 审查授权的原生 checkbox 为语义表单控件，无额外定制视觉样式。没有新增组件依赖。
+整合后的实际检查以[主分支整合验证](reviews/2026-10-23-contract-review-main-integration.md)为准。
