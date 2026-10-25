@@ -1,4 +1,21 @@
 // 合同审查的共享类型。规则与来源均为不可变条目，任务只引用"已发布"版本。
+import type { SceneCandidate } from "./scenes"
+import type { AuditResult } from "./agent/audit"
+import type { RoutingResult } from "./agent/router"
+
+export type Collaboration = {
+  version: "multi-agent-v1"; manifestSha256: string
+  phase: "identifying" | "reviewing" | "auditing" | "completed"
+  primaryCompleted: boolean; routing?: RoutingResult; primary?: ReviewResult; audit?: AuditResult
+}
+
+export type SceneSelection = {
+  status: "matched" | "unsupported" | "needs-confirmation"
+  sceneId: string | null
+  reason: string
+  evidence: { paragraphIndex: number; quote: string }[]
+  missingInfo: string[]
+}
 
 export type PublicationStatus = "草拟" | "待核对" | "已发布" | "已停用"
 
@@ -117,6 +134,8 @@ export type Finding = {
   suggestion: string
   pending: string[]
   reviewStatus: "待人工复核"
+  /** 后端为未取得有效结论的必检项补录的占位条目，不是模型结论，不参与复核。 */
+  placeholder?: true
   checkedParagraphIndexes?: number[]
   citations?: {
     documentVersionId?: string
@@ -178,6 +197,10 @@ export type ReviewResult = {
   coverage: CategoryReport[]
   usage: { inputTokens: number; outputTokens: number; totalTokens: number } | null
   model: string
+  sceneCandidates?: SceneCandidate[]
+  sceneSelection?: SceneSelection
+  sceneSelectionReadParagraphIndexes?: number[]
+  collaboration?: Collaboration
   agent?: {
     engine: "ai-sdk"
     skill: { id: string; version: string; sha256: string; loaded: boolean }

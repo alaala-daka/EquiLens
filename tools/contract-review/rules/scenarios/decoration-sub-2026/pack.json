@@ -1,0 +1,14 @@
+{
+  "version": "decoration-sub-2026-0.1-draft",
+  "name": "房建装饰装修专业分包专项清单",
+  "status": "待核对",
+  "description": "合成联调清单；非已核对法律规则，不代表真实企业制度。",
+  "reviewer": null,
+  "reviewedAt": null,
+  "ruleFiles": [
+    "rules.json"
+  ],
+  "sourceFiles": [
+    "sources.json"
+  ]
+}

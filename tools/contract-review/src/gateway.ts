@@ -1,5 +1,5 @@
 import { modelConfig } from "../../../src/server/ai/client"
-import { ReviewError, safeError } from "./errors"
+import { incompleteOutput, ReviewError, safeError } from "./errors"
 import type { AskModel } from "./review"
 
 export type GatewayOptions = {
@@ -86,7 +86,7 @@ export function createGatewayAskModel(options: GatewayOptions = {}): AskModel {
       const message = record(choice.message)
       if (choice.finish_reason !== "stop" || message.refusal ||
           (message.tool_calls != null && (!Array.isArray(message.tool_calls) || message.tool_calls.length)) ||
-          message.function_call != null) throw new ReviewError("AI_OUTPUT_INCOMPLETE")
+          message.function_call != null) throw incompleteOutput(choice.finish_reason, message.refusal)
       if (typeof message.content !== "string" || !message.content.trim()) throw new ReviewError("AI_RESPONSE_INVALID")
       const usage = envelope.usage && typeof envelope.usage === "object" ? envelope.usage as Record<string, unknown> : {}
       const counts = [usage.prompt_tokens, usage.completion_tokens, usage.total_tokens]

@@ -1,0 +1,6 @@
+{
+  "id": "steel-structure-review",
+  "name": "房建钢结构专业分包审查",
+  "version": "0.1-draft",
+  "description": "代表专业分包人审查房建钢结构专业分包，按本次通用与专项规则逐项检查，保留证据、缺失和待核实。"
+}
