@@ -74,7 +74,7 @@ function transport(rules: RuleEntry[], mode: Mode) {
 
 const env = { AI_BASE_URL: "https://synthetic.invalid/v1", AI_MODEL: "synthetic", AI_API_KEY: "synthetic-no-network" }
 
-async function claimedMultiAgentJob() {
+async function claimedMultiAgentJob(text = TEXT) {
   const s = await setup()
   const { bundle, rules } = mepBundle()
   const input = structuredClone(s.input)
@@ -86,8 +86,8 @@ async function claimedMultiAgentJob() {
   const task = await s.repository.create(s.owner, randomUUID(), s.request, input, 25, 7)
   const job = (await s.repository.claim())!
   assert.equal(job.id, task.id)
-  const paragraphs = [{ index: 0, text: TEXT, inTable: false }]
-  const snapshot = { id: randomUUID(), paragraphs, complete: true, textSha256: createHash("sha256").update(TEXT).digest("hex") }
+  const paragraphs = text ? [{ index: 0, text, inTable: false }] : []
+  const snapshot = { id: randomUUID(), paragraphs, complete: true, textSha256: createHash("sha256").update(text).digest("hex") }
   await s.repository.snapshot(job, snapshot)
   job.snapshot = snapshot
   return { s, job, rules, bundle }
@@ -132,5 +132,18 @@ test("AC-03/21/23: a primary without any checked range cannot seal, skip recover
     assert.equal(saved.collaboration.primaryCompleted, false)
     assert.equal(saved.collaboration.audit, undefined)
     assert.ok(saved.findings.every((item: { checkedParagraphIndexes?: number[] }) => !item.checkedParagraphIndexes?.length))
+  } finally { await s.close() }
+})
+
+test("AC-03/23: an empty document fails before any model request", async () => {
+  const { s, job, rules } = await claimedMultiAgentJob("")
+  try {
+    const state = transport(rules, "substantive")
+    await runClaimedReview(job, { repository: s.repository, env, fetcher: state.fetcher })
+    assert.deepEqual(state.roles, [])
+    const rows = (await s.database.transaction(c => c.query("SELECT state, calls_used, error_code FROM equilens_review_tasks WHERE id=$1", [job.id]))).rows
+    assert.equal(String(rows[0].state), "failed")
+    assert.equal(String(rows[0].error_code), "REVIEW_INPUT_EMPTY")
+    assert.equal(Number(rows[0].calls_used), 0)
   } finally { await s.close() }
 })

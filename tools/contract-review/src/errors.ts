@@ -1,5 +1,6 @@
 const messages: Record<string, string> = {
   REVIEW_INPUT_INVALID: "合同文字、段落编号或调用参数无效。",
+  REVIEW_INPUT_EMPTY: "文档正文为空，无法开始合同审查；请先录入或导入合同内容。",
   REVIEW_INPUT_TOO_LARGE: "合同或提示内容超过本次输入预算，请减少材料或调整已验证的配置。",
   REVIEW_RULES_UNAVAILABLE: "没有可用的已发布规则包；当前内置资料仅供显式开启调试模式联调。",
   REVIEW_CONTEXT_UNMATCHED: "已发布的规则与当前审查条件（立场、项目类型、地域）不一致，没有可执行的检查项；请核对所选条件。",

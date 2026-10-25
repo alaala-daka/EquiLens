@@ -42,6 +42,7 @@ export function Workbench() {
   const [unsavedNotice, setUnsavedNotice] = useState(false)
   const dirty = useRef(false)
   const [confirmation, setConfirmation] = useState<RetentionConfirmationRequest | null>(null)
+  const [confirming, setConfirming] = useState(false)
   const resolver = useRef<((accepted: boolean) => void) | null>(null)
   const sessionRequest = useRef<{ generation: number; controller: AbortController | null }>({ generation: 0, controller: null })
   const [bridge] = useState(createSessionBridge)
@@ -60,12 +61,13 @@ export function Workbench() {
       request.signal.removeEventListener("abort", abort)
       resolver.current = null
       setConfirmation(null)
+      setConfirming(false)
       resolve(accepted)
     }
     const abort = () => settle(false)
     resolver.current = settle
     if (request.signal.aborted) settle(false)
-    else { request.signal.addEventListener("abort", abort, { once: true }); setConfirmation(request) }
+    else { request.signal.addEventListener("abort", abort, { once: true }); setConfirming(true); setConfirmation(request) }
   }), [])
   const [listStore] = useState(() => createDocumentListStore(async signal => {
     try { return await listDocuments(signal) }
@@ -305,7 +307,7 @@ export function Workbench() {
           </AlertDialogContent>
         </AlertDialog>}
         {error && <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>}
-        {operationState.operation && <div role="status" className="mb-4 flex items-center gap-2 text-sm"><LoaderCircleIcon className="size-4 animate-spin" />{operationState.operation === "creating" ? "正在新建文档" : operationState.operation === "importing" ? "正在导入文档" : "正在打开文档"}<Button variant="ghost" size="sm" onClick={() => operations.cancel()}>取消</Button></div>}
+        {operationState.operation && !confirming && <div role="status" className="mb-4 flex items-center gap-2 text-sm"><LoaderCircleIcon className="size-4 animate-spin" />{operationState.operation === "creating" ? "正在新建文档" : operationState.operation === "importing" ? "正在导入文档" : "正在打开文档"}<Button variant="ghost" size="sm" onClick={() => operations.cancel()}>取消</Button></div>}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 gap-6">
           <TabsList>
             <TabsTrigger ref={documentsTab} value="documents"><FileTextIcon />文档</TabsTrigger>

@@ -7,6 +7,20 @@ import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { ReviewResult } from "@/lib/contract-reviews/types"
 import { compactText, groupIssues, isCompleteNoRisk } from "../../tools/contract-review/src/presentation"
+import { toMarkdown } from "../../tools/contract-review/src/report"
+
+function downloadReport(result: ReviewResult) {
+  const blob = new Blob([toMarkdown(result)], { type: "text/markdown;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = (result.documentTitle.trim() || "合同审查").replace(/[\\/:*?"<>|]/g, "_") + "-审查报告.md"
+  link.click()
+  URL.revokeObjectURL(url)
+}
+function ExportReport({ result }: { result: ReviewResult }) {
+  return <Button type="button" variant="outline" size="sm" onClick={() => downloadReport(result)}>导出报告（Markdown）</Button>
+}
 
 type Finding = ReviewResult["findings"][number]
 function Citation({ result, index, quote }: { result: ReviewResult; index: number; quote: string }) {
@@ -106,8 +120,8 @@ export function ContractReviewReport({ result }: { result: ReviewResult }) {
   if (result.sceneCandidates && result.sceneSelection?.status !== "matched") return <div className="flex flex-col gap-4">
     <SceneIdentification result={result} />
     {!result.sceneSelection && <p role="status" className="text-sm">{result.errors.length ? "场景识别未完成" : "正在识别场景"}</p>}
-    {result.sceneSelection && <p className="text-sm">请核对合同类型或补充材料后重新审查。</p>}
     {result.errors.map((item, index) => <p role="alert" key={index} className="text-sm text-destructive">{item.message}</p>)}
+    <div className="flex justify-end"><ExportReport result={result} /></div>
   </div>
   return <CompletedReviewReport result={result} />
 }
@@ -158,5 +172,6 @@ function CompletedReviewReport({ result }: { result: ReviewResult }) {
     {result.rejected.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline">未采用的回答（{result.rejected.length}）</Button></CollapsibleTrigger>
       <CollapsibleContent className="space-y-2 pt-3">{result.rejected.map((item, index) => <p className="break-words text-sm" key={index}>{item.ruleId}：{item.reason} · {item.detail}</p>)}</CollapsibleContent>
     </Collapsible>}
+    <div className="flex justify-end"><ExportReport result={result} /></div>
   </div>
 }

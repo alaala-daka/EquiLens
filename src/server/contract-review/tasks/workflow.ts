@@ -51,6 +51,8 @@ export async function runClaimedReview(job: ClaimedReview, overrides: RunnerOver
       await repository.snapshot(job, job.snapshot)
     }
     const snapshot = job.snapshot
+    // 空文档没有可审查内容，先明确失败，避免进入解析/模型阶段消耗预算。
+    if (!snapshot.paragraphs.some(paragraph => paragraph.text.trim())) throw new ReviewError("REVIEW_INPUT_EMPTY")
     progress.paragraphCount = snapshot.paragraphs.length
     const settings = {
       paragraphs: snapshot.paragraphs, complete: snapshot.complete,
