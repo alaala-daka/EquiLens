@@ -9,7 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog"
 import { ContractReviewReport } from "@/components/contract-review-report"
 import { listReviewTasks, readReviewTask, createReviewTask, actOnReviewTask } from "@/lib/contract-reviews/client"
-import { taskStageLabel, taskStateLabel, type ReviewAvailability, type ReviewTask, type SubmitReview } from "@/lib/contract-reviews/types"
+import { taskDisplayStage, taskDisplayState, type ReviewAvailability, type ReviewTask, type SubmitReview } from "@/lib/contract-reviews/types"
 import { errorMessage } from "@/lib/documents/types"
 import { DocumentSessionError } from "@/lib/documents/client"
 
@@ -21,7 +21,8 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
   const [tasks, setTasks] = useState<ReviewTask[]>([])
   const [selected, setSelected] = useState(initialTaskId ?? "")
   const [detail, setDetail] = useState<ReviewTask | null>(null)
-  const [region, setRegion] = useState("上海")
+  // 地域是用户确认的审查条件，不预填，避免默认值被直接提交。
+  const [region, setRegion] = useState("")
   const [consentRevision, setConsentRevision] = useState("")
   const consent = consentRevision === revisionId
   const [draftConsent, setDraftConsent] = useState(false)
@@ -103,7 +104,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
   return <section aria-label="合同审查" className="flex flex-col gap-6 p-4">
     <form onSubmit={event => void submit(event)} className="flex flex-col gap-4">
       <div className="space-y-1 text-sm"><p className="font-medium">合同审查</p><p className="text-muted-foreground">审查立场：专业分包人</p><p className="break-all text-xs text-muted-foreground">保存版本：{revisionId}</p></div>
-      <label className="grid gap-2 text-sm">项目地域<Input value={region} required maxLength={100} disabled={submitting} onChange={event => { setRegion(event.target.value); setConsentRevision("") }} /></label>
+      <label className="grid gap-2 text-sm">项目地域<Input value={region} required maxLength={100} placeholder="如：上海" disabled={submitting} onChange={event => { setRegion(event.target.value); setConsentRevision("") }} /></label>
       {configuration?.mode === "debug" && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draftConsent} disabled={submitting} onChange={event => setDraftConsent(event.target.checked)} /><span>我已知悉审查依据尚未核对，结果仅供联调，需人工复核。</span></label>}
       {configuration?.ready && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} disabled={submitting} onChange={event => setConsentRevision(event.target.checked ? revisionId : "")} /><span>我确认上述审查条件，并有权将此保存版本发送至 {configuration.providerHost}（{configuration.model}）进行处理。审查记录最多保留 {configuration.retentionDays} 天，原资料先到期时一并清理。</span></label>}
       {dirty && <p role="status" className="text-sm">请先保存更改，再开始审查。</p>}
@@ -116,11 +117,11 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     {loading && <p role="status" className="text-sm text-muted-foreground">正在读取审查任务</p>}
     {tasks.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline">审查记录（{tasks.length}）</Button></CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-2 pt-3">{tasks.map(item => <Button type="button" key={item.id} variant={selected === item.id ? "secondary" : "ghost"} className="h-auto justify-start whitespace-normal text-left" onClick={() => { setSelected(item.id); setError("") }}>
-        {new Date(item.createdAt).toLocaleString("zh-CN")} · {taskStateLabel[item.state]}
+        {new Date(item.createdAt).toLocaleString("zh-CN")} · {taskDisplayState(item)}
       </Button>)}</CollapsibleContent>
     </Collapsible>}
     {task && <div className="flex flex-col gap-4 border-t pt-4">
-      <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{taskStateLabel[task.state]}</Badge><span role="status" className="text-sm">{taskStageLabel[task.stage] ?? "处理中"}</span></div>
+      <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{taskDisplayState(task)}</Badge><span role="status" className="text-sm">{taskDisplayStage(task)}</span></div>
       <p className="text-sm text-muted-foreground">{new Date(task.createdAt).toLocaleString("zh-CN")} · 保留至 {new Date(task.expiresAt).toLocaleString("zh-CN")}</p>
       {task.revisionId !== revisionId && <p role="note" className="text-sm">此报告对应历史保存版本；当前文档的修改未包含在本次审查中。</p>}
       {active && <p className="text-sm">已读 {task.progress.readParagraphCount} / {task.progress.paragraphCount} 段，已提交 {task.progress.submittedRuleCount} 条检查。</p>}

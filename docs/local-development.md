@@ -15,8 +15,10 @@ cd D:\EquiLens-restore
 pnpm dev
 ```
 
-按终端显示的地址访问，默认 [http://localhost:3000](http://localhost:3000)。
+用 [http://localhost:3000](http://localhost:3000) 打开；`127.0.0.1` 已加入 `allowedDevOrigins`，也可直接使用。
 同一次使用保持相同的域名和端口；localhost 与 127.0.0.1 的浏览器会话独立。
+用局域网地址或手机调试时，先把实际访问的主机名加入 `next.config.ts` 的 `allowedDevOrigins` 并重启；
+未登记的主机名会被 Next 开发服务器拦截 `/_next/*` 资源，页面会停在「正在读取会话」且不显示任何错误。
 启动命令会生成 DOCX 校验、合同解析和保留维护程序，再启动 Next.js；不直接使用 `next dev`。
 按 Ctrl+C 停止服务。配置变更后需重启。
 

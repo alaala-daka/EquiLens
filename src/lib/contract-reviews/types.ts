@@ -25,3 +25,15 @@ export const taskStageLabel: Record<string, string> = {
   queued: "等待处理", parsing: "解析文档", prepared: "准备审查", identifying: "识别场景", reviewing: "主审合同",
   auditing: "独立复核", validating: "校验结果", completed: "处理结束", recovering: "恢复排队", cancelled: "已取消", failed: "处理失败",
 }
+
+/** 场景识别未匹配是受控停止，不是执行失败；界面不能显示「失败」。 */
+export function taskDisplayState(task: Pick<ReviewTask, "state" | "error">): string {
+  if (task.error?.code === "REVIEW_SCENE_UNSUPPORTED") return "场景不支持"
+  if (task.error?.code === "REVIEW_SCENE_UNCERTAIN") return "场景待确认"
+  return taskStateLabel[task.state]
+}
+
+export function taskDisplayStage(task: Pick<ReviewTask, "stage" | "error">): string {
+  if (task.error?.code === "REVIEW_SCENE_UNSUPPORTED" || task.error?.code === "REVIEW_SCENE_UNCERTAIN") return "等待补充材料"
+  return taskStageLabel[task.stage] ?? "处理中"
+}
