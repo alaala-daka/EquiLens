@@ -7,6 +7,7 @@ import { parseDocument, paragraphsFromString } from "./document"
 import { ReviewError, safeError } from "./errors"
 import { prepareReviewInput } from "./input"
 import { loadRulePack } from "./pack"
+import { DEFAULT_AGENT_CALLS } from "./limits"
 import { toMarkdown } from "./report"
 import { defaultSceneId, sceneContext } from "./scenes"
 import type { FindingKind, ReviewResult } from "./types"
@@ -35,7 +36,7 @@ async function main() {
   }
   if ((!options.contract && !options.challenge) || (options.challenge && options.contract)) throw new ReviewError("REVIEW_INPUT_INVALID")
   try { process.loadEnvFile(".env.local") } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error }
-  const maxCalls = Number(process.env.AI_AGENT_MAX_CALLS ?? 25)
+  const maxCalls = Number(process.env.AI_AGENT_MAX_CALLS ?? DEFAULT_AGENT_CALLS)
   const maxPromptChars = Number(process.env.AI_REVIEW_MAX_PROMPT_CHARS ?? (options.debug ? 240000 : NaN))
   if (!Number.isSafeInteger(maxPromptChars)) throw new ReviewError("REVIEW_BUDGET_UNVERIFIED")
   const pack = await loadRulePack(resolve("tools/contract-review/rules"))

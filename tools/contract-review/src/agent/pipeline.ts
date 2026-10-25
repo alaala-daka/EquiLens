@@ -8,6 +8,7 @@ import { routeScene, validateRoute } from "./router"
 import { auditReview } from "./audit"
 import { abortable } from "./abort"
 import { publishedRules } from "../pack"
+import { DEFAULT_AGENT_CALLS, MAX_AGENT_CALLS } from "../limits"
 import { hasCheckedRange } from "../findings"
 
 export type MultiAgentOptions = ReviewInput & AgentSettings & {
@@ -27,9 +28,9 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
   const env = options.env ? { ...options.env } : undefined
   const auditEffort = options.auditEffort ?? "default"
   validateBundles(bundles)
-  const maxCalls = options.maxCalls ?? 25, timeoutMs = options.timeoutMs ?? 600000
+  const maxCalls = options.maxCalls ?? DEFAULT_AGENT_CALLS, timeoutMs = options.timeoutMs ?? 600000
   let callsUsed = options.callsUsed ?? 0
-  if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > 25 || !Number.isSafeInteger(callsUsed) || callsUsed < 0 || callsUsed > maxCalls ||
+  if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > MAX_AGENT_CALLS || !Number.isSafeInteger(callsUsed) || callsUsed < 0 || callsUsed > maxCalls ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000 || !["default", "low"].includes(auditEffort)) throw new ReviewError("REVIEW_INPUT_INVALID")
   for (const [value, minimum, maximum] of [[options.maxPromptChars ?? 240000, 1000, 240000],
     [options.requestTimeoutMs ?? 90000, 1, 90000], [options.maxToolChars ?? 16000, 1000, 64000]]) {

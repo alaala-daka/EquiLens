@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto"
 import { ToolLoopAgent, stepCountIs, tool } from "ai"
 import { z } from "zod"
 import { ReviewError, safeError } from "../errors"
+import { DEFAULT_AGENT_CALLS, MAX_AGENT_CALLS } from "../limits"
 import { applicability } from "../match"
 import { publishedRules, publishedSources } from "../pack"
 import type { LoadedPack, ReviewResult } from "../types"
@@ -66,10 +67,10 @@ export function validateAuditChecks(raw: unknown[], primary: ReviewResult, pack:
 /** 独立机器核对入口，绝不覆盖主审或完成整份人工复核。 */
 export async function auditReview(options: AuditOptions): Promise<AuditResult> {
   const primary = structuredClone(options.primary), pack = structuredClone(options.pack)
-  const maxCalls = options.maxCalls ?? 25, timeoutMs = options.timeoutMs ?? 600000
+  const maxCalls = options.maxCalls ?? DEFAULT_AGENT_CALLS, timeoutMs = options.timeoutMs ?? 600000
   const callsUsed = options.callsUsed ?? primary.callsUsed
   const maxPromptChars = options.maxPromptChars ?? 240000, requestTimeoutMs = options.requestTimeoutMs ?? 90000
-  if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > 25 ||
+  if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > MAX_AGENT_CALLS ||
       !Number.isSafeInteger(primary.callsUsed) || primary.callsUsed < 0 || primary.callsUsed > maxCalls ||
       !Number.isSafeInteger(callsUsed) || callsUsed < primary.callsUsed || callsUsed > maxCalls ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000 ||

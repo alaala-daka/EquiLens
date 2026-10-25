@@ -140,3 +140,13 @@ test("AC-21: machine audit doubts or incomplete audit prevent complete no-risk p
   clear.collaboration!.audit!.checks[0] = { ...clear.collaboration!.audit!.checks[0], outcome: "需人工核对", issueTypes: ["依据支持"] }
   assert.equal(isCompleteNoRisk(clear), false)
 })
+
+test("AC-23: cumulative call cap accepts 40 and rejects 41 before any request", async () => {
+  const rejected = transport("mep-sub-2026")
+  await assert.rejects(reviewWithAgents({ ...options, maxCalls: 41, fetcher: rejected.fetcher }), { code: "REVIEW_INPUT_INVALID" })
+  assert.equal(rejected.roles.length, 0)
+  const accepted = transport("mep-sub-2026")
+  const result = await reviewWithAgents({ ...options, maxCalls: 40, fetcher: accepted.fetcher })
+  assert.equal(result.status, "success")
+  assert.ok(result.callsUsed <= 40)
+})

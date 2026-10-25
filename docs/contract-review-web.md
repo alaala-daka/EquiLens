@@ -44,7 +44,7 @@
 | AI_REVIEW_MODE | 后端固定 published/debug；开发默认 debug，生产默认 published |
 | AI_REVIEW_RETENTION_DAYS | 任务及派生记录固定保留天数，1–365；开发默认 7，生产必配 |
 | AI_REVIEW_MAX_PROMPT_CHARS | 单次完整序列化请求上限；调试默认 240000，正式模式须显式配置经验证的值，范围 1000–240000 |
-| AI_AGENT_MAX_CALLS | 原任务累计请求上限，默认 25，可配置 1–25，跨重试/恢复不清零 |
+| AI_AGENT_MAX_CALLS | 原任务累计请求上限，默认 25，可配置 1–40，跨重试/恢复不清零 |
 | AI_AUDIT_REASONING_EFFORT | 独立复核的 default/low 配置，默认 default；low 仅用于已验证支持的模型服务，随任务固定 |
 
 内置规则尚未发布，published 模式会拒绝提交。debug 必须在网页明确确认未核对资料，报告保持该标记。

@@ -1,6 +1,7 @@
 import { ToolLoopAgent, stepCountIs } from "ai"
 import { incompleteOutput, ReviewError, safeError } from "../errors"
 import type { ReviewInput } from "../input"
+import { DEFAULT_AGENT_CALLS, MAX_AGENT_CALLS } from "../limits"
 import type { LoadedPack, ReviewResult } from "../types"
 import { createAgentModel } from "./model"
 import { ReviewSession } from "./session"
@@ -52,8 +53,8 @@ function integer(value: number, min: number, max: number) {
 }
 /** 只运行单次有界任务；持久化、项目鉴权、租约和恢复由调用方完成。 */
 export async function reviewWithAgent(options: AgentReviewOptions): Promise<ReviewResult> {
-  const maxCalls = integer(options.maxCalls ?? 25, 1, 25)
-  const callsUsed = integer(options.callsUsed ?? 0, 0, 25)
+  const maxCalls = integer(options.maxCalls ?? DEFAULT_AGENT_CALLS, 1, MAX_AGENT_CALLS)
+  const callsUsed = integer(options.callsUsed ?? 0, 0, MAX_AGENT_CALLS)
   const maxPromptChars = integer(options.maxPromptChars ?? 240000, 1000, 240000)
   const maxToolChars = integer(options.maxToolChars ?? 16000, 1000, 64000)
   const timeoutMs = integer(options.timeoutMs ?? 600000, 1, 600000)

@@ -13,6 +13,7 @@ import type { ReviewContext } from "./types"
 import { reviewWithAgent } from "./agent"
 import { reviewWithAgents } from "./agent/pipeline"
 import { loadSceneBundles } from "./bundles"
+import { DEFAULT_AGENT_CALLS } from "./limits"
 
 type CliOptions = {
   file: string; rules: string; outDir: string; title?: string
@@ -26,9 +27,9 @@ const usage = [
   "--rules <目录>  --out <目录>  --format json|markdown|both  --title <标题>",
   "--role <确认的审查立场>  --scene <场景标识>  --region <确认的地域>",
   "--scene auto：由 Agent 在解析后识别场景；必须显式提供 --role，自动启用 Agent",
-  "--multi-agent：独立场景识别、场景主审和复核；四场景共用最多25次请求/600秒，必须显式提供 --role",
+  "--multi-agent：独立场景识别、场景主审和复核；四场景共用最多40次请求/600秒，必须显式提供 --role",
   "--batch <1到20>：固定编排每批规则数，默认7；固定编排合计最多3次请求",
-  "--agent：使用 AI SDK Agent + skill + 工具；联调默认最多25次模型请求，可配置 AI_AGENT_MAX_CALLS（1–25）",
+  "--agent：使用 AI SDK Agent + skill + 工具；联调默认最多25次模型请求，可配置 AI_AGENT_MAX_CALLS（1–40）",
   "真实审查会发送所选合同文字并产生模型费用。调试结果必须人工核对。",
 ].join("\n")
 
@@ -126,8 +127,8 @@ async function main(): Promise<void> {
   }
   const auditEffort = process.env.AI_AUDIT_REASONING_EFFORT ?? "default"
   if (auditEffort !== "default" && auditEffort !== "low") throw new ReviewError("AI_CONFIG_INVALID")
-  const result = options.multiAgent ? await reviewWithAgents({ ...common, bundles, auditEffort, maxCalls: Number(process.env.AI_AGENT_MAX_CALLS ?? 25) }) : options.agent
-    ? await reviewWithAgent({ ...common, ...(options.autoScene ? { sceneCandidates: candidates } : {}), maxCalls: Number(process.env.AI_AGENT_MAX_CALLS ?? 25) })
+  const result = options.multiAgent ? await reviewWithAgents({ ...common, bundles, auditEffort, maxCalls: Number(process.env.AI_AGENT_MAX_CALLS ?? DEFAULT_AGENT_CALLS) }) : options.agent
+    ? await reviewWithAgent({ ...common, ...(options.autoScene ? { sceneCandidates: candidates } : {}), maxCalls: Number(process.env.AI_AGENT_MAX_CALLS ?? DEFAULT_AGENT_CALLS) })
     : await reviewContract({ ...common, segments, batchSize: options.batchSize,
       model: createGatewayAskModel(), modelName: process.env.AI_MODEL?.trim() || "glm-5.3-flash" })
   const title = result.documentTitle.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/[ .]+$/g, "").slice(0, 80) || "contract"

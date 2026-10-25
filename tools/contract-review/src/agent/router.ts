@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { ToolLoopAgent, stepCountIs, tool } from "ai"
 import { z } from "zod"
 import { ReviewError, safeError } from "../errors"
+import { DEFAULT_AGENT_CALLS, MAX_AGENT_CALLS } from "../limits"
 import type { SceneCandidate } from "../scenes"
 import type { Paragraph, ReviewContext, ReviewResult, SceneSelection } from "../types"
 import type { AgentSettings } from "./run"
@@ -35,8 +36,8 @@ export function validateRoute(raw: unknown, paragraphs: Paragraph[], complete: b
 /** 独立场景上下文：只有目录元数据和完整解析正文，没有法律来源或主审工具。 */
 export async function routeScene(options: Options): Promise<RoutingResult> {
   const { paragraphs, candidates, context, complete } = structuredClone({ paragraphs: options.paragraphs, candidates: options.candidates, context: options.context, complete: options.complete })
-  const startCalls = options.callsUsed ?? 0, maxCalls = Math.min(options.maxCalls ?? 25, startCalls + 4)
-  for (const [value, minimum, maximum] of [[startCalls, 0, 25], [options.maxCalls ?? 25, 1, 25],
+  const startCalls = options.callsUsed ?? 0, maxCalls = Math.min(options.maxCalls ?? DEFAULT_AGENT_CALLS, startCalls + 4)
+  for (const [value, minimum, maximum] of [[startCalls, 0, MAX_AGENT_CALLS], [options.maxCalls ?? DEFAULT_AGENT_CALLS, 1, MAX_AGENT_CALLS],
     [options.timeoutMs ?? 600000, 1, 600000], [options.requestTimeoutMs ?? 90000, 1, 90000], [options.maxPromptChars ?? 240000, 1000, 240000]]) {
     if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new ReviewError("REVIEW_INPUT_INVALID")
   }

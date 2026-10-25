@@ -71,7 +71,7 @@ ANONYMOUS_EMPTY_SESSION_RETENTION_DAYS 不使用时整项省略，不写空值�
 pnpm review:contract:multi --contract tools/contract-review/fixtures/scene-decoration-contract.txt --role 专业分包人 --region 上海 --debug
 ```
 
-四场景均保持待核对。独立复核共享25次请求/600秒总预算；结果可能因预算或材料不足部分完成。
+四场景均保持待核对。独立复核共享40次请求/600秒总预算；结果可能因预算或材料不足部分完成。
 支持 reasoning_effort=low 的模型可显式配置 AI_AUDIT_REASONING_EFFORT=low 降低复核推理开销；其他供应商保留 default，不假定兼容。
 
 规则状态不需要改为已发布。debug 使用未停用的待核对规则，持续保留未核对标记；

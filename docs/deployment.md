@@ -96,7 +96,7 @@ pnpm dlx zeabur template deploy -f zeabur-template.yaml --project-id <project-id
 服务端配置 AI_BASE_URL、AI_MODEL、AI_API_KEY，密钥仅作为运行时环境变量，不传构建参数或前端变量。
 生产默认 AI_REVIEW_MODE=published，内置规则未发布时会拒绝提交；调试须显式设 debug 并由网页用户确认。
 生产必须设置 AI_REVIEW_RETENTION_DAYS（1–365）及经验证的 AI_REVIEW_MAX_PROMPT_CHARS；
-AI_AGENT_MAX_CALLS 默认 25，可配置 1–25，累计预算不随恢复重置。Compose 已增加这些环境映射；此轮未运行部署。
+AI_AGENT_MAX_CALLS 默认 25，可配置 1–40，累计预算不随恢复重置。Compose 已增加这些环境映射；此轮未运行部署。
 原匿名资料期限优先于审查期限，任务不为资料续期；现有未登记资料仍须按匿名维护流程登记，不能通过新任务绕过。
 审查与文档共用删除日志重放就绪及会话上下文校验；旧任务缺少 contextId 时拒绝恢复外发，须重新确认新任务。
 任务、解析快照、模型交换和报告均在数据库，备份作为私有材料管理。详见[网页审查交接](contract-review-web.md)。
