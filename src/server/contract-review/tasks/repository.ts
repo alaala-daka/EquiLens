@@ -5,13 +5,20 @@ import type { DocumentSessionRepository } from "../../documents/session-reposito
 import type { ReviewTask, ReviewResult, SubmitReview } from "../../../lib/contract-reviews/types"
 import type { LoadedPack, Paragraph, ReviewContext } from "../../../../tools/contract-review/src/types"
 import type { ReviewSkill } from "../../../../tools/contract-review/src/agent/skill"
+import type { SceneCandidate } from "../../../../tools/contract-review/src/scenes"
+import type { SceneBundle } from "../../../../tools/contract-review/src/bundles"
+import { hasCheckedRange } from "../../../../tools/contract-review/src/findings"
 
-/** 提交契约只带 scene+region；任务内部存完整上下文，供判定、展示与报告使用。 */
+/** 新任务固定候选目录；存量无目录任务沿用显式场景。 */
 export type TaskInput = Omit<SubmitReview, "context"> & {
   context: ReviewContext
   title: string; revisionHash: string; pack: LoadedPack; packSha256: string; skill: ReviewSkill
   mode: "debug" | "published"; model: string; baseURL: string; maxPromptChars: number; consentAt: string
   documentContextId: string
+  sceneCandidates?: SceneCandidate[]
+  workflow?: "multi-agent-v1"
+  sceneBundles?: SceneBundle[]
+  auditEffort?: "default" | "low"
 }
 export type ParseSnapshot = { id: string; paragraphs: Paragraph[]; complete: boolean; textSha256: string }
 export type ClaimedReview = {
@@ -139,7 +146,7 @@ export class ReviewTaskRepository {
       if (Number(row.attempt) >= 3 || Number(row.calls_used) >= Number(row.max_calls) || elapsed >= 600000) {
         const code = elapsed >= 600000 ? "REVIEW_TIMEOUT" : "REVIEW_BUDGET_EXHAUSTED"
         const checkpoint = jsonResult(row)
-        const partial = checkpoint?.findings.some(item => item.checkedParagraphIndexes)
+        const partial = checkpoint?.findings.some(hasCheckedRange)
         await c.query("UPDATE equilens_review_tasks SET state=$1,stage='failed',execution_token=NULL,lease_until=NULL,error_code=$2,error_message=$3,updated_at=$4 WHERE id=$5", [partial ? "partial" : "failed", code, "任务已达到累计预算或尝试次数上限。", clock, String(row.id)])
         await c.query("UPDATE equilens_review_runner SET token=NULL,lease_until=NULL WHERE token=$1", [token])
         return null
@@ -207,7 +214,7 @@ export class ReviewTaskRepository {
       await this.executing(c, job)
       const row = (await c.query("SELECT calls_used,result FROM equilens_review_tasks WHERE id=$1", [job.id])).rows[0]
       const saved = result ? structuredClone(result) : jsonResult(row)
-      const incomplete = saved?.findings.some(item => item.checkedParagraphIndexes) ? "partial" : "failed"
+      const incomplete = saved?.findings.some(hasCheckedRange) ? "partial" : "failed"
       const state = retry ? "queued" : error ? incomplete : result?.status ?? incomplete
       if (saved) {
         saved.status = state === "queued" ? "partial" : state

@@ -1,0 +1,11 @@
+{
+  "scope": "预先固定的合成识别及多 Agent 工程流程检查，不作为法律质量验收",
+  "cases": [
+    { "file": "scene-mep-contract.txt", "status": "matched", "sceneId": "mep-sub-2026" },
+    { "file": "scene-decoration-contract.txt", "status": "matched", "sceneId": "decoration-sub-2026", "fullWorkflow": true },
+    { "file": "scene-curtain-wall-contract.txt", "status": "matched", "sceneId": "curtain-wall-sub-2026" },
+    { "file": "scene-steel-structure-contract.txt", "status": "matched", "sceneId": "steel-structure-sub-2026" },
+    { "file": "scene-unsupported.txt", "status": "unsupported", "sceneId": null },
+    { "file": "scene-uncertain.txt", "status": "needs-confirmation", "sceneId": null }
+  ]
+}

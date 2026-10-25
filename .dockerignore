@@ -19,3 +19,5 @@
 !licenses/**
 !tools/
 !tools/**
+# 本地 CLI 报告含合同原文，仅本机使用，不进入构建上下文。
+tools/contract-review/output/

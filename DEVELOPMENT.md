@@ -47,6 +47,10 @@ pnpm build
 ```
 
 `pnpm check` 执行 ESLint 和 Next.js 路由类型生成、TypeScript 检查。
+AI 功能修改应补充必要的真实模型验证。项目维护者已授权在其本机读取 `.env.local` 进行模型联调；
+该授权仅限维护者本机、合成夹具及既有请求次数和超时上限，不扩展到其他贡献者，也不豁免真实业务材料
+的外发授权与服务端访问守卫。记录模型、用量、实际结束原因及结果，不打印或提交密钥；
+自动审批拦截时按具体原因补足授权，不绕过审批。
 `pnpm test` 使用 Node.js test runner、tsx 与 fake-indexeddb 验证 DOCX 拒绝条件、版本、冲突与导出失败保护。
 `pnpm smoke` 检查运行中的应用，可用 `pnpm smoke http://127.0.0.1:18080` 指定入口。
 `node scripts/smoke-database.mjs http://127.0.0.1:18080 <private-checkpoint.json>` 仅用于隔离合成库，

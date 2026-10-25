@@ -59,8 +59,18 @@ ANONYMOUS_EMPTY_SESSION_RETENTION_DAYS 不使用时整项省略，不写空值�
 2. 返回列表并重开，核对已保存内容；点击「导出 Word」取得已保存版本。
 3. 也可点击「导入 Word」，选择仓库合成样本 `tools/contract-review/fixtures/sample-contract.docx`。
 4. 打开样本，在右侧「合同审查」确认地域、未核对资料提示及外发授权。未保存的修改需先保存。
-5. 点击「开始审查」才会向配置的模型服务发送材料并产生请求费用。关闭页面不会取消已提交任务。
+5. 点击「开始审查」才会向配置的模型服务发送材料并产生请求费用。新任务由独立场景识别、场景主审和复核三个 Agent 串行执行，关闭页面不会取消任务。
 6. 重新打开文档可查看任务进度、报告、待核实项和原版本引文；修改后保存需重新确认外发授权。
+
+当前联调场景为房建机电安装、装饰装修、幕墙、钢结构专业分包。sample-contract.docx 缺少明确场景信息时可能进入待确认，不能依赖文件名强制匹配。
+多 Agent 合成复现可直接运行：
+
+```powershell
+pnpm review:contract:multi --contract tools/contract-review/fixtures/scene-decoration-contract.txt --role 专业分包人 --region 上海 --debug
+```
+
+四场景均保持待核对。独立复核共享25次请求/600秒总预算；结果可能因预算或材料不足部分完成。
+支持 reasoning_effort=low 的模型可显式配置 AI_AUDIT_REASONING_EFFORT=low 降低复核推理开销；其他供应商保留 default，不假定兼容。
 
 规则状态不需要改为已发布。debug 使用未停用的待核对规则，持续保留未核对标记；
 published 只接收完成核对后发布的资料，目前内置资料会被拒绝。两者的处理流程相同，资料准入门槛不同。
