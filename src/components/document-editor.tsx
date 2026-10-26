@@ -113,6 +113,8 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
   const leaveTrigger = useRef<HTMLButtonElement | null>(null)
   const backButton = useRef<HTMLButtonElement>(null)
   const agentInput = useRef<HTMLTextAreaElement>(null)
+  const titleInput = useRef<HTMLInputElement>(null)
+  const titleFocused = useRef(false)
   const [agentTab, setAgentTab] = useState("review")
 
   const keyboardHelpId = useId()
@@ -130,6 +132,16 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
     return () => { session.dispose(); bridge.dispose() }
   }, [bridge, session])
   useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
+  // 新建文档默认标题为「未命名文档」，打开后直接把标题交给用户命名，避免列表里多份同名。
+  useEffect(() => {
+    if (titleFocused.current || !ready || busy) return
+    if (title.trim() && title.trim() !== "未命名文档") return
+    const input = titleInput.current
+    if (!input) return
+    titleFocused.current = true
+    input.focus()
+    input.select()
+  }, [ready, busy, title])
   const attachCanvas = useCallback((handle: WordCanvasHandle | null) => { bridge.attachCanvas(handle) }, [bridge])
   const markChanged = useCallback(() => session.markBodyChanged(), [session])
   const engineChanged = useCallback((value: EngineState, message?: string) => session.setEngine(value, message), [session])
@@ -205,11 +217,11 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
   </div>
 
   return (
-    <main className="flex h-svh min-w-0 flex-col">
+    <main className="flex h-svh min-w-0 flex-col overflow-hidden">
       <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
         <Button ref={backButton} variant="ghost" disabled={busy} onClick={event => requestLeave("list", event.currentTarget)}><ArrowLeftIcon />文档</Button>
         <Separator orientation="vertical" className="data-vertical:h-4" />
-        <Input aria-label="文档标题" className="min-w-0 flex-1 basis-full md:basis-auto md:max-w-sm" value={title} disabled={busy} inert={busy} onChange={event => session.editTitle(event.target.value)} placeholder="未命名文档" />
+        <Input ref={titleInput} aria-label="文档标题" className="min-w-0 flex-1 basis-full md:basis-auto md:max-w-sm" value={title} disabled={busy} inert={busy} onChange={event => session.editTitle(event.target.value)} placeholder="未命名文档" />
         <Badge variant="outline" role="status" aria-live="polite">{status}</Badge>
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
           <Button variant="link" asChild><a href="/source" target="_blank" rel="noreferrer">源代码</a></Button>

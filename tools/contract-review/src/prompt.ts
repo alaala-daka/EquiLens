@@ -1,4 +1,5 @@
 import type { Paragraph, ReviewContext, SourceEntry, TriggeredRule } from "./types"
+import { REVIEW_WRITING_INSTRUCTIONS } from "./writing"
 
 export type PromptInput = {
   paragraphs: Paragraph[]
@@ -26,6 +27,7 @@ export function buildPrompt(input: PromptInput): { system: string; user: string 
       ? "本次仅提供目录与部分正文，不能确认未发现问题或条款缺失。可以提出有引文的问题；未能确认的事项必须待核实。目录没有标题不证明正文没有约定。"
       : "缺失条款仅用于完整检查所提供的全文后确实未找到必要约定，quote为空，paragraphIndex=-1；不得编造引文。",
     "待核实可以没有引文，但须说明待核实事项。每条依据只使用该规则允许的来源 ID。",
+    REVIEW_WRITING_INSTRUCTIONS,
   ].join("\n")
   const sources = input.sources.map(source => [
     "- sourceId: " + source.sourceId,

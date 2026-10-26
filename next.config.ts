@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   agentRules: false,
   devIndicators: false,
+  // Next blocks /_next/* dev resources from hosts other than localhost; without this the page
+  // loads but never hydrates when opened as 127.0.0.1. Add any LAN host used for device testing.
+  allowedDevOrigins: ["127.0.0.1"],
   async headers() {
     const development = process.env.NODE_ENV === "development";
     return [{ source: "/:path*", headers: [{

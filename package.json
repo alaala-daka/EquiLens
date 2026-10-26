@@ -16,6 +16,8 @@
     "review:contract": "pnpm prepare:contract && tsx tools/contract-review/src/cli.ts",
     "review:contract:example": "tsx tools/contract-review/examples/local.mts",
     "review:contract:agent": "node scripts/build-docx-validator.mjs && tsx tools/contract-review/src/cli.ts --agent",
+    "review:contract:multi": "node scripts/build-docx-validator.mjs && tsx tools/contract-review/src/cli.ts --multi-agent",
+    "review:contract:compare": "node scripts/build-docx-validator.mjs && tsx tools/contract-review/src/compare-cli.ts",
     "ai:smoke": "tsx scripts/check-model.mts",
     "smoke": "node scripts/smoke.mjs"
   },

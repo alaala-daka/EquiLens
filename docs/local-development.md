@@ -15,8 +15,10 @@ cd D:\EquiLens-restore
 pnpm dev
 ```
 
-按终端显示的地址访问，默认 [http://localhost:3000](http://localhost:3000)。
+用 [http://localhost:3000](http://localhost:3000) 打开；`127.0.0.1` 已加入 `allowedDevOrigins`，也可直接使用。
 同一次使用保持相同的域名和端口；localhost 与 127.0.0.1 的浏览器会话独立。
+用局域网地址或手机调试时，先把实际访问的主机名加入 `next.config.ts` 的 `allowedDevOrigins` 并重启；
+未登记的主机名会被 Next 开发服务器拦截 `/_next/*` 资源，页面会停在「正在读取会话」且不显示任何错误。
 启动命令会生成 DOCX 校验、合同解析和保留维护程序，再启动 Next.js；不直接使用 `next dev`。
 按 Ctrl+C 停止服务。配置变更后需重启。
 
@@ -59,8 +61,18 @@ ANONYMOUS_EMPTY_SESSION_RETENTION_DAYS 不使用时整项省略，不写空值�
 2. 返回列表并重开，核对已保存内容；点击「导出 Word」取得已保存版本。
 3. 也可点击「导入 Word」，选择仓库合成样本 `tools/contract-review/fixtures/sample-contract.docx`。
 4. 打开样本，在右侧「合同审查」确认地域、未核对资料提示及外发授权。未保存的修改需先保存。
-5. 点击「开始审查」才会向配置的模型服务发送材料并产生请求费用。关闭页面不会取消已提交任务。
+5. 点击「开始审查」才会向配置的模型服务发送材料并产生请求费用。新任务由独立场景识别、场景主审和复核三个 Agent 串行执行，关闭页面不会取消任务。
 6. 重新打开文档可查看任务进度、报告、待核实项和原版本引文；修改后保存需重新确认外发授权。
+
+当前联调场景为房建机电安装、装饰装修、幕墙、钢结构专业分包。sample-contract.docx 缺少明确场景信息时可能进入待确认，不能依赖文件名强制匹配。
+多 Agent 合成复现可直接运行：
+
+```powershell
+pnpm review:contract:multi --contract tools/contract-review/fixtures/scene-decoration-contract.txt --role 专业分包人 --region 上海 --debug
+```
+
+四场景均保持待核对。独立复核共享40次请求/600秒总预算；结果可能因预算或材料不足部分完成。
+支持 reasoning_effort=low 的模型可显式配置 AI_AUDIT_REASONING_EFFORT=low 降低复核推理开销；其他供应商保留 default，不假定兼容。
 
 规则状态不需要改为已发布。debug 使用未停用的待核对规则，持续保留未核对标记；
 published 只接收完成核对后发布的资料，目前内置资料会被拒绝。两者的处理流程相同，资料准入门槛不同。

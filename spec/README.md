@@ -4,6 +4,7 @@
 当前实现 Next.js 工作台、浏览器 DOCX 编辑、服务端文档版本、SQLite / GaussDB 配置、健康接口和镜像构建配置。
 SQLite 已有本地行为测试；GaussDB 真机及业务流程、其他华为云服务验收另行记录。
 合同审查新增 AI SDK Agent / skill / 工具入口及匿名会话网页/持久化任务，保留固定编排。
+网页新任务以场景识别、场景主审和独立复核三个 Agent 为主线；机电安装、装饰装修、幕墙、钢结构专业分包均限授权联调，不适配或不确定时停止。
 本地主分支整合验证见 [验证记录](../docs/reviews/2026-10-23-contract-review-main-integration.md)。
 真实模型、GaussDB、Linux 容器和法律业务验收单独记录，不计为正式项目授权已实现。
 

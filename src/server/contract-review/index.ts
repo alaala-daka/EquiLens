@@ -10,6 +10,7 @@ import { buildSegments } from "../../../tools/contract-review/src/segments"
 import { reviewWithAgent, type AgentSettings } from "../../../tools/contract-review/src/agent"
 import type { ReviewInput } from "../../../tools/contract-review/src/input"
 import type { Paragraph } from "../../../tools/contract-review/src/types"
+import { DEFAULT_AGENT_CALLS } from "../../../tools/contract-review/src/limits"
 
 export type { ReviewResult, ReviewContext } from "../../../tools/contract-review/src/types"
 export type { AgentProgress } from "../../../tools/contract-review/src/agent"
@@ -49,7 +50,7 @@ async function runAgent(input: ReviewInput, settings: AgentReviewSettings) {
     .catch(() => { throw new ReviewError("REVIEW_RULE_PACK_INVALID") })
   return reviewWithAgent({
     ...snapshot, ...settings, pack, maxPromptChars: configured ? Number(configured) : 240000,
-    maxCalls: settings.maxCalls ?? Number(process.env.AI_AGENT_MAX_CALLS ?? 25),
+    maxCalls: settings.maxCalls ?? Number(process.env.AI_AGENT_MAX_CALLS ?? DEFAULT_AGENT_CALLS),
   })
 }
 

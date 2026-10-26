@@ -30,6 +30,8 @@ test("AC-01/23: review HTTP checks context/origin/consent and revalidates after 
     await denied(await collection.GET(request("GET", undefined, { "X-Document-Context": randomUUID() })), 409, "SESSION_CHANGED")
     await denied(await collection.POST(request("POST", s.request, { Origin: "https://other.invalid" })), 403)
     await denied(await collection.POST(request("POST", { ...s.request, externalProcessingConsent: false })), 422)
+    await denied(await collection.POST(request("POST", { ...s.request, context: { ...s.request.context, scene: "mep-sub-2026" } })), 422)
+    await denied(await collection.POST(request("POST", { ...s.request, context: { scene: "auto", region: "上海" } })), 422)
     const created = await collection.POST(request("POST", s.request))
     assert.equal(created.status, 202)
     assert.equal(created.headers.get("X-Document-Context"), s.contextId)

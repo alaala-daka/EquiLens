@@ -9,9 +9,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog"
 import { ContractReviewReport } from "@/components/contract-review-report"
 import { listReviewTasks, readReviewTask, createReviewTask, actOnReviewTask } from "@/lib/contract-reviews/client"
-import { taskStageLabel, taskStateLabel, type ReviewAvailability, type ReviewTask, type SubmitReview } from "@/lib/contract-reviews/types"
+import { taskDisplayStage, taskDisplayState, type ReviewAvailability, type ReviewTask, type SubmitReview } from "@/lib/contract-reviews/types"
 import { errorMessage } from "@/lib/documents/types"
-import { defaultSceneId, sceneOf } from "../../tools/contract-review/src/scenes"
 import { DocumentSessionError } from "@/lib/documents/client"
 
 export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initialTaskId, onSessionUnavailable }: {
@@ -22,7 +21,8 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
   const [tasks, setTasks] = useState<ReviewTask[]>([])
   const [selected, setSelected] = useState(initialTaskId ?? "")
   const [detail, setDetail] = useState<ReviewTask | null>(null)
-  const [region, setRegion] = useState("上海")
+  // 地域是用户确认的审查条件，不预填，避免默认值被直接提交。
+  const [region, setRegion] = useState("")
   const [consentRevision, setConsentRevision] = useState("")
   const consent = consentRevision === revisionId
   const [draftConsent, setDraftConsent] = useState(false)
@@ -77,7 +77,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     const controller = new AbortController()
     pending.current = controller; setSubmitting(true); setError("")
     const input: SubmitReview = { documentId, revisionId,
-      context: { scene: defaultSceneId, region: region.trim() },
+      context: { scene: "auto", role: "专业分包人", region: region.trim() },
       externalProcessingConsent: true, unreviewedMaterialsConsent: draftConsent, configurationId: configuration.configurationId }
     const signature = JSON.stringify(input)
     if (operation.current?.signature !== signature) operation.current = { signature, key: crypto.randomUUID() }
@@ -103,8 +103,8 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
   }
   return <section aria-label="合同审查" className="flex flex-col gap-6 p-4">
     <form onSubmit={event => void submit(event)} className="flex flex-col gap-4">
-      <div className="space-y-1 text-sm"><p className="font-medium">专业分包合同审查</p><p className="text-muted-foreground">审查立场：{sceneOf(defaultSceneId).role}</p><p className="text-muted-foreground">项目类型：{sceneOf(defaultSceneId).label}</p><p className="break-all text-xs text-muted-foreground">保存版本：{revisionId}</p></div>
-      <label className="grid gap-2 text-sm">项目地域<Input value={region} required maxLength={100} disabled={submitting} onChange={event => { setRegion(event.target.value); setConsentRevision("") }} /></label>
+      <div className="space-y-1 text-sm"><p className="font-medium">合同审查</p><p className="text-muted-foreground">审查立场：专业分包人</p><p className="break-all text-xs text-muted-foreground">保存版本：{revisionId}</p></div>
+      <label className="grid gap-2 text-sm">项目地域<Input value={region} required maxLength={100} placeholder="如：上海" disabled={submitting} onChange={event => { setRegion(event.target.value); setConsentRevision("") }} /></label>
       {configuration?.mode === "debug" && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draftConsent} disabled={submitting} onChange={event => setDraftConsent(event.target.checked)} /><span>我已知悉审查依据尚未核对，结果仅供联调，需人工复核。</span></label>}
       {configuration?.ready && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} disabled={submitting} onChange={event => setConsentRevision(event.target.checked ? revisionId : "")} /><span>我确认上述审查条件，并有权将此保存版本发送至 {configuration.providerHost}（{configuration.model}）进行处理。审查记录最多保留 {configuration.retentionDays} 天，原资料先到期时一并清理。</span></label>}
       {dirty && <p role="status" className="text-sm">请先保存更改，再开始审查。</p>}
@@ -117,17 +117,18 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     {loading && <p role="status" className="text-sm text-muted-foreground">正在读取审查任务</p>}
     {tasks.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline">审查记录（{tasks.length}）</Button></CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-2 pt-3">{tasks.map(item => <Button type="button" key={item.id} variant={selected === item.id ? "secondary" : "ghost"} className="h-auto justify-start whitespace-normal text-left" onClick={() => { setSelected(item.id); setError("") }}>
-        {new Date(item.createdAt).toLocaleString("zh-CN")} · {taskStateLabel[item.state]}
+        {new Date(item.createdAt).toLocaleString("zh-CN")} · {taskDisplayState(item)}
       </Button>)}</CollapsibleContent>
     </Collapsible>}
     {task && <div className="flex flex-col gap-4 border-t pt-4">
-      <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{taskStateLabel[task.state]}</Badge><span role="status" className="text-sm">{taskStageLabel[task.stage] ?? "处理中"}</span></div>
+      <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{taskDisplayState(task)}</Badge><span role="status" className="text-sm">{taskDisplayStage(task)}</span></div>
       <p className="text-sm text-muted-foreground">{new Date(task.createdAt).toLocaleString("zh-CN")} · 保留至 {new Date(task.expiresAt).toLocaleString("zh-CN")}</p>
       {task.revisionId !== revisionId && <p role="note" className="text-sm">此报告对应历史保存版本；当前文档的修改未包含在本次审查中。</p>}
       {active && <p className="text-sm">已读 {task.progress.readParagraphCount} / {task.progress.paragraphCount} 段，已提交 {task.progress.submittedRuleCount} 条检查。</p>}
-      {task.error && <p role="alert" className="text-sm text-destructive">{task.error.message}</p>}
+      {active && task.progress.agentRole === "auditor" && <p className="text-sm">独立复核：{task.progress.auditedRuleCount ?? 0} / {task.result?.findings.length ?? task.progress.submittedRuleCount} 条</p>}
+      {task.error && !task.result?.errors.some(item => item.code === task.error?.code) && <p role="alert" className="text-sm text-destructive">{task.error.message}</p>}
       {active && <Button type="button" variant="outline" disabled={submitting} onClick={() => void action("cancel")}>取消审查</Button>}
-      {!active && task.state !== "success" && task.stage !== "cancelled" && task.attempt < 3 && task.callsUsed < task.maxCalls && <Button type="button" variant="outline" disabled={submitting} onClick={() => setRetryDialog(true)}>继续原任务</Button>}
+      {!active && task.state !== "success" && task.stage !== "cancelled" && task.error?.code !== "REVIEW_INPUT_EMPTY" && (!task.result?.sceneSelection || task.result.sceneSelection.status === "matched") && task.attempt < 3 && task.callsUsed < task.maxCalls && <Button type="button" variant="outline" disabled={submitting} onClick={() => setRetryDialog(true)}>继续原任务</Button>}
       {task.result && <ContractReviewReport result={task.result} />}
     </div>}
     <AlertDialog open={retryDialog} onOpenChange={setRetryDialog}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>继续原审查任务？</AlertDialogTitle><AlertDialogDescription>将使用原保存版本、审查条件和模型服务继续处理，可能产生费用。已有结果保留，调用预算和保留期限不会重置。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><Button type="button" disabled={submitting} onClick={() => void action("retry")}>同意并继续</Button></AlertDialogFooter></AlertDialogContent></AlertDialog>

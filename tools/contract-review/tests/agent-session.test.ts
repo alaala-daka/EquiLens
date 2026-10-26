@@ -38,3 +38,20 @@ test("AC-09/23: restored findings keep their citations but new submissions must 
   assert.equal(second.submit([answer("T-002")]).acceptedRuleIds.length, 0)
   assert.equal(second.finish().status, "partial")
 })
+
+test("AC-21: contradictory advice remains rejected and unresolved in the Agent report", () => {
+  const s = new ReviewSession({
+    documentText: "10.1 争议提交合成仲裁委员会仲裁。\n10.2 双方可向人民法院起诉。", complete: true,
+  }, testPack(), {
+    id: "contract-review", name: "合成", description: "测试", version: "test", instructions: "仅测试", sha256: "synthetic",
+  }, "synthetic", 0, 64000)
+  s.loadSkill("contract-review")
+  s.readParagraphs([0, 1]); s.readSources(["S-1"]); s.commitReads()
+  const submission = s.submit([{ ...answer("T-001", "发现问题"), quote: "10.1 争议提交合成仲裁委员会仲裁。",
+    suggestion: "删除 10.2，保留诉讼。" }])
+  assert.equal(submission.acceptedRuleIds.length, 0)
+  const result = s.finish()
+  assert.equal(result.status, "failed")
+  assert.ok(result.rejected.some(item => item.reason === "建议前后矛盾"))
+  assert.ok(result.findings.every(item => item.kind === "待核实"))
+})

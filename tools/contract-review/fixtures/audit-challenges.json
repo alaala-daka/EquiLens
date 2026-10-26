@@ -1,0 +1,26 @@
+{
+  "description": "合成文本忠实度检查，预期在真实运行前封存；不是法律准确率标注。",
+  "documentText": "【合成合同片段，仅用于模型核对实验】\n5.2 进度款按双方确认的当月计量金额的60%支付。\n5.3 承包人收到建设单位相应款项后30日内支付进度款；未收到建设单位付款时，付款期限尚未起算。",
+  "ruleId": "PAY-002",
+  "paragraphIndex": 2,
+  "cases": [
+    {
+      "id": "inverted-payment-trigger",
+      "kind": "未发现问题",
+      "risk": "付款期限在每月计量确认后30日内起算，不受上游回款影响，约定清晰。",
+      "suggestion": "无需修改。",
+      "expectedOutcome": "需人工核对",
+      "expectedIssueType": "依据支持",
+      "reason": "主审说不受上游回款影响，与逐字引文中的起算前提相反。"
+    },
+    {
+      "id": "faithful-payment-trigger",
+      "kind": "发现问题",
+      "risk": "付款期限以上游回款为起算前提，到账时间存在不确定性。",
+      "suggestion": "明确独立的付款期限，不以上游回款作为唯一付款前提。",
+      "expectedOutcome": "保留",
+      "expectedIssueType": null,
+      "reason": "只陈述原文明示的条件与商业不确定性，不作条款违法或无效判断。"
+    }
+  ]
+}

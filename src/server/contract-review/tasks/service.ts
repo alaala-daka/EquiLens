@@ -1,12 +1,11 @@
 import "server-only"
 import { createHash } from "node:crypto"
-import { resolve } from "node:path"
 import { documentReviewServices } from "../../documents/service"
 import { StoreError } from "../../documents/repository"
 import { ReviewError, safeError } from "../../../../tools/contract-review/src/errors"
-import { loadRulePack, publishedRules } from "../../../../tools/contract-review/src/pack"
-import { loadReviewSkill } from "../../../../tools/contract-review/src/agent/skill"
-import { defaultSceneId, sceneContext, sceneOf } from "../../../../tools/contract-review/src/scenes"
+import { publishedRules } from "../../../../tools/contract-review/src/pack"
+import { defaultSceneId } from "../../../../tools/contract-review/src/scenes"
+import { loadSceneBundles } from "../../../../tools/contract-review/src/bundles"
 import type { ReviewAvailability, SubmitReview } from "../../../lib/contract-reviews/types"
 import { reviewTaskConfig } from "./config"
 import { ReviewTaskRepository } from "./repository"
@@ -24,13 +23,15 @@ export function reviewTaskRepository() {
 async function resources() {
   const config = reviewTaskConfig()
   // Rules and skills are explicitly copied by prepare-standalone.mjs.
-  const pack = await loadRulePack(resolve(/* turbopackIgnore: true */ process.cwd(), sceneOf(defaultSceneId).rulesDir))
-    .catch(() => { throw new ReviewError("REVIEW_RULE_PACK_INVALID") })
-  const skill = await loadReviewSkill(resolve(/* turbopackIgnore: true */ process.cwd(), sceneOf(defaultSceneId).skillsRoot))
-  if (pack.manifest.status === "已停用" || (config.mode === "published" && !publishedRules(pack).length)) throw new ReviewError("REVIEW_RULES_UNAVAILABLE")
+  const sceneBundles = (await loadSceneBundles().catch(() => { throw new ReviewError("REVIEW_RULE_PACK_INVALID") }))
+    .filter(bundle => bundle.pack.manifest.status !== "已停用" && (config.mode === "debug" || publishedRules(bundle.pack).length > 0))
+  if (!sceneBundles.length) throw new ReviewError("REVIEW_RULES_UNAVAILABLE")
+  const { pack, skill } = sceneBundles.find(bundle => bundle.candidate.id === defaultSceneId) ?? sceneBundles[0]
   const packSha256 = createHash("sha256").update(JSON.stringify(pack)).digest("hex")
-  const configurationId = createHash("sha256").update(JSON.stringify({ ...config, packSha256, skillSha256: skill.sha256 })).digest("hex")
-  return { config, pack, skill, packSha256, configurationId }
+  const sceneCandidates = sceneBundles.map(bundle => bundle.candidate)
+  const configurationId = createHash("sha256").update(JSON.stringify({ ...config, packSha256, skillSha256: skill.sha256, sceneCandidates,
+    workflow: "multi-agent-v1", bundles: sceneBundles.map(bundle => bundle.sha256) })).digest("hex")
+  return { config, pack, skill, packSha256, configurationId, sceneCandidates, sceneBundles }
 }
 export async function reviewAvailability(): Promise<ReviewAvailability> {
   try {
@@ -45,15 +46,15 @@ export async function submitReview(owner: string, key: string, request: SubmitRe
   const repository = await reviewTaskRepository()
   const prior = await repository.existing(owner, key, request, contextId)
   if (prior) return prior
-  const { config, pack, skill, packSha256, configurationId } = await resources()
+  const { config, pack, skill, packSha256, configurationId, sceneCandidates, sceneBundles } = await resources()
   if (configurationId !== request.configurationId) throw new StoreError(409, "模型、规则或保留配置已变化，请刷新后重新确认。")
   if (config.mode === "debug" && !request.unreviewedMaterialsConsent) throw new StoreError(422, "请确认本次使用未核对的审查资料。")
   const revision = await repository.readRevision(owner, request.documentId, request.revisionId, contextId)
-  // 立场与项目名称由场景表给出，客户端只能选择已登记的场景。
-  const context = sceneContext(request.context.scene, request.context.region)
-  if (!pack.rules.some(rule => rule.appliesTo.scene === context.scene)) throw new ReviewError("REVIEW_CONTEXT_UNMATCHED")
+  // 用户确认代表哪一方；工程场景必须在固定解析快照上由 Agent 识别。
+  const context = { role: request.context.role, region: request.context.region }
   return repository.create(owner, key, request, {
     ...request, context, documentContextId: contextId, title: revision.title, revisionHash: revision.hash, mode: config.mode, model: config.model,
-    baseURL: config.baseURL, maxPromptChars: config.maxPromptChars, pack, packSha256, skill, consentAt: new Date().toISOString(),
+    baseURL: config.baseURL, maxPromptChars: config.maxPromptChars, pack, packSha256, skill, sceneCandidates, sceneBundles,
+    workflow: "multi-agent-v1", auditEffort: config.auditEffort, consentAt: new Date().toISOString(),
   }, config.maxCalls, config.retentionDays)
 }

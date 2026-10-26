@@ -1,0 +1,80 @@
+[
+  {
+    "ruleId": "CW-001",
+    "category": "变更签证",
+    "title": "深化设计及变更责任",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "curtain-wall-sub-2026",
+      "role": "专业分包人"
+    },
+    "mandatory": true,
+    "trigger": {
+      "keywords": [
+        "深化",
+        "设计",
+        "确认",
+        "变更"
+      ]
+    },
+    "requirement": "核对深化设计、图纸确认与设计变更的授权主体、确认程序和费用责任，不能把施工图深化等同于承担全部原设计责任。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "CHECK-CW-DRAFT"
+      }
+    ]
+  },
+  {
+    "ruleId": "CW-002",
+    "category": "计量结算",
+    "title": "材料与检测约定",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "curtain-wall-sub-2026",
+      "role": "专业分包人"
+    },
+    "mandatory": true,
+    "trigger": {
+      "keywords": [
+        "材料",
+        "检测",
+        "试验",
+        "费用"
+      ]
+    },
+    "requirement": "核对幕墙材料确认、检测或试验的委托方、费用承担及计价范围是否明确；不自行增加检测项目或认定法定合格。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "CHECK-CW-DRAFT"
+      }
+    ]
+  },
+  {
+    "ruleId": "CW-003",
+    "category": "工期",
+    "title": "安装界面与验收移交",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "curtain-wall-sub-2026",
+      "role": "专业分包人"
+    },
+    "mandatory": true,
+    "trigger": {
+      "keywords": [
+        "界面",
+        "预埋",
+        "移交",
+        "验收"
+      ]
+    },
+    "requirement": "核对预埋件及土建界面交接、工作面提供、分段验收与移交安排，明确依赖条件缺失对安装及工期的影响。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "CHECK-CW-DRAFT"
+      }
+    ]
+  }
+]

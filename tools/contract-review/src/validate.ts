@@ -3,6 +3,7 @@ import {
   type CategoryReport, type Finding, type Paragraph, type TriggeredRule,
   type RejectedFinding,
 } from "./types"
+import { adviceConflict } from "./advice"
 
 export const REQUIRED_FIELDS = [
   "ruleId", "kind", "risk", "severity", "quote", "paragraphIndex", "basis", "impact", "suggestion", "pending",
@@ -61,6 +62,8 @@ export function validateFindings(
       reject("依据校验失败", "结论必须引用本规则允许且本次可用的来源；依据不足时应待核实。"); continue
     }
     const severity = raw.severity as Finding["severity"]
+    const conflict = complete ? adviceConflict(raw.suggestion, paragraphs) : null
+    if (conflict) { reject("建议前后矛盾", conflict); continue }
     findings.push({
       ruleId, category: entry.rule.category, kind, risk: raw.risk.trim(), severity,
       severityOrigin: severity === entry.rule.severity ? "规则预设" : "模型提出待定级",

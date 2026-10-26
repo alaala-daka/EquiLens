@@ -85,6 +85,11 @@ Agent 后端设置支持 `signal`、`callsUsed`、`maxCalls`、`timeoutMs`、`re
 调用方返回 result 后再保存最终状态及报告，不以 progress.stage=completed 判断业务成功。
 纯模块不自行连接数据库。网页适配通过 onCheckpoint 保存有效结果、onModelExchange 保存原始请求/响应，
 恢复沿用固定快照和保守已用次数，新模型会话重新阅读正文。账号/项目权限仍待后续实现。
+大小限制内可解析的 JSON 失败响应同样通过 onModelExchange 保存，之后才校验结束原因；
+截断、拒绝/内容过滤和其他异常分别处理，不执行不完整工具参数。
+每次 Agent 尝试最多对长度截断修正一次，要求本回合只提交一条，重新预留原预算并保留失败用量；
+拒绝及其他异常不自动重发。全部规则已有有效提交后停止，不另调模型生成总结。
+submitFindings 每批最多 3 条；所有实际请求沿用原次数/时间预算，旧任务不自动重跑。
 
 引用和覆盖：
 
@@ -99,6 +104,67 @@ Agent 后端设置支持 `signal`、`callsUsed`、`maxCalls`、`timeoutMs`、`re
 - 本版本只校验结构、范围和引文/来源真实性；来源是否支持结论、法律适用和人工复核仍需业务验证。
 
 standalone 打包同时复制 skills/ 与 rules/。依赖锁定为 ai@7.0.148、@ai-sdk/openai-compatible@3.0.75、zod@4.6.7。
+
+## 多 Agent 主线与四场景
+
+新网页任务默认 multi-agent-v1：独立场景识别 → 所选场景主审 → 独立复核。三个模型上下文和工具权限隔离，仍由同一单体持久化任务串行执行。
+
+| 场景 | 技能 | 规则 |
+| --- | --- | --- |
+| 房建机电安装专业分包 | contract-review | 19条通用检查 |
+| 房建装饰装修专业分包 | decoration-review | 19条通用＋3条专项 |
+| 房建幕墙专业分包 | curtain-wall-review | 19条通用＋3条专项 |
+| 房建钢结构专业分包 | steel-structure-review | 19条通用＋3条专项 |
+
+场景资源由 src/bundles.ts 装配并按摘要固定；新场景组合和合成专项来源均待核对，不继承发布状态。
+共用最多25次请求/600秒，路由最多4次，主审预留 ceil(规则数/3)+1 次复核预算。预算不足显示部分完成，不自动扩大。
+封存主审不被复核改写；复核支持检查点恢复，仅补做未完成规则。机器意见不替代人工复核，疑点阻止完整无风险文案。
+
+```sh
+pnpm review:contract:multi --contract tools/contract-review/fixtures/scene-decoration-contract.txt --role 专业分包人 --region 上海 --debug
+```
+
+命令会读取 .env.local 并产生真实模型调用。AI_AUDIT_REASONING_EFFORT=low 仅在模型服务明确支持时设置，否则保留 default。
+纯模块入口为 reviewWithAgents({ bundles, ... })，可信后端已有解析快照时使用 reviewSnapshotWithAgents；HTTP 页面只走持久化任务，不直接传模型或规则配置。
+新增结果 collaboration 保存流程版本、资源摘要、路由结果、主审原件/封存状态和复核进度；顶层保存聚合执行状态、预算和已知用量。
+
+## 自动场景识别（单 Agent 对照入口）
+
+网页新任务默认多 Agent；下面单 Agent 自动识别入口保留用于旧流程对照，仅使用该入口所装配规则对应的候选：
+
+```sh
+pnpm review:contract:agent --contract tools/contract-review/fixtures/scene-mep-contract.txt --scene auto --role 专业分包人 --region 上海 --debug
+```
+
+模型先看候选目录、读取全文，再通过 `selectScene` 提交匹配/不支持/待确认及已读原文证据；
+仅匹配后开放技能加载与审查工具，不支持和待确认不会产生风险报告。JSON 保留选择及识别时已读范围，Markdown 展示理由与证据。
+识别和审查共享最多 25 次请求/600 秒，恢复固定选择但不复用当前上下文阅读权限。
+`--scene auto --dry-run` 仅列出候选，不把无模型预览当作识别成功；`--scene auto` 必须显式传入 `--role`。
+已有显式场景入口保持原行为。新主线通过 bundles.ts 装配四场景，每个场景绑定独立技能与规则摘要。
+预先登记的合成识别样本在 `fixtures/scene-selection-cases.json`，其预期不表示法律审查质量。
+
+## 主审与独立复核对照
+
+网页现默认三 Agent 主线；此处保留早期两角色独立对照实验，用同一次主审原件追加复核，不重写主审、不替代人工复核。
+复核只有结构化提交意见的工具，原文/来源守卫继续执行；两阶段共享每份输入最多 25 次、600 秒。
+会读取 `.env.local` 并产生真实模型调用，使用合成夹具示例：
+
+```sh
+pnpm review:contract:compare --contract tools/contract-review/fixtures/sample-contract.txt --debug
+pnpm review:contract:compare --challenge --debug
+```
+
+可显式添加 `--audit-effort low`，仅降低复核角色的推理强度；参数需模型服务支持，
+主审设置及网页任务不变。实验配置及原始请求会保留该设置，不把不同配置的多轮结果混为一次对照。
+
+第一条保存 `primary.json/md`、`audit.json`、`comparison.json/md` 及每次实际调用的预留和原始响应，
+输出到忽略的 `tools/contract-review/output/comparison-<id>`，重复运行创建独立目录。
+第二条使用 `fixtures/audit-challenges.json` 预先登记的文本忠实度正反例，
+注入的机器错误与自然主审输出分开记录；不作为漏检/误报改善或法律准确率的证据。
+预设检查不匹配时命令退出码为 2，并保留实际核对意见；不能看到异常后改写预期来计为通过。
+复核只标记「保留 / 需人工核对」；「保留」不清除主审待核实项或执行错误。
+失败、拒绝和未核对规则保持可见，全部输出仍待人工复核。
+入口契约见[架构的受控对照实验](../../spec/00-overview.md#主审与复核的受控对照实验)。
 
 ## 后端的固定入口
 
@@ -224,6 +290,10 @@ DOCX 使用同一命令并替换文件路径。CLI 会生成隔离解析器，�
 嵌套表格等不支持内容明确拒绝，不当成已完整解析。PDF 由后端后续提供解析快照。
 
 报告位于 output/<标题-结果ID>/report.json 和 report.md，重复运行创建新目录。
+Markdown 按六类显示问题数与优先项，其余问题及原文/依据折叠保留；JSON 保持完整。
+新生成的核心问题与建议使用简短表达，不默认生成整段条款或自行填入拟约定数值。
+明确编号的整条删除后紧接保留该条唯一诉讼/仲裁方式，在完整已读范围内会被拒绝并保留原因；
+无法确定的替代方案、局部删除及其他语义矛盾仍需人工核对。旧报告不自动重跑。
 退出码：0 为完整完成，2 为部分完成，1 为失败；调试模式始终保留未核对标记。
 输出和本机临时文件被 Git 忽略，JSON 报告包含原文，应按私有项目资料管理。
 
