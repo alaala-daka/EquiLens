@@ -225,7 +225,7 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
             <h1 className="sr-only">文档编辑器</h1>
             <p id={keyboardHelpId} className="shrink-0 border-b px-4 py-2 text-xs text-muted-foreground">正文中按 F6 转到备注，Shift+F6 转到文档操作。</p>
             {engine === "loading" && <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background text-sm" aria-hidden="true"><LoaderCircleIcon className="size-4 animate-spin" />正在打开文档</div>}
-            <WordCanvas ref={attachCanvas} initialBlob={load.blob} reloadToken={load.token} onStateChange={engineChanged} onChange={markChanged} keyboardHelpId={keyboardHelpId} keyboardBlocked={busy || !!leaveTarget} onFocusShortcut={destination => {
+            <WordCanvas ref={attachCanvas} initialBlob={load.blob} reloadToken={load.token} onStateChange={engineChanged} onChange={markChanged} keyboardHelpId={keyboardHelpId} keyboardBlocked={busy || !!leaveTarget} controlsDisabled={!ready || busy || !!leaveTarget} onFocusShortcut={destination => {
               if (destination === "agent") {
                 setAgentTab("notes")
                 requestAnimationFrame(() => agentInput.current?.focus())

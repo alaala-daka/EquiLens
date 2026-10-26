@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useEffectEvent, useImperativeHandle, useRef } from "react"
+import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react"
 import type { SuperDoc } from "superdoc"
 import "superdoc/style.css"
+import { Button } from "@/components/ui/button"
 import { createEngineLoad } from "@/lib/documents/engine-lifecycle"
 import type { EngineState } from "@/lib/documents/editor-session"
 import { createWordSerializer, editorText, WordExportTimeout } from "@/lib/documents/serialize"
@@ -11,19 +12,22 @@ import { validateDocx } from "@/lib/documents/validate"
 
 export type WordCanvasHandle = { serialize: () => Promise<Blob> }
 
-export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChange, keyboardHelpId, keyboardBlocked, onFocusShortcut, ref }: {
+export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChange, keyboardHelpId, keyboardBlocked, controlsDisabled, onFocusShortcut, ref }: {
   initialBlob: Blob
   reloadToken?: number
   onStateChange: (state: EngineState, message?: string) => void
   onChange: () => void
   keyboardHelpId: string
   keyboardBlocked: boolean
+  controlsDisabled: boolean
   onFocusShortcut: (destination: "agent" | "actions") => boolean
   ref: React.Ref<WordCanvasHandle>
 }) {
   const container = useRef<HTMLDivElement>(null)
   const toolbar = useRef<HTMLDivElement>(null)
   const engine = useRef<WordCanvasHandle | null>(null)
+  const zoomEngine = useRef<SuperDoc | null>(null)
+  const [fitWidth, setFitWidth] = useState(false)
   const notifyState = useEffectEvent((state: EngineState, message?: string) => {
     onStateChange(state, message)
   })
@@ -90,6 +94,7 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
       ready = false
       load.dispose()
       if (engine.current === session) engine.current = null
+      if (zoomEngine.current === instance) zoomEngine.current = null
       try { destroy() } finally { host.remove(); tools.remove() }
     }
     const fail = (message: string) => {
@@ -154,7 +159,7 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
         role: "editor",
         telemetry: { enabled: false },
         proofing: { enabled: false },
-        zoom: { mode: "fit-width" },
+        zoom: { initial: 100, mode: "manual", fitWidth: { min: 10, max: 200, padding: 64 } },
         uiDisplayFallbackFont: 'Arial, "Microsoft YaHei", sans-serif',
         modules: {
           comments: false,
@@ -171,12 +176,17 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
         onReady: ({ superdoc }) => {
           if (!load.ready()) return
           instance = superdoc
+          zoomEngine.current = superdoc
+          setFitWidth(superdoc.getZoomState().mode === "fit-width")
           const body = superdoc.activeEditor?.view?.dom
           body?.setAttribute("aria-describedby", keyboardHelpId)
           body?.setAttribute("aria-keyshortcuts", "F6 Shift+F6")
           ready = true
           hadReady = true
           notifyState("ready")
+        },
+        onZoomChange: ({ mode }) => {
+          if (!disposed && load.isCurrent()) setFitWidth(mode === "fit-width")
         },
         onEditorUpdate: () => { if (!disposed && hadReady) notifyChange() },
         onContentError: () => fail("无法打开此 Word 文档，请检查文件内容。"),
@@ -188,8 +198,14 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
   }, [initialBlob, reloadToken, keyboardHelpId])
 
   return <div className="word-canvas flex min-h-0 flex-1 flex-col">
-    <div ref={toolbar} className="shrink-0 overflow-x-auto border-b bg-background" />
-    <div className="min-h-0 flex-1 overflow-auto bg-muted" aria-label="Word 正文">
+    <div className="flex min-w-0 shrink-0 items-center gap-2 border-b bg-background pr-3">
+      <div ref={toolbar} className="min-w-0 flex-1 overflow-x-auto" />
+      <Button type="button" size="sm" variant={fitWidth ? "secondary" : "outline"} aria-pressed={fitWidth} disabled={controlsDisabled} onClick={() => {
+        const current = zoomEngine.current
+        if (current) current.setZoomMode(current.getZoomState().mode === "fit-width" ? "manual" : "fit-width")
+      }}>适应宽度</Button>
+    </div>
+    <div className="min-h-0 flex-1 overflow-auto bg-muted py-4" aria-label="Word 正文">
       <div ref={container} />
     </div>
   </div>

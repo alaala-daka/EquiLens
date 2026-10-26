@@ -44,6 +44,13 @@ body {
   margin: 0;
 }
 
+/* Keep centering above the vendor's scoped mobile margin reset. The viewport is
+   centered separately because the vendor wrapper can be wider than the paper. */
+.word-canvas .superdoc > .superdoc__layers.layers,
+.word-canvas .presentation-editor__viewport {
+  margin-inline: auto;
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: Arial, "Microsoft YaHei", "PingFang SC", sans-serif;
