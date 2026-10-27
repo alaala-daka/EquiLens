@@ -1,5 +1,6 @@
 import { Unzip, UnzipInflate, strFromU8, strToU8, unzipSync, zipSync } from "fflate"
 import { XMLParser, XMLValidator } from "fast-xml-parser"
+import { compareExport, emptyStructures, type DocxInspection, type ExportExpectation } from "./structures"
 import { DOCX_TYPE } from "./types"
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -96,7 +97,49 @@ function visit(value: unknown, callback: (name: string, value: unknown) => void)
   for (const [name, child] of Object.entries(value)) { callback(name, child); visit(child, callback) }
 }
 
-export function validateDocxBytes(bytes: Uint8Array, expectedText?: string): string {
+type OrderedNode = Record<string, unknown>
+
+// preserveOrder 输出中属性在 ":@"，文本在 "#text"；Fallback 子树跳过防文本框 Choice/Fallback 双计。
+function walkOrdered(nodes: unknown[], onElement: (key: string, attrs: Record<string, string>, children: unknown[]) => void) {
+  if (!Array.isArray(nodes)) return
+  for (const node of nodes as OrderedNode[]) {
+    const attrs = (node[":@"] ?? {}) as Record<string, string>
+    for (const [key, value] of Object.entries(node)) {
+      if (key === ":@" || key === "#text") continue
+      const children = Array.isArray(value) ? value : []
+      onElement(key, attrs, children)
+      if (key !== "Fallback") walkOrdered(children, onElement)
+    }
+  }
+}
+
+function textOf(children: unknown[]): string {
+  let out = ""
+  for (const node of children as OrderedNode[]) for (const [key, value] of Object.entries(node)) {
+    if (key === "#text") out += String(value)
+    else if (Array.isArray(value)) out += textOf(value)
+  }
+  return out
+}
+
+function countElement(key: string, attrs: Record<string, string>, structures: ReturnType<typeof emptyStructures>) {
+  const field = (name: string) => attrs[`@_${name}`] ?? attrs[`@_w:${name}`]
+  if (key === "drawing" || key === "pict") structures.images++
+  if (key === "headerReference" || key === "footerReference") structures.headerFooterRefs++
+  if (key === "fldSimple") structures.fields.simple++
+  if (key === "fldChar" && field("fldCharType") === "begin") structures.fields.complex++
+  if (key === "ins") structures.revisions.insertions++
+  if (key === "del") structures.revisions.deletions++
+  if (key === "moveFrom" || key === "moveTo") structures.revisions.moves++
+  if (/PrChange$/.test(key)) structures.revisions.formatChanges++
+  if (key === "txbxContent") structures.textboxes++
+  if (key === "commentReference") structures.comments++
+  if (key === "footnoteReference" || key === "endnoteReference") structures.notes++
+  if (key === "sdt") structures.contentControls++
+  if (key === "gridSpan" || key === "vMerge") structures.mergedCells++
+}
+
+export function validateDocxBytes(bytes: Uint8Array, expected?: ExportExpectation): DocxInspection {
   if (!bytes.length || bytes.length > MAX_FILE_BYTES) throw invalid("文件大小须在 20 MiB 以内。")
   const entries = directory(bytes)
   const xmlFiles = new Map<string, string>()
@@ -134,9 +177,11 @@ export function validateDocxBytes(bytes: Uint8Array, expectedText?: string): str
   for (let offset = 0; offset < bytes.length; offset += 32768) unzip.push(bytes.subarray(offset, offset + 32768), offset + 32768 >= bytes.length)
   if (found.size !== entries.size) throw invalid()
   const parser = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, processEntities: true, parseTagValue: false, trimValues: false })
+  const orderedParser = new XMLParser({ preserveOrder: true, ignoreAttributes: false, removeNSPrefix: true, processEntities: true, parseTagValue: false, trimValues: false })
   let typesValid = false
   let documentValid = false
   let rootRelationship = false
+  const structures = emptyStructures()
   let bodyText = ""
   for (const [name, text] of xmlFiles) {
     if (/<!DOCTYPE|<!ENTITY/i.test(text) || XMLValidator.validate(text) !== true) throw invalid("DOCX XML 结构无效。")
@@ -156,27 +201,24 @@ export function validateDocxBytes(bytes: Uint8Array, expectedText?: string): str
         for (const relation of Array.isArray(value) ? value : [value]) {
           const target = String(relation?.["@_Target"] ?? "")
           if (relation?.["@_TargetMode"]?.toLowerCase() === "external" || /^(?:[a-z][\w+.-]*:|\/\/)/i.test(target)) throw invalid("文档包含外部资源，请移除外部链接后导入。")
-          if (/attachedTemplate|oleObject|aFChunk/i.test(String(relation?.["@_Type"]))) throw invalid("不支持外部模板或嵌入内容。")
+          if (/attachedTemplate|oleObject|aFChunk|altChunk/i.test(String(relation?.["@_Type"]))) throw invalid("不支持外部模板或嵌入内容。")
           if (name === "_rels/.rels" && /\/officeDocument$/.test(String(relation?.["@_Type"])) && target === "word/document.xml") rootRelationship = true
         }
       })
     }
     if (name === "word/document.xml") {
       documentValid = Boolean(parsed.document && Object.hasOwn(parsed.document, "body")) && text.includes(wordNamespace)
-      const ordered = new XMLParser({ preserveOrder: true, ignoreAttributes: true, removeNSPrefix: true, processEntities: true, parseTagValue: false, trimValues: false }).parse(text)
-      visit(ordered, (key, value) => {
-        if (key === "t") {
-          for (const run of Array.isArray(value) ? value : [value]) bodyText += typeof run === "string" ? run : String(run?.["#text"] ?? "")
-        }
-      })
     }
     if (/^word\/.*\.xml$/i.test(name)) {
-      visit(parsed, key => {
-        if (/PrChange$/.test(key) || ["txbxContent", "fldChar", "instrText", "ins", "del", "moveFrom", "moveTo", "altChunk", "object", "drawing", "pict", "gridSpan", "vMerge", "headerReference", "footerReference", "sdt", "commentRangeStart", "commentRangeEnd", "commentReference", "footnoteReference", "endnoteReference"].includes(key)) throw invalid("文档包含暂不支持的图片、页眉页脚、域、修订或复杂结构。")
+      walkOrdered(orderedParser.parse(text), (key, attrs, children) => {
+        if (key === "altChunk" || key === "object") throw invalid("不支持外部模板或嵌入内容。")
+        countElement(key, attrs, structures)
+        if (name === "word/document.xml" && key === "t") bodyText += textOf(children)
       })
     }
   }
   if (!typesValid || !documentValid || !rootRelationship) throw invalid()
-  if (expectedText !== undefined && bodyText !== expectedText) throw invalid("导出正文与编辑内容不一致，此次结果未保存，请重试。")
-  return bodyText
+  const inspection: DocxInspection = { text: bodyText, structures }
+  if (expected) compareExport(inspection, expected)
+  return inspection
 }

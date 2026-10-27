@@ -1,4 +1,5 @@
 import { MAX_FILE_BYTES } from "./docx"
+import { emptyCounts } from "./structures"
 import { DOCX_TYPE } from "./types"
 
 export async function validateDocx(blob: Blob, signal?: AbortSignal, prepare = false, expectedText?: string): Promise<Blob> {
@@ -19,6 +20,6 @@ export async function validateDocx(blob: Blob, signal?: AbortSignal, prepare = f
     signal?.addEventListener("abort", abort, { once: true })
     worker.onmessage = (event: MessageEvent<{ ok: boolean; message?: string; bytes?: ArrayBuffer }>) => finish(event.data.ok ? undefined : new Error(event.data.message ?? "DOCX 校验失败。"), event.data.bytes)
     worker.onerror = () => finish(new Error("无法校验 DOCX 文件，请重试。"))
-    worker.postMessage({ bytes, prepare, expectedText }, [bytes])
+    worker.postMessage({ bytes, prepare, expected: expectedText === undefined ? undefined : { text: expectedText, structures: emptyCounts() } }, [bytes])
   })
 }
