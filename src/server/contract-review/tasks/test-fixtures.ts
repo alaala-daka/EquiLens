@@ -11,7 +11,7 @@ import { ReviewTaskRepository, type TaskInput } from "./repository"
 import { testPack } from "../../../../tools/contract-review/tests/helpers"
 import type { SubmitReview } from "../../../lib/contract-reviews/types"
 
-export async function setup() {
+export async function setup(blob = blankDocx()) {
   const directory = await mkdtemp(join(tmpdir(), "equilens-review-"))
   const database = await connectDatabase({ provider: "sqlite", path: join(directory, "store.sqlite") })
   let clock = new Date()
@@ -20,7 +20,7 @@ export async function setup() {
   const token = createHash("sha256").update(randomUUID()).digest("hex")
   const owner = createHash("sha256").update(token).digest("hex")
   const initial = await sessions.view(owner)
-  const saved = await documents.create(owner, { blob: blankDocx(), title: "合成合同", source: "authored", prompt: "", retentionConsent: initial.confirmation! })
+  const saved = await documents.create(owner, { blob, title: "合成合同", source: "authored", prompt: "", retentionConsent: initial.confirmation! })
   const contextId = initial.contextId
   const repository = new ReviewTaskRepository(database, sessions)
   await repository.initialize()

@@ -8,6 +8,9 @@ import type { ReviewSkill } from "../../../../tools/contract-review/src/agent/sk
 import type { SceneCandidate } from "../../../../tools/contract-review/src/scenes"
 import type { SceneBundle } from "../../../../tools/contract-review/src/bundles"
 import { hasCheckedRange } from "../../../../tools/contract-review/src/findings"
+import { canExportRevision } from "../../../../tools/contract-review/src/revision"
+import { draftHash, revisionHash } from "../../../../tools/contract-review/src/agent/revision"
+import { ReviewError } from "../../../../tools/contract-review/src/errors"
 
 /** 新任务固定候选目录；存量无目录任务沿用显式场景。 */
 export type TaskInput = Omit<SubmitReview, "context"> & {
@@ -16,9 +19,15 @@ export type TaskInput = Omit<SubmitReview, "context"> & {
   mode: "debug" | "published"; model: string; baseURL: string; maxPromptChars: number; consentAt: string
   documentContextId: string
   sceneCandidates?: SceneCandidate[]
-  workflow?: "multi-agent-v1"
+  workflow?: "multi-agent-v1" | "multi-agent-revision-v1" | "revision-only-v1"
+  revisionSource?: { taskId: string; ruleIds: string[] }
+  revisionPrimary?: ReviewResult
   sceneBundles?: SceneBundle[]
   auditEffort?: "default" | "low"
+  primaryStrategy?: "prepared-v1"; primaryEffort?: "default" | "low"; revisionEffort?: "default" | "low"; maxKnownTokens?: number
+  revisionStrategy?: "prepared-v1"
+  auditStrategy?: "prepared-v1"
+  repairStrategy?: "one-round-v1"
 }
 export type ParseSnapshot = { id: string; paragraphs: Paragraph[]; complete: boolean; textSha256: string }
 export type ClaimedReview = {
@@ -109,7 +118,7 @@ export class ReviewTaskRepository {
       return view(await this.owned(c, owner, String(row.id), contextId, "review"), true)
     })
   }
-  async create(owner: string, key: string, request: SubmitReview, input: TaskInput, maxCalls: number, retentionDays: number): Promise<ReviewTask> {
+  async create(owner: string, key: string, request: SubmitReview, input: TaskInput, maxCalls: number, retentionDays: number, notAfter?: string): Promise<ReviewTask> {
     const requestHash = digest(JSON.stringify(request)), payload = JSON.stringify(input)
     const create = () => this.database.transaction(async c => {
       const sourceSession = await this.guard(c, owner, input.documentContextId, "review")
@@ -126,7 +135,7 @@ export class ReviewTaskRepository {
       const total = await c.query("SELECT owner FROM equilens_review_tasks WHERE state IN ('queued','running') AND expires_at>$1", [now()])
       if (total.rows.length >= 20 || total.rows.filter(row => row.owner === owner).length >= 3) throw new StoreError(429, "审查队列已满，请稍后提交。")
       if (!sourceSession.expiresAt) throw noAccess()
-      const id = randomUUID(), created = now(), expires = new Date(Math.min(Date.now() + retentionDays * 86400000, Date.parse(sourceSession.expiresAt))).toISOString()
+      const id = randomUUID(), created = now(), expires = new Date(Math.min(Date.now() + retentionDays * 86400000, Date.parse(sourceSession.expiresAt), notAfter ? Date.parse(notAfter) : Infinity)).toISOString()
       await c.query("INSERT INTO equilens_review_tasks(id,owner,document_id,revision_id,title,idempotency_key,request_hash,input_hash,input,state,stage,created_at,updated_at,expires_at,attempt,calls_used,max_calls,elapsed_ms,progress) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'queued','queued',$10,$11,$12,0,0,$13,0,$14)",
         [id, owner, request.documentId, request.revisionId, input.title, key, requestHash, digest(payload), payload, created, created, expires, maxCalls, JSON.stringify({ readParagraphCount: 0, paragraphCount: 0, submittedRuleCount: 0 })])
       return view(await this.owned(c, owner, id, input.documentContextId, "review"), true)
@@ -185,6 +194,17 @@ export class ReviewTaskRepository {
     await this.database.transaction(async c => {
       const row = await this.executing(c, job)
       if (callNumber !== Number(row.calls_used) + 1 || callNumber > Number(row.max_calls) || elapsedMs >= 600000) throw lost()
+      // The immutable exchange ledger survives a crash between response persistence and checkpointing.
+      const tokenLimit = parse<TaskInput>(row.input).maxKnownTokens
+      if (tokenLimit !== undefined) {
+        const exchanges = (await c.query("SELECT payload FROM equilens_review_artifacts WHERE task_id=$1 AND stage='model-exchange'", [job.id])).rows
+        let knownTokens = 0
+        for (const exchange of exchanges) {
+          const usage = parse<{ response?: { usage?: { total_tokens?: unknown } } }>(exchange.payload).response?.usage?.total_tokens
+          if (typeof usage === "number" && Number.isSafeInteger(usage) && usage >= 0) knownTokens += usage
+        }
+        if (knownTokens >= tokenLimit) throw new ReviewError("REVIEW_TOKEN_BUDGET_EXHAUSTED")
+      }
       const update = await c.query("UPDATE equilens_review_tasks SET calls_used=$1,elapsed_ms=$2,updated_at=$3 WHERE id=$4 AND execution_token=$5 AND calls_used=$6 AND state='running'", [callNumber, elapsedMs, now(), job.id, job.token, callNumber - 1])
       if (update.changes !== 1) throw lost()
     })
@@ -207,6 +227,52 @@ export class ReviewTaskRepository {
     await this.database.transaction(async c => {
       await this.executing(c, job)
       await c.query("INSERT INTO equilens_review_artifacts(task_id,attempt,stage,ordinal,payload,created_at) VALUES ($1,$2,$3,$4,$5,$6)", [job.id, job.attempt, stage, ordinal, JSON.stringify(payload), now()])
+    })
+  }
+  async sourceReview(owner: string, id: string, contextId: string) {
+    return this.database.transaction(async c => {
+      const row = await this.owned(c, owner, id, contextId, "review")
+      const result = jsonResult(row)
+      if (!["success", "partial"].includes(String(row.state)) || !result) throw new StoreError(409, "原审查尚未完成，不能生成修订稿。")
+      return { input: parse<TaskInput>(row.input), result, expiresAt: String(row.expires_at) }
+    })
+  }
+  async saveRevisionExport(job: ClaimedReview, input: ReviewResult, bytes: Buffer, elapsedMs: number): Promise<ReviewResult> {
+    const result = structuredClone(input)
+    const draft = result.collaboration?.revision, audit = result.collaboration?.revisionAudit
+    const revisionWorkflow = job.input.workflow === "multi-agent-revision-v1" || job.input.workflow === "revision-only-v1"
+    if (!revisionWorkflow || !job.input.generateRevision || result.collaboration?.version !== job.input.workflow ||
+      !draft || !result.collaboration?.primary || !canExportRevision(draft, audit) || draft.sha256 !== draftHash(draft) ||
+      draft.primarySha256 !== revisionHash(result.collaboration.primary) || result.input.documentVersionId !== job.input.revisionId ||
+      result.input.parseSnapshotId !== job.snapshot?.id || result.input.textSha256 !== job.snapshot?.textSha256 ||
+      !Number.isSafeInteger(elapsedMs) || elapsedMs < 0 || elapsedMs >= 600000 || !bytes.length || bytes.length > 20 * 1024 * 1024) throw new StoreError(409, "修订稿未完成核对或版本不匹配。")
+    return this.database.transaction(async c => {
+      await this.executing(c, job)
+      const existing = (await c.query("SELECT payload FROM equilens_review_artifacts WHERE task_id=$1 AND attempt=$2 AND stage='revision-docx' AND ordinal=0", [job.id, job.attempt])).rows[0]
+      const payload = existing ? parse<{ bytes: string; sha256: string; draftSha256: string; renderVersion: string }>(existing.payload)
+        : { bytes: bytes.toString("base64"), sha256: createHash("sha256").update(bytes).digest("hex"), draftSha256: draft.sha256, renderVersion: "contract-revision-docx-v1" }
+      if (payload.draftSha256 !== draft.sha256 || createHash("sha256").update(Buffer.from(payload.bytes, "base64")).digest("hex") !== payload.sha256) throw new StoreError(409, "历史修订文件不匹配，禁止覆盖。")
+      if (!existing) await c.query("INSERT INTO equilens_review_artifacts(task_id,attempt,stage,ordinal,payload,created_at) VALUES ($1,$2,'revision-docx',0,$3,$4)", [job.id, job.attempt, JSON.stringify(payload), now()])
+      const title = result.documentTitle.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/[ .]+$/g, "").slice(0, 70) || "合同"
+      draft.export = { sha256: payload.sha256, draftSha256: draft.sha256, renderVersion: payload.renderVersion, attempt: job.attempt, filename: title + "-AI修订建议稿.docx" }
+      const changed = await c.query("UPDATE equilens_review_tasks SET result=$1,stage='validating',elapsed_ms=$2,updated_at=$3 WHERE id=$4 AND execution_token=$5 AND state='running'", [JSON.stringify(result), elapsedMs, now(), job.id, job.token])
+      if (changed.changes !== 1) throw lost()
+      return result
+    })
+  }
+  async revisionExport(owner: string, id: string, contextId: string) {
+    return this.database.transaction(async c => {
+      const row = await this.owned(c, owner, id, contextId)
+      const result = jsonResult(row), draft = result?.collaboration?.revision, audit = result?.collaboration?.revisionAudit
+      if (!["success", "partial"].includes(String(row.state)) || !draft?.export || !canExportRevision(draft, audit) || draft.sha256 !== draftHash(draft) ||
+        !result?.collaboration?.primary || draft.primarySha256 !== revisionHash(result.collaboration.primary)) throw new StoreError(409, "修订稿尚未生成，或仍有待处理问题。")
+      const saved = (await c.query("SELECT payload FROM equilens_review_artifacts WHERE task_id=$1 AND attempt=$2 AND stage='revision-docx' AND ordinal=0", [id, draft.export.attempt])).rows[0]
+      if (!saved) throw new StoreError(404, "找不到已保存的修订文件。")
+      const payload = parse<{ bytes: string; sha256: string; draftSha256: string; renderVersion: string }>(saved.payload)
+      const bytes = Buffer.from(payload.bytes, "base64")
+      if (payload.sha256 !== draft.export.sha256 || payload.draftSha256 !== draft.sha256 || payload.renderVersion !== draft.export.renderVersion ||
+        createHash("sha256").update(bytes).digest("hex") !== payload.sha256) throw new StoreError(500, "修订文件校验失败。")
+      return { bytes, filename: draft.export.filename, sha256: payload.sha256 }
     })
   }
   async finish(job: ClaimedReview, result: ReviewResult | null, error: { code: string; message: string } | null, elapsedMs: number, retry = false) {
@@ -233,7 +299,7 @@ export class ReviewTaskRepository {
         if (["queued", "running"].includes(String(row.state))) await c.query("UPDATE equilens_review_tasks SET state='failed',stage='cancelled',execution_token=NULL,lease_until=NULL,error_code='REVIEW_CANCELLED',error_message=$1,updated_at=$2 WHERE owner=$3 AND id=$4 AND state IN ('queued','running')", ["审查已取消，不再发送新的模型请求。", now(), owner, id])
       } else {
         if (["queued", "running"].includes(String(row.state))) return view(row, true)
-        if (row.state === "success" || row.error_code === "REVIEW_CANCELLED" || Number(row.attempt) >= 3 || Number(row.calls_used) >= Number(row.max_calls) || Number(row.elapsed_ms) >= 600000) throw new StoreError(409, "原任务不能继续重试；如需新分析，请重新确认后提交。")
+        if (row.state === "success" || ["REVIEW_CANCELLED", "REVIEW_TOKEN_BUDGET_EXHAUSTED"].includes(String(row.error_code)) || Number(row.attempt) >= 3 || Number(row.calls_used) >= Number(row.max_calls) || Number(row.elapsed_ms) >= 600000) throw new StoreError(409, "原任务不能继续重试；如需新分析，请重新确认后提交。")
         await c.query("UPDATE equilens_review_tasks SET state='queued',stage='queued',updated_at=$1,error_code=NULL,error_message=NULL WHERE owner=$2 AND id=$3 AND state=$4 AND attempt=$5 AND execution_token IS NULL", [now(), owner, id, String(row.state), Number(row.attempt)])
       }
       return view(await this.owned(c, owner, id, contextId), true)

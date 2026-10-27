@@ -63,9 +63,10 @@ export async function routeScene(options: Options): Promise<RoutingResult> {
       afterResponse: () => { result.readParagraphIndexes = paragraphs.map(item => item.index) }, onFailure: value => { failure = value },
       beforeRequest: async () => {
         if (result.callsUsed >= maxCalls) throw new ReviewError("REVIEW_BUDGET_EXHAUSTED")
-        result.callsUsed++
-        try { await abortable(Promise.resolve(options.onBeforeCall?.({ callNumber: result.callsUsed, ruleIds: [] })), signal) }
-        catch { signal.throwIfAborted(); throw new ReviewError("REVIEW_RESERVATION_FAILED") }
+        const nextCall = result.callsUsed + 1
+        try { await abortable(Promise.resolve(options.onBeforeCall?.({ callNumber: nextCall, ruleIds: [] })), signal) }
+        catch (failure) { signal.throwIfAborted(); throw failure instanceof ReviewError && failure.code === "REVIEW_TOKEN_BUDGET_EXHAUSTED" ? failure : new ReviewError("REVIEW_RESERVATION_FAILED") }
+        result.callsUsed = nextCall
         await checkpoint()
       },
       onExchange: async exchange => {

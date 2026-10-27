@@ -2,11 +2,14 @@
 import type { SceneCandidate } from "./scenes"
 import type { AuditResult } from "./agent/audit"
 import type { RoutingResult } from "./agent/router"
+import type { RevisionState, RevisionAudit, RevisionRepair } from "./revision"
 
 export type Collaboration = {
-  version: "multi-agent-v1"; manifestSha256: string
-  phase: "identifying" | "reviewing" | "auditing" | "completed"
+  version: "multi-agent-v1" | "multi-agent-revision-v1" | "revision-only-v1"; manifestSha256: string
+  phase: "identifying" | "reviewing" | "revising" | "auditing" | "completed"
   primaryCompleted: boolean; routing?: RoutingResult; primary?: ReviewResult; audit?: AuditResult
+  revision?: RevisionState; revisionAudit?: RevisionAudit
+  revisionRepair?: RevisionRepair
 }
 
 export type SceneSelection = {
@@ -208,6 +211,7 @@ export type ReviewResult = {
     readSourceIds: string[]
     events: { tool: string; at: string; paragraphIndexes?: number[]; sourceIds?: string[]; ruleIds?: string[] }[]
     submissions: { ruleIds: string[]; readParagraphIndexes: number[]; readSourceIds: string[] }[]
+    preparation?: { strategy: "prepared-v1"; manifestSha256: string; receipts: { promptSha256: string; ruleIds: string[]; paragraphIndexes: number[]; sourceIds: string[] }[] }
   }
   summary?: { issues: number; pending: number; rejected: number; unreadParagraphs: number }
 }
