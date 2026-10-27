@@ -3,6 +3,8 @@ import type { ReviewContext } from "./types"
 /** 场景是判定的唯一依据：规则按 scene 匹配，中文名称只用于展示。 */
 export const sceneIds = ["mep-sub-2026", "decoration-sub-2026", "curtain-wall-sub-2026", "steel-structure-sub-2026"] as const
 export const skillIds = ["contract-review", "decoration-review", "curtain-wall-review", "steel-structure-review"] as const
+export const revisionSkillIds = ["mep-revision", "decoration-revision", "curtain-wall-revision", "steel-structure-revision"] as const
+export const revisionSkillForScene = Object.fromEntries(sceneIds.map((id, index) => [id, revisionSkillIds[index]])) as Record<typeof sceneIds[number], typeof revisionSkillIds[number]>
 export type SceneId = typeof sceneIds[number]
 
 export type Scene = {

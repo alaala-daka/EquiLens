@@ -5,7 +5,7 @@ import { StoreError } from "../../documents/errors"
 import type { DocumentSessionRepository } from "../../documents/session-repository"
 import type { ReviewAvailability, ReviewTask, SubmitReview } from "../../../lib/contract-reviews/types"
 import type { ReviewTaskRepository } from "./repository"
-import { submitReviewSchema } from "./schema"
+import { submitReviewSchema, revisionTaskSchema } from "./schema"
 import { reviewBody, reviewFailure } from "./http"
 
 export type ReviewHttpServices = {
@@ -13,6 +13,7 @@ export type ReviewHttpServices = {
   repository: ReviewTaskRepository
   configuration: () => Promise<ReviewAvailability>
   submit: (owner: string, key: string, request: SubmitReview, contextId: string) => Promise<ReviewTask>
+  submitRevision: (owner: string, key: string, sourceTaskId: string, ruleIds: string[], contextId: string) => Promise<ReviewTask>
   wake: () => void
   cancel: (id: string) => void
 }
@@ -90,5 +91,39 @@ export function createReviewDetailHandlers(getServices: Services) {
         return await respond(request, services, task)
       } catch (failure) { return reviewFailure(failure) }
     },
+  }
+}
+
+export function createRevisionSubmissionHandler(getServices: Services) {
+  return async function POST(request: NextRequest, context: Context) {
+    try {
+      sameOrigin(request)
+      const services = await getServices()
+      const { identity, contextId } = await access(request, services, "review")
+      const key = identifier(request.headers.get("Idempotency-Key"))
+      const parsed = revisionTaskSchema.safeParse(await reviewBody(request))
+      if (!parsed.success) throw new StoreError(422, "请选择需要修订的问题并确认外发。")
+      const id = identifier((await context.params).id)
+      const task = await services.submitRevision(identity.owner, key, id, parsed.data.ruleIds, contextId)
+      services.wake()
+      return await respond(request, services, task, 202)
+    } catch (failure) { return reviewFailure(failure) }
+  }
+}
+
+export function createReviewRevisionHandler(getServices: Services) {
+  return async function GET(request: NextRequest, context: Context) {
+    try {
+      const services = await getServices()
+      const { identity, contextId } = await access(request, services, "read")
+      const file = await services.repository.revisionExport(identity.owner, identifier((await context.params).id), contextId)
+      await access(request, services, "read")
+      const response = new NextResponse(new Uint8Array(file.bytes), { headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(file.filename),
+        "Cache-Control": "private, no-store", "X-Document-Context": contextId, "X-Content-SHA256": file.sha256,
+      } })
+      return identity.apply(response)
+    } catch (failure) { return reviewFailure(failure) }
   }
 }

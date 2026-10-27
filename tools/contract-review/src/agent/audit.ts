@@ -135,9 +135,10 @@ export async function auditReview(options: AuditOptions): Promise<AuditResult> {
       beforeRequest: async () => {
         signal.throwIfAborted()
         if (result.callsUsed >= maxCalls) throw new ReviewError("REVIEW_BUDGET_EXHAUSTED")
-        result.callsUsed++
-        try { await abortable(Promise.resolve(options.onBeforeCall?.({ callNumber: result.callsUsed, ruleIds: result.unreviewedRuleIds })), signal) }
-        catch { signal.throwIfAborted(); throw new ReviewError("REVIEW_RESERVATION_FAILED") }
+        const nextCall = result.callsUsed + 1
+        try { await abortable(Promise.resolve(options.onBeforeCall?.({ callNumber: nextCall, ruleIds: result.unreviewedRuleIds })), signal) }
+        catch (failure) { signal.throwIfAborted(); throw failure instanceof ReviewError && failure.code === "REVIEW_TOKEN_BUDGET_EXHAUSTED" ? failure : new ReviewError("REVIEW_RESERVATION_FAILED") }
+        result.callsUsed = nextCall
         await checkpoint()
       },
       onExchange: async exchange => {

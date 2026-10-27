@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from "node:crypto"
 import { readDocxInChild } from "../../../../tools/contract-review/src/document"
 import { reviewWithAgent } from "../../../../tools/contract-review/src/agent"
-import { reviewWithAgents } from "../../../../tools/contract-review/src/agent/pipeline"
+import { reviewWithAgents, reviewRevisionOnly } from "../../../../tools/contract-review/src/agent/pipeline"
 import type { AgentProgress } from "../../../../tools/contract-review/src/agent"
 import { ReviewError, safeError } from "../../../../tools/contract-review/src/errors"
+import { canExportRevision } from "../../../../tools/contract-review/src/revision"
+import { renderRevisionInChild } from "../../../../tools/contract-review/src/revision-export"
 import type { ReviewTask, ReviewResult } from "../../../lib/contract-reviews/types"
 import type { ClaimedReview, ReviewTaskRepository } from "./repository"
 
@@ -40,7 +42,11 @@ export async function runClaimedReview(job: ClaimedReview, overrides: RunnerOver
   let result: ReviewResult | null = null
   try {
     controller.signal.throwIfAborted()
-    if (!job.snapshot) {
+    if (job.input.workflow === "revision-only-v1") {
+      const primary = job.input.revisionPrimary, parseSnapshotId = primary?.input.parseSnapshotId
+      if (!primary || !parseSnapshotId || primary.collaboration?.version !== "multi-agent-v1" || !job.input.revisionSource?.ruleIds.length) throw new ReviewError("REVIEW_INPUT_INVALID")
+      job.snapshot = { id: parseSnapshotId, paragraphs: primary.paragraphs, complete: primary.input.complete, textSha256: primary.input.textSha256 }
+    } else if (!job.snapshot) {
       await repository.checkpoint(job, stage, progress, null, elapsed())
       const revision = await repository.readRevision(job.owner, job.input.documentId, job.input.revisionId, job.input.documentContextId)
       if (revision.hash !== job.input.revisionHash) throw new ReviewError("REVIEW_DOCUMENT_INVALID")
@@ -51,6 +57,7 @@ export async function runClaimedReview(job: ClaimedReview, overrides: RunnerOver
       await repository.snapshot(job, job.snapshot)
     }
     const snapshot = job.snapshot
+    if (!snapshot) throw new ReviewError("REVIEW_INPUT_INVALID")
     // 空文档没有可审查内容，先明确失败，避免进入解析/模型阶段消耗预算。
     if (!snapshot.paragraphs.some(paragraph => paragraph.text.trim())) throw new ReviewError("REVIEW_INPUT_EMPTY")
     progress.paragraphCount = snapshot.paragraphs.length
@@ -76,11 +83,25 @@ export async function runClaimedReview(job: ClaimedReview, overrides: RunnerOver
       onCheckpoint: (checkpoint: ReviewResult) => repository.checkpoint(job, stage, progress, checkpoint, elapsed()),
       onModelExchange: (exchange: { callNumber: number; request: unknown; response: unknown; agentRole?: string }) => repository.artifact(job, "model-exchange", exchange.callNumber, exchange),
     }
-    if (job.input.workflow === "multi-agent-v1") {
+    if (job.input.workflow === "revision-only-v1") {
+      result = await reviewRevisionOnly({ ...settings, primary: job.input.revisionPrimary!, ruleIds: job.input.revisionSource!.ruleIds,
+        bundles: job.input.sceneBundles ?? [], revisionEffort: job.input.revisionEffort, auditEffort: job.input.auditEffort, maxKnownTokens: job.input.maxKnownTokens })
+    } else if (job.input.workflow === "multi-agent-v1" || job.input.workflow === "multi-agent-revision-v1") {
       if (!job.input.sceneBundles?.length) throw new ReviewError("REVIEW_SCENE_INVALID")
-      result = await reviewWithAgents({ ...settings, bundles: job.input.sceneBundles, auditEffort: job.input.auditEffort })
+      result = await reviewWithAgents({ ...settings, bundles: job.input.sceneBundles, auditEffort: job.input.auditEffort, workflow: job.input.workflow,
+        primaryStrategy: job.input.primaryStrategy, revisionStrategy: job.input.revisionStrategy, auditStrategy: job.input.auditStrategy, repairStrategy: job.input.repairStrategy,
+        primaryEffort: job.input.primaryEffort, revisionEffort: job.input.revisionEffort, maxKnownTokens: job.input.maxKnownTokens })
     } else result = await reviewWithAgent({ ...settings, pack: job.input.pack, skill: job.input.skill, sceneCandidates: job.input.sceneCandidates })
     controller.signal.throwIfAborted()
+    const collaboration = result.collaboration
+    if ((collaboration?.version === "multi-agent-revision-v1" || collaboration?.version === "revision-only-v1") && canExportRevision(collaboration.revision, collaboration.revisionAudit) && !collaboration.revision!.export) {
+      stage = "validating"
+      const revision = await repository.readRevision(job.owner, job.input.documentId, job.input.revisionId, job.input.documentContextId)
+      if (revision.hash !== job.input.revisionHash) throw new ReviewError("REVIEW_DOCUMENT_INVALID")
+      const output = await renderRevisionInChild(revision.bytes, collaboration.primary!, collaboration.revision!, collaboration.revisionAudit!, controller.signal)
+      controller.signal.throwIfAborted()
+      result = await repository.saveRevisionExport(job, result, output, elapsed())
+    }
     const error = result.errors[0] ?? null
     const retry = retryable(error?.code) && job.attempt < 2 && job.callsUsed < job.maxCalls && elapsed() < 600000
     await repository.finish(job, result, error, elapsed(), retry)

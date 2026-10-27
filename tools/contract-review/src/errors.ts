@@ -1,4 +1,7 @@
 const messages: Record<string, string> = {
+  REVIEW_REVISION_INCOMPLETE: "合同修订尚未完成，原审查结果已保留。",
+  REVIEW_REVISION_UNSAFE: "修改后的合同仍有待处理问题，暂不能导出修订稿。",
+  REVIEW_REVISION_EXPORT_FAILED: "修订稿 Word 校验或保存失败，未生成可下载文件。",
   REVIEW_INPUT_INVALID: "合同文字、段落编号或调用参数无效。",
   REVIEW_INPUT_EMPTY: "文档正文为空，无法开始合同审查；请先录入或导入合同内容。",
   REVIEW_INPUT_TOO_LARGE: "合同或提示内容超过本次输入预算，请减少材料或调整已验证的配置。",
@@ -7,6 +10,7 @@ const messages: Record<string, string> = {
   REVIEW_RULES_UNMATCHED: "已发布的规则未命中本合同任何内容，没有可执行的检查项；请确认合同类型与规则包是否匹配。",
   REVIEW_RULE_PACK_INVALID: "规则包读取或格式校验失败，请由维护者检查规则文件。",
   REVIEW_BUDGET_EXHAUSTED: "本次审查已达到模型调用次数上限。",
+  REVIEW_TOKEN_BUDGET_EXHAUSTED: "本次任务已达到累计 token 停止阈值，已有结果保留。",
   REVIEW_BUDGET_UNVERIFIED: "正式审查的提示预算尚未验证并配置；请使用调试模式联调。",
   REVIEW_TIMEOUT: "本次审查已达到执行时限。",
   REVIEW_CANCELLED: "本次审查已取消。",

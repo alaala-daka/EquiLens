@@ -9,6 +9,8 @@ import { buildCoverage, validateFindings, type RawFinding } from "../validate"
 import type { ReviewSkill } from "./skill"
 import { citationListSchema, sceneSelectionSchema } from "./schema"
 
+type PreparedReceipt = NonNullable<NonNullable<ReviewResult["agent"]>["preparation"]>["receipts"][number]
+
 export class ReviewSession {
   readonly result: ReviewResult
   readonly planned: TriggeredRule[] = []
@@ -20,6 +22,7 @@ export class ReviewSession {
   private readonly pendingIndexes = new Set<number>()
   private readonly pendingSourceIds = new Set<string>()
   private readonly accepted = new Map<string, Finding>()
+  private preparedDelivery?: PreparedReceipt
   private readonly pack: LoadedPack
 
   constructor(input: ReviewInput, pack: LoadedPack, readonly skill: ReviewSkill, model: string, callsUsed: number,
@@ -95,12 +98,17 @@ export class ReviewSession {
     this.result.usage = structuredClone(prior.usage)
     this.result.agent!.events = structuredClone(prior.agent.events)
     this.result.agent!.submissions = structuredClone(prior.agent.submissions)
+    this.result.agent!.preparation = structuredClone(prior.agent.preparation)
   }
 
   checkpoint(): ReviewResult {
     return structuredClone({ ...this.result, findings: [...this.accepted.values()],
       coverage: buildCoverage([...this.accepted.values()], this.planned),
-      agent: { ...this.result.agent!, readParagraphIndexes: [...this.readIndexes], readSourceIds: [...this.readSourceIds] } })
+      agent: { ...this.result.agent!, readParagraphIndexes: [...this.readIndexes], readSourceIds: this.deliveredSources() } })
+  }
+
+  private deliveredSources() {
+    return [...new Set([...this.readSourceIds, ...(this.result.agent!.preparation?.receipts.flatMap(item => item.sourceIds) ?? [])])]
   }
 
   /** 下一次模型请求已带上工具结果并成功返回，才算正文/依据实际交给模型。
@@ -110,6 +118,36 @@ export class ReviewSession {
     for (const id of this.pendingSourceIds) this.readSourceIds.add(id)
     this.pendingIndexes.clear()
     this.pendingSourceIds.clear()
+    if (this.preparedDelivery) {
+      this.result.agent!.preparation!.receipts.push(this.preparedDelivery)
+      this.record("provideBatch", { ruleIds: this.preparedDelivery.ruleIds,
+        paragraphIndexes: this.preparedDelivery.paragraphIndexes, sourceIds: this.preparedDelivery.sourceIds })
+      this.preparedDelivery = undefined
+    }
+  }
+
+  preparedMaterials(ids: string[]) {
+    this.requireSkill()
+    const rules = this.planned.filter(item => ids.includes(item.rule.ruleId)).map(({ rule }) => ({
+      ruleId: rule.ruleId, title: rule.title, category: rule.category, appliesTo: rule.appliesTo,
+      requirement: rule.requirement, severity: rule.severity, basis: rule.basis,
+      unavailableReason: this.blocked.get(rule.ruleId),
+    }))
+    if (rules.length !== ids.length) throw new ReviewError("REVIEW_INPUT_INVALID")
+    const allowed = new Set(rules.flatMap(rule => rule.basis.map(item => item.sourceId)))
+    return { title: this.result.documentTitle, context: this.result.input.context, complete: this.result.input.complete,
+      documentVersionId: this.result.input.documentVersionId, parseSnapshotId: this.result.input.parseSnapshotId,
+      skill: this.skill, mode: this.result.mode, paragraphs: this.result.paragraphs, targetRuleIds: ids, rules,
+      sources: this.sources.filter(item => allowed.has(item.sourceId)) }
+  }
+
+  stagePrepared(receipt: PreparedReceipt) {
+    this.requireSkill()
+    if (!this.result.agent!.preparation || receipt.paragraphIndexes.length !== this.result.paragraphs.length) throw new ReviewError("REVIEW_INPUT_INVALID")
+    this.readIndexes.clear(); this.readSourceIds.clear(); this.pendingIndexes.clear(); this.pendingSourceIds.clear()
+    for (const index of receipt.paragraphIndexes) this.pendingIndexes.add(index)
+    for (const id of receipt.sourceIds) this.pendingSourceIds.add(id)
+    this.preparedDelivery = structuredClone(receipt)
   }
 
   private requireSkill() { if (!this.loaded || this.needsSceneSelection || this.sceneSelectionStopped) throw new ReviewError("REVIEW_SKILL_REQUIRED") }
@@ -247,7 +285,9 @@ export class ReviewSession {
       if (parsed.success && !(item.kind === "缺失条款" && parsed.data.length) && parsed.data.every(citation =>
         this.readIndexes.has(citation.paragraphIndex) && this.result.paragraphs.some(paragraph =>
           paragraph.index === citation.paragraphIndex && paragraph.text.includes(citation.quote)))) return true
-      this.result.rejected.push({ ruleId: String(item.ruleId), reason: "引文校验失败", detail: "补充引文必须逐字出现在已读段落中；缺失条款不得附带虚构引文。" })
+      this.result.rejected.push({ ruleId: String(item.ruleId), reason: "引文校验失败", detail: item.kind === "缺失条款"
+        ? "缺失条款不得附带任何补充引文：请将citations设为空数组、quote设为空字符串、paragraphIndex设为-1。"
+        : "补充引文必须逐字出现在已读段落中。" })
       return false
     })
     const outcome = validateFindings(withValidCitations, this.planned,
@@ -314,7 +354,7 @@ export class ReviewSession {
     this.result.findings = [...this.accepted.values()]
     this.result.coverage = buildCoverage(this.result.findings, this.planned)
     this.result.agent!.readParagraphIndexes = [...this.readIndexes].sort((a, b) => a - b)
-    this.result.agent!.readSourceIds = [...this.readSourceIds]
+    this.result.agent!.readSourceIds = this.deliveredSources()
     this.result.summary = {
       issues: this.result.findings.filter(item => ["发现问题", "缺失条款"].includes(item.kind)).length,
       pending: this.result.findings.filter(item => item.kind === "待核实").length,

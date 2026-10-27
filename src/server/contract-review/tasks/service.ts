@@ -30,16 +30,18 @@ async function resources() {
   const packSha256 = createHash("sha256").update(JSON.stringify(pack)).digest("hex")
   const sceneCandidates = sceneBundles.map(bundle => bundle.candidate)
   const configurationId = createHash("sha256").update(JSON.stringify({ ...config, packSha256, skillSha256: skill.sha256, sceneCandidates,
-    workflow: "multi-agent-v1", bundles: sceneBundles.map(bundle => bundle.sha256) })).digest("hex")
+    primaryStrategy: "prepared-v1", revisionStrategy: "prepared-v1", auditStrategy: "prepared-v1", repairStrategy: "one-round-v1",
+    workflows: ["multi-agent-v1", "multi-agent-revision-v1"], bundles: sceneBundles.map(bundle => bundle.sha256) })).digest("hex")
   return { config, pack, skill, packSha256, configurationId, sceneCandidates, sceneBundles }
 }
 export async function reviewAvailability(): Promise<ReviewAvailability> {
   try {
     const { config, configurationId } = await resources()
-    return { ready: true, mode: config.mode, model: config.model, providerHost: new URL(config.baseURL).host, retentionDays: config.retentionDays, configurationId }
+    return { ready: true, mode: config.mode, model: config.model, providerHost: new URL(config.baseURL).host, retentionDays: config.retentionDays,
+      maxKnownTokens: config.maxKnownTokens, configurationId }
   } catch (failure) {
     return { ready: false, mode: process.env.AI_REVIEW_MODE === "debug" || (process.env.NODE_ENV !== "production" && !process.env.AI_REVIEW_MODE) ? "debug" : "published",
-      model: "", providerHost: "", retentionDays: 0, configurationId: "", error: safeError(failure).message }
+      model: "", providerHost: "", retentionDays: 0, maxKnownTokens: 0, configurationId: "", error: safeError(failure).message }
   }
 }
 export async function submitReview(owner: string, key: string, request: SubmitReview, contextId: string) {
@@ -55,6 +57,30 @@ export async function submitReview(owner: string, key: string, request: SubmitRe
   return repository.create(owner, key, request, {
     ...request, context, documentContextId: contextId, title: revision.title, revisionHash: revision.hash, mode: config.mode, model: config.model,
     baseURL: config.baseURL, maxPromptChars: config.maxPromptChars, pack, packSha256, skill, sceneCandidates, sceneBundles,
-    workflow: "multi-agent-v1", auditEffort: config.auditEffort, consentAt: new Date().toISOString(),
+    workflow: request.generateRevision ? "multi-agent-revision-v1" : "multi-agent-v1", auditEffort: config.auditEffort, consentAt: new Date().toISOString(),
+    primaryStrategy: "prepared-v1", revisionStrategy: "prepared-v1", auditStrategy: "prepared-v1", repairStrategy: "one-round-v1", primaryEffort: config.primaryEffort, revisionEffort: config.revisionEffort, maxKnownTokens: config.maxKnownTokens,
   }, config.maxCalls, config.retentionDays)
+}
+export async function submitRevision(owner: string, key: string, sourceTaskId: string, ruleIds: string[], contextId: string) {
+  const repository = await reviewTaskRepository()
+  const source = await repository.sourceReview(owner, sourceTaskId, contextId)
+  if (source.result.collaboration?.version !== "multi-agent-v1" || source.result.sceneSelection?.status !== "matched" || !source.input.sceneBundles?.length)
+    throw new StoreError(409, "原审查结果不支持生成修订稿。")
+  const rules = [...new Set(ruleIds)]
+  if (!rules.length || rules.length > 22) throw new StoreError(422, "请选择需要修订的问题。")
+  const eligible = source.result.findings.filter(item => !item.placeholder && (item.kind === "发现问题" || item.kind === "缺失条款") && item.basis.length)
+  if (rules.some(id => !eligible.some(item => item.ruleId === id))) throw new StoreError(422, "所选问题不包含可修订的原审查结论。")
+  const config = reviewTaskConfig()
+  const region = source.input.context.region?.trim()
+  if (!region) throw new StoreError(422, "原审查缺少地域，不能生成修订稿。")
+  const request: SubmitReview = { documentId: source.input.documentId, revisionId: source.input.revisionId,
+    context: { scene: "auto", role: "专业分包人", region },
+    externalProcessingConsent: true, unreviewedMaterialsConsent: source.input.unreviewedMaterialsConsent,
+    configurationId: source.input.configurationId, generateRevision: true }
+  const input = { ...source.input, context: source.input.context, workflow: "revision-only-v1" as const,
+    revisionSource: { taskId: sourceTaskId, ruleIds: rules }, revisionPrimary: source.result,
+    generateRevision: true, consentAt: new Date().toISOString(), revisionStrategy: "prepared-v1" as const,
+    auditStrategy: "prepared-v1" as const, repairStrategy: "one-round-v1" as const,
+    revisionEffort: config.revisionEffort, auditEffort: config.auditEffort, maxKnownTokens: config.maxKnownTokens }
+  return repository.create(owner, key, request, input, config.maxCalls, config.retentionDays, source.expiresAt)
 }

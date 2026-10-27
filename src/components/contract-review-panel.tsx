@@ -26,6 +26,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
   const [consentRevision, setConsentRevision] = useState("")
   const consent = consentRevision === revisionId
   const [draftConsent, setDraftConsent] = useState(false)
+  const [generateRevision, setGenerateRevision] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -78,7 +79,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     pending.current = controller; setSubmitting(true); setError("")
     const input: SubmitReview = { documentId, revisionId,
       context: { scene: "auto", role: "专业分包人", region: region.trim() },
-      externalProcessingConsent: true, unreviewedMaterialsConsent: draftConsent, configurationId: configuration.configurationId }
+      externalProcessingConsent: true, unreviewedMaterialsConsent: draftConsent, configurationId: configuration.configurationId, generateRevision }
     const signature = JSON.stringify(input)
     if (operation.current?.signature !== signature) operation.current = { signature, key: crypto.randomUUID() }
     try {
@@ -105,12 +106,13 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     <form onSubmit={event => void submit(event)} className="flex flex-col gap-4">
       <div className="space-y-1 text-sm"><p className="font-medium">合同审查</p><p className="text-muted-foreground">审查立场：专业分包人</p><p className="break-all text-xs text-muted-foreground">保存版本：{revisionId}</p></div>
       <label className="grid gap-2 text-sm">项目地域<Input value={region} required maxLength={100} placeholder="如：上海" disabled={submitting} onChange={event => { setRegion(event.target.value); setConsentRevision("") }} /></label>
+      <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={generateRevision} disabled={submitting} onChange={event => { setGenerateRevision(event.target.checked); setConsentRevision("") }} /><span>生成合同修订稿，并核对修改后的合同（会增加约 2–3 倍模型调用与 token）</span></label>
       {configuration?.mode === "debug" && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draftConsent} disabled={submitting} onChange={event => setDraftConsent(event.target.checked)} /><span>我已知悉审查依据尚未核对，结果仅供联调，需人工复核。</span></label>}
-      {configuration?.ready && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} disabled={submitting} onChange={event => setConsentRevision(event.target.checked ? revisionId : "")} /><span>我确认上述审查条件，并有权将此保存版本发送至 {configuration.providerHost}（{configuration.model}）进行处理。审查记录最多保留 {configuration.retentionDays} 天，原资料先到期时一并清理。</span></label>}
+      {configuration?.ready && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} disabled={submitting} onChange={event => setConsentRevision(event.target.checked ? revisionId : "")} /><span>我确认上述审查条件，并有权将此保存版本发送至 {configuration.providerHost}（{configuration.model}）进行处理。审查记录最多保留 {configuration.retentionDays} 天，原资料先到期时一并清理；累计已记录 token 达到 {configuration.maxKnownTokens.toLocaleString("zh-CN")} 时停止发送下一次请求。</span></label>}
       {dirty && <p role="status" className="text-sm">请先保存更改，再开始审查。</p>}
       {configuration?.error && <p role="alert" className="text-sm text-destructive">{configuration.error}</p>}
       <Button type="submit" disabled={loading || !configuration?.ready || submitting || busy || dirty || alreadyRunning || !region.trim() || !consent || (configuration.mode === "debug" && !draftConsent)}>
-        {submitting && <LoaderCircleIcon className="animate-spin" />}开始审查
+        {submitting && <LoaderCircleIcon className="animate-spin" />}{generateRevision ? "审查并生成修订稿" : "开始审查"}
       </Button>
     </form>
     {error && <div className="flex flex-col gap-2"><p role="alert" className="text-sm text-destructive">{error}</p><Button type="button" variant="outline" disabled={submitting} onClick={() => { setError(""); cachedDetail.current = null; setReload(value => value + 1) }}>重新读取</Button></div>}
@@ -125,11 +127,14 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
       <p className="text-sm text-muted-foreground">{new Date(task.createdAt).toLocaleString("zh-CN")} · 保留至 {new Date(task.expiresAt).toLocaleString("zh-CN")}</p>
       {task.revisionId !== revisionId && <p role="note" className="text-sm">此报告对应历史保存版本；当前文档的修改未包含在本次审查中。</p>}
       {active && <p className="text-sm">已读 {task.progress.readParagraphCount} / {task.progress.paragraphCount} 段，已提交 {task.progress.submittedRuleCount} 条检查。</p>}
-      {active && task.progress.agentRole === "auditor" && <p className="text-sm">独立复核：{task.progress.auditedRuleCount ?? 0} / {task.result?.findings.length ?? task.progress.submittedRuleCount} 条</p>}
-      {task.error && !task.result?.errors.some(item => item.code === task.error?.code) && <p role="alert" className="text-sm text-destructive">{task.error.message}</p>}
+      {active && task.result?.usage && configuration?.maxKnownTokens ? <p className="text-sm text-muted-foreground">已记录 {task.result.usage.totalTokens.toLocaleString("zh-CN")} token / 停止阈值 {configuration.maxKnownTokens.toLocaleString("zh-CN")}</p> : null}
+      {active && task.progress.agentRole === "auditor" && <p className="text-sm">{task.result?.collaboration?.version === "multi-agent-revision-v1" ? "核对修改后合同" : "AI 复查"}：{task.progress.auditedRuleCount ?? 0} / {task.result?.findings.length ?? task.progress.submittedRuleCount} 条</p>}
+      {task.error && !task.result?.errors.some(item => item.code === task.error?.code) && <p role="alert" className="text-sm text-destructive">{task.error.code === "REVIEW_TOKEN_BUDGET_EXHAUSTED" && configuration
+        ? `已达到累计 ${configuration.maxKnownTokens.toLocaleString("zh-CN")} token 停止阈值；已有结果保留，可重新提交新任务。`
+        : task.error.message}</p>}
       {active && <Button type="button" variant="outline" disabled={submitting} onClick={() => void action("cancel")}>取消审查</Button>}
-      {!active && task.state !== "success" && task.stage !== "cancelled" && task.error?.code !== "REVIEW_INPUT_EMPTY" && (!task.result?.sceneSelection || task.result.sceneSelection.status === "matched") && task.attempt < 3 && task.callsUsed < task.maxCalls && <Button type="button" variant="outline" disabled={submitting} onClick={() => setRetryDialog(true)}>继续原任务</Button>}
-      {task.result && <ContractReviewReport result={task.result} />}
+      {!active && task.state !== "success" && task.stage !== "cancelled" && !["REVIEW_INPUT_EMPTY", "REVIEW_REVISION_UNSAFE", "REVIEW_TOKEN_BUDGET_EXHAUSTED"].includes(task.error?.code ?? "") && !task.result?.collaboration?.revision?.export && (!task.result?.sceneSelection || task.result.sceneSelection.status === "matched") && task.attempt < 3 && task.callsUsed < task.maxCalls && <Button type="button" variant="outline" disabled={submitting} onClick={() => setRetryDialog(true)}>继续原任务</Button>}
+      {task.result && <ContractReviewReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} onRevisionCreated={id => { setSelected(id); setReload(value => value + 1) }} />}
     </div>}
     <AlertDialog open={retryDialog} onOpenChange={setRetryDialog}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>继续原审查任务？</AlertDialogTitle><AlertDialogDescription>将使用原保存版本、审查条件和模型服务继续处理，可能产生费用。已有结果保留，调用预算和保留期限不会重置。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><Button type="button" disabled={submitting} onClick={() => void action("retry")}>同意并继续</Button></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </section>

@@ -13,6 +13,7 @@ export type AgentModelOptions = {
   onFailure: (failure: ReviewError) => void
   onExchange?: (exchange: { request: unknown; response: unknown }) => Promise<void>
   lengthRepairInstruction?: string
+  lengthRepair?: boolean
 }
 
 async function responseBytes(response: Response, signal: AbortSignal): Promise<Uint8Array> {
@@ -72,7 +73,7 @@ export function createAgentModel(options: AgentModelOptions) {
           catch { options.signal.throwIfAborted(); throw new ReviewError("REVIEW_PROGRESS_FAILED") }
           const choice = value?.choices?.[0]
           if (!Array.isArray(value?.choices) || value.choices.length !== 1 || !choice?.message) throw new ReviewError("AI_RESPONSE_INVALID")
-          if (!choice.message.refusal && choice.finish_reason === "length" && !lengthRepairUsed) {
+          if (!choice.message.refusal && choice.finish_reason === "length" && options.lengthRepair !== false && !lengthRepairUsed) {
             lengthRepairUsed = true
             const request = JSON.parse(body)
             body = JSON.stringify({ ...request, messages: [...request.messages, {
