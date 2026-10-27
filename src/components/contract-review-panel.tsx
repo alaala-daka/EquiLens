@@ -41,12 +41,17 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     let disposed = false
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
+    let inFlight = false
+    let pollingActive = false
     async function refresh() {
+      if (disposed || inFlight) return
+      inFlight = true
       try {
         const value = await listReviewTasks(documentId, controller.signal)
         if (disposed) return
         setTasks(value.tasks)
         setConfiguration(value.configuration)
+        pollingActive = value.tasks.some(item => item.state === "queued" || item.state === "running")
         if (consentConfiguration.current !== value.configuration.configurationId) {
           consentConfiguration.current = value.configuration.configurationId
           setConsentRevision(""); setDraftConsent(false)
@@ -62,10 +67,22 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
         }
         setLoading(false)
       } catch (failure) { if (!disposed && !controller.signal.aborted) { setError(errorMessage(failure)); setLoading(false); if (failure instanceof DocumentSessionError) onSessionUnavailable?.(failure) } }
-      finally { if (!disposed) timer = setTimeout(() => void refresh(), 3000) }
+      finally {
+        inFlight = false
+        if (disposed) return
+        // 后台标签页不轮询；进行中 3 秒，空闲 15 秒，避免已完成任务仍持续请求。
+        if (document.visibilityState === "hidden") return
+        timer = setTimeout(() => void refresh(), pollingActive ? 3000 : 15000)
+      }
     }
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return
+      clearTimeout(timer)
+      void refresh()
+    }
+    document.addEventListener("visibilitychange", onVisibility)
     void refresh()
-    return () => { disposed = true; controller.abort(); clearTimeout(timer) }
+    return () => { disposed = true; controller.abort(); clearTimeout(timer); document.removeEventListener("visibilitychange", onVisibility) }
   }, [documentId, selected, reload, onSessionUnavailable])
   useEffect(() => () => { pending.current?.abort() }, [])
 
@@ -119,7 +136,8 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     {loading && <p role="status" className="text-sm text-muted-foreground">正在读取审查任务</p>}
     {tasks.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline">审查记录（{tasks.length}）</Button></CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-2 pt-3">{tasks.map(item => <Button type="button" key={item.id} variant={selected === item.id ? "secondary" : "ghost"} className="h-auto justify-start whitespace-normal text-left" onClick={() => { setSelected(item.id); setError("") }}>
-        {new Date(item.createdAt).toLocaleString("zh-CN")} · {taskDisplayState(item)}
+        <span className="flex min-w-0 flex-col gap-0.5"><span className="truncate font-medium">{item.title}</span>
+          <span className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString("zh-CN")} · {taskDisplayState(item)}</span></span>
       </Button>)}</CollapsibleContent>
     </Collapsible>}
     {task && <div className="flex flex-col gap-4 border-t pt-4">
@@ -127,7 +145,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
       <p className="text-sm text-muted-foreground">{new Date(task.createdAt).toLocaleString("zh-CN")} · 保留至 {new Date(task.expiresAt).toLocaleString("zh-CN")}</p>
       {task.revisionId !== revisionId && <p role="note" className="text-sm">此报告对应历史保存版本；当前文档的修改未包含在本次审查中。</p>}
       {active && <p className="text-sm">已读 {task.progress.readParagraphCount} / {task.progress.paragraphCount} 段，已提交 {task.progress.submittedRuleCount} 条检查。</p>}
-      {active && task.result?.usage && configuration?.maxKnownTokens ? <p className="text-sm text-muted-foreground">已记录 {task.result.usage.totalTokens.toLocaleString("zh-CN")} token / 停止阈值 {configuration.maxKnownTokens.toLocaleString("zh-CN")}</p> : null}
+      {task.result?.usage && <p className="text-sm text-muted-foreground">本次 {task.callsUsed} 次调用 · 已记录 {task.result.usage.totalTokens.toLocaleString("zh-CN")} token{configuration?.maxKnownTokens ? ` / 停止阈值 ${configuration.maxKnownTokens.toLocaleString("zh-CN")}` : ""}</p>}
       {active && task.progress.agentRole === "auditor" && <p className="text-sm">{task.result?.collaboration?.version === "multi-agent-revision-v1" ? "核对修改后合同" : "AI 复查"}：{task.progress.auditedRuleCount ?? 0} / {task.result?.findings.length ?? task.progress.submittedRuleCount} 条</p>}
       {task.error && !task.result?.errors.some(item => item.code === task.error?.code) && <p role="alert" className="text-sm text-destructive">{task.error.code === "REVIEW_TOKEN_BUDGET_EXHAUSTED" && configuration
         ? `已达到累计 ${configuration.maxKnownTokens.toLocaleString("zh-CN")} token 停止阈值；已有结果保留，可重新提交新任务。`
