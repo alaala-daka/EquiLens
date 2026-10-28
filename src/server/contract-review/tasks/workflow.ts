@@ -92,10 +92,10 @@ export async function runClaimedReview(job: ClaimedReview, overrides: RunnerOver
     }
     if (job.input.workflow === "revision-only-v1") {
       result = await reviewRevisionOnly({ ...settings, primary: job.input.revisionPrimary!, ruleIds: job.input.revisionSource!.ruleIds,
-        bundles: job.input.sceneBundles ?? [], revisionEffort: job.input.revisionEffort, auditEffort: job.input.auditEffort, maxKnownTokens: job.input.maxKnownTokens })
+        bundles: job.input.sceneBundles ?? [], models: job.input.models, revisionEffort: job.input.revisionEffort, auditEffort: job.input.auditEffort, maxKnownTokens: job.input.maxKnownTokens })
     } else if (job.input.workflow === "multi-agent-v1" || job.input.workflow === "multi-agent-revision-v1") {
       if (!job.input.sceneBundles?.length) throw new ReviewError("REVIEW_SCENE_INVALID")
-      result = await reviewWithAgents({ ...settings, bundles: job.input.sceneBundles, auditEffort: job.input.auditEffort, workflow: job.input.workflow,
+      result = await reviewWithAgents({ ...settings, bundles: job.input.sceneBundles, models: job.input.models, auditEffort: job.input.auditEffort, workflow: job.input.workflow,
         primaryStrategy: job.input.primaryStrategy, revisionStrategy: job.input.revisionStrategy, auditStrategy: job.input.auditStrategy, repairStrategy: job.input.repairStrategy,
         primaryEffort: job.input.primaryEffort, revisionEffort: job.input.revisionEffort, maxKnownTokens: job.input.maxKnownTokens })
     } else result = await reviewWithAgent({ ...settings, pack: job.input.pack, skill: job.input.skill, sceneCandidates: job.input.sceneCandidates })

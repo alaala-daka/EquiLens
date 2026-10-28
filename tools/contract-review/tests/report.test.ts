@@ -97,6 +97,7 @@ test("AC-03/21/UI: 17 issues, actual questions and two unfinished checks are dis
   const result = await reviewContract({ documentText: "付款条款。", pack: testPack(), model: validModel })
   result.mode = "debug"
   result.status = "partial"
+  result.coverage = []
   result.findings = CHECK_CATEGORIES.flatMap((category, c) => Array.from({ length: c === 0 ? 4 : 3 }, (_, i) =>
     finding({ ruleId: `${c}-${i}`, category, pending: ["调试声明：依据来源状态为待核对，不构成正式法律意见。"] })))
   for (const item of result.findings.slice(-2)) Object.assign(item, { kind: "待核实", placeholder: true,
@@ -111,10 +112,11 @@ test("AC-03/21/UI: 17 issues, actual questions and two unfinished checks are dis
   assert.equal(view.unfinished.length, 2)
   assert.deepEqual(view.confirmations.map(item => item.text), ["请确认缺陷责任期。", "是否另有进度计划？"])
   assert.deepEqual(view.confirmations[0].ruleIds, ["0-0", "0-1"])
-  assert.match(view.summary, /初步结果.*17 项问题.*6 类/)
+  assert.match(view.summary, /问题 17 项/)
+  assert.match(view.outcomeNotice, /初步问题.*6 类/)
   const markdown = toMarkdown(result)
   assert.match(markdown, /需要进一步确认/)
-  assert.match(markdown, /2 项检查未形成有效结论/)
+  assert.match(markdown, /未完成 2 项/)
   assert.doesNotMatch(markdown, /19 项待核实|第 0 段/)
   assert.equal(toJson(result), before)
 })
@@ -159,6 +161,7 @@ test("AC-21/UI: audit incompleteness, doubts and input gaps remain visible witho
 
 test("AC-21/UI: unfinished IDs are deduplicated and a later accepted answer is not counted as missing", async () => {
   const result = await reviewContract({ documentText: "付款条款。", pack: testPack(), model: validModel })
+  result.coverage = []
   result.findings = [finding(), finding({ ruleId: "T-002", kind: "待核实", placeholder: true, quote: "", paragraphIndex: -1,
     pending: ["未取得有效结论"] })]
   result.notLocated = [{ ruleId: "T-002", reason: "no-match", detail: "未定位" }]
@@ -168,4 +171,69 @@ test("AC-21/UI: unfinished IDs are deduplicated and a later accepted answer is n
   result.findings[1].placeholder = undefined
   result.findings[1].risk = "该必检项尚未取得有效结论，需要补读或重新审查。"
   assert.equal(getReportView(result).unfinished.length, 2)
+})
+
+test("AC-03/21：19项检查的18个问题与1个无问题按互斥口径计数，网页和报告共用摘要", async () => {
+  const result = await reviewContract({ documentText: "付款条款。", pack: testPack(), model: validModel })
+  result.coverage = []
+  result.findings = Array.from({ length: 19 }, (_, index) => finding({ ruleId: "COUNT-" + index,
+    kind: index === 18 ? "未发现问题" : index === 0 ? "缺失条款" : "发现问题" }))
+  const view = getReportView(result)
+  assert.deepEqual([view.totalChecks, view.issueCount, view.noIssueCount, view.unfinishedCount, view.rejectedOrNotLocatedCount], [19, 18, 1, 0, 0])
+  assert.equal(view.totalChecks, view.issueCount + view.noIssueCount + view.unfinishedCount + view.rejectedOrNotLocatedCount)
+  assert.equal(view.groups.reduce((sum, group) => sum + group.findings.length, 0), view.issueCount)
+  assert.match(view.summary, /共 19 项检查结论，其中问题 18 项、无问题 1 项、未完成 0 项/)
+  assert.ok(toMarkdown(result).includes(view.summary))
+})
+
+test("AC-21：重复占位、旧拒绝和未定位按规则去重，未完成与拒绝互斥且不改原始结果", async () => {
+  const result = await reviewContract({ documentText: "付款条款。", pack: testPack(), model: validModel })
+  result.coverage = []
+  result.errors = [{ code: "STOP", message: "未完成", ruleIds: ["ONLY-ERROR"] }]
+  result.findings = [finding({ ruleId: "ISSUE" }), finding({ ruleId: "ISSUE" }),
+    finding({ ruleId: "CLEAR", kind: "未发现问题" }),
+    finding({ ruleId: "PENDING", kind: "待核实", pending: ["需补材料"] }),
+    finding({ ruleId: "INVALID", kind: "待核实", placeholder: true }),
+    finding({ ruleId: "ISSUE", kind: "待核实", placeholder: true })]
+  result.rejected = [{ ruleId: "ISSUE", reason: "旧拒绝", detail: "已补齐" },
+    { ruleId: "INVALID", reason: "引用错误", detail: "未补齐" },
+    { ruleId: "INVALID", reason: "重复拒绝", detail: "保留明细" },
+    { ruleId: "", reason: "模型格式错误", detail: "没有可识别的检查ID" }]
+  result.notLocated = [{ ruleId: "INVALID", reason: "no-match", detail: "尚未定位" },
+    { ruleId: "ISSUE", reason: "no-match", detail: "早期未定位记录" }]
+  const original = toJson(result)
+  const view = getReportView(result)
+  assert.deepEqual([view.totalChecks, view.issueCount, view.noIssueCount, view.unfinishedCount, view.rejectedOrNotLocatedCount], [5, 1, 1, 2, 1])
+  assert.equal(view.totalChecks, view.issueCount + view.noIssueCount + view.unfinishedCount + view.rejectedOrNotLocatedCount)
+  assert.equal(view.groups[0].findings.length, 1)
+  assert.equal(view.unfinished.filter(item => item.ruleId === "INVALID").length, 1)
+  assert.ok(!view.unfinished.some(item => item.ruleId === "ISSUE" || !item.ruleId))
+  assert.equal(toJson(result), original)
+})
+
+test("AC-21：空结果和全部被拒绝不显示无风险，计数总和始终一致", async () => {
+  const result = await reviewContract({ documentText: "付款条款。", pack: testPack(), model: validModel })
+  result.status = "failed"
+  result.coverage = []
+  result.findings = []
+  const empty = getReportView(result)
+  assert.equal(empty.totalChecks, 0)
+  assert.match(empty.outcomeNotice, /尚不能确认无风险/)
+  result.rejected = [{ ruleId: "BAD", reason: "无效引用", detail: "未补齐" }]
+  result.notLocated = [{ ruleId: "BAD", reason: "no-match", detail: "未定位" }]
+  const rejected = getReportView(result)
+  assert.deepEqual([rejected.totalChecks, rejected.issueCount, rejected.noIssueCount, rejected.unfinishedCount, rejected.rejectedOrNotLocatedCount], [1, 0, 0, 0, 1])
+  assert.equal(rejected.totalChecks, rejected.issueCount + rejected.noIssueCount + rejected.unfinishedCount + rejected.rejectedOrNotLocatedCount)
+  assert.match(rejected.outcomeNotice, /尚不能确认无风险/)
+})
+
+test("AC-21：仅在检查进度里记录而无有效结论的规则计为未完成", async () => {
+  const result = await reviewContract({ documentText: "付款条款。", pack: testPack(), model: validModel })
+  result.status = "partial"
+  result.findings = []
+  result.coverage = [{ category: "付款条件与时间", status: "待核实", findingIds: ["COVERAGE-1", "COVERAGE-1"], note: "未完成" }]
+  const view = getReportView(result)
+  assert.deepEqual([view.totalChecks, view.issueCount, view.noIssueCount, view.unfinishedCount, view.rejectedOrNotLocatedCount], [1, 0, 0, 1, 0])
+  assert.equal(view.unfinished[0].ruleId, "COVERAGE-1")
+  assert.deepEqual(view.unfinishedGroups, [{ label: "付款", count: 1 }])
 })

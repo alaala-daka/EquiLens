@@ -4,7 +4,8 @@ import { validateBundles, type SceneBundle } from "../bundles"
 import { ReviewError, safeError } from "../errors"
 import type { Collaboration, ReviewResult } from "../types"
 import { reviewWithAgent, type AgentSettings } from "./run"
-import { routeScene, validateRoute } from "./router"
+import { validateRoute } from "./router"
+import { checkSceneApplicability, enforceRequestedScene } from "./applicability"
 import { auditReview } from "./audit"
 import { abortable } from "./abort"
 import { publishedRules } from "../pack"
@@ -12,8 +13,10 @@ import { DEFAULT_AGENT_CALLS, MAX_AGENT_CALLS } from "../limits"
 import { hasCheckedRange } from "../findings"
 import { reviseContract, auditRevisedContract, repairRevisedContract, draftHash, revisionHash, REVISION_AUDIT_BATCH_SIZE } from "./revision"
 import { canExportRevision } from "../revision"
+import { roleEnvironment, type RoleModels } from "../../../../src/server/ai/roles"
 
 export type MultiAgentOptions = ReviewInput & AgentSettings & {
+  models?: RoleModels
   bundles: SceneBundle[]; env?: Record<string, string | undefined>; fetcher?: typeof fetch
   previousResult?: ReviewResult; auditEffort?: "default" | "low"
   workflow?: "multi-agent-v1" | "multi-agent-revision-v1"
@@ -54,11 +57,13 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
     [options.requestTimeoutMs ?? 90000, 1, 90000], [options.maxToolChars ?? 16000, 1000, 64000]]) {
     if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new ReviewError("REVIEW_INPUT_INVALID")
   }
-  const prepared = prepareReviewInput(options, bundles[0].pack, (env?.AI_MODEL ?? process.env.AI_MODEL)?.trim() || "glm-5.3-flash", callsUsed)
+  const prepared = prepareReviewInput(options, bundles[0].pack, options.models?.primary ?? ((env?.AI_MODEL ?? process.env.AI_MODEL)?.trim() || "glm-5.3-flash"), callsUsed)
   if (bundles.some(bundle => bundle.pack.manifest.status === "已停用" ||
     (prepared.result.mode === "published" && !publishedRules(bundle.pack).length))) throw new ReviewError("REVIEW_RULES_UNAVAILABLE")
   const candidates = bundles.map(item => item.candidate)
   const manifestSha256 = hash({ version: workflow, bundles: bundles.map(item => item.sha256), auditEffort,
+    ...(options.context?.scene ? { requestedScene: options.context.scene } : {}),
+    ...(options.models ? { models: options.models } : {}),
     primaryStrategy: options.primaryStrategy, revisionStrategy: options.revisionStrategy, auditStrategy: options.auditStrategy, repairStrategy: options.repairStrategy,
     primaryEffort: options.primaryEffort, revisionEffort: options.revisionEffort, maxKnownTokens: options.maxKnownTokens })
   const prior = options.previousResult ? structuredClone(options.previousResult) : undefined
@@ -127,15 +132,15 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
     if (!collaboration.routing?.selection) {
       collaboration.phase = "identifying"
       const oldUsage = collaboration.routing?.usage ?? null
-      collaboration.routing = await routeScene({ paragraphs: prepared.paragraphs, candidates, context: prepared.context, complete: prepared.result.input.complete,
-        env, fetcher: options.fetcher, signal, callsUsed, maxCalls: Math.min(4, maxCalls), timeoutMs: remainingTime(),
+      collaboration.routing = await checkSceneApplicability({ paragraphs: prepared.paragraphs, candidates, context: prepared.context, complete: prepared.result.input.complete,
+        env: roleEnvironment(env, options.models, "router"), fetcher: options.fetcher, signal, callsUsed, maxCalls: Math.min(4, maxCalls), timeoutMs: remainingTime(),
         requestTimeoutMs: options.requestTimeoutMs, maxPromptChars: options.maxPromptChars, onBeforeCall: reserve,
         onModelExchange: value => exchange("router", value),
         onCheckpoint: async value => { collaboration.routing = { ...value, usage: sumUsage(oldUsage, value.usage) }; await publish() },
       })
       collaboration.routing.usage = sumUsage(oldUsage, collaboration.routing.usage)
     }
-    const routing = collaboration.routing
+    const routing = enforceRequestedScene(collaboration.routing, prepared.context.scene)
     if (!routing.selection || routing.errors.length) return snapshot(true)
     if (routing.inputSha256 !== prepared.result.input.textSha256 || routing.catalogSha256 !== hash(candidates)) throw new ReviewError("REVIEW_INPUT_INVALID")
     const selection = validateRoute(routing.selection, prepared.paragraphs, prepared.result.input.complete, prepared.context, candidates)
@@ -155,7 +160,7 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
       if (callsUsed >= primaryLimit) throw new ReviewError("REVIEW_BUDGET_EXHAUSTED")
       collaboration.primary = await reviewWithAgent({ paragraphs: prepared.paragraphs, complete: prepared.result.input.complete,
         documentTitle: prepared.result.documentTitle, documentVersionId: prepared.result.input.documentVersionId, parseSnapshotId: prepared.result.input.parseSnapshotId,
-        context, mode: prepared.result.mode, pack: bundle.pack, skill: bundle.skill, env, fetcher: options.fetcher, signal,
+        context, mode: prepared.result.mode, pack: bundle.pack, skill: bundle.skill, env: roleEnvironment(env, options.models, "primary"), fetcher: options.fetcher, signal,
         strategy: options.primaryStrategy, reasoningEffort: options.primaryEffort,
         callsUsed, maxCalls: primaryLimit, timeoutMs: remainingTime(), requestTimeoutMs: options.requestTimeoutMs,
         maxPromptChars: options.maxPromptChars, maxToolChars: options.maxToolChars, previousResult: collaboration.primary,
@@ -174,7 +179,7 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
       const revisionLimit = maxCalls - reserveForAudit
       if (collaboration.revision?.status !== "completed" && callsUsed >= revisionLimit) throw new ReviewError("REVIEW_BUDGET_EXHAUSTED")
       try { collaboration.revision = await reviseContract({ primary: collaboration.primary!, pack: bundle.pack, skill: bundle.revisionSkill,
-        env, fetcher: options.fetcher, signal, callsUsed, maxCalls: Math.max(callsUsed, revisionLimit), timeoutMs: remainingTime(),
+        env: roleEnvironment(env, options.models, "primary"), fetcher: options.fetcher, signal, callsUsed, maxCalls: Math.max(callsUsed, revisionLimit), timeoutMs: remainingTime(),
         reasoningEffort: options.revisionEffort,
         strategy: options.revisionStrategy,
         requestTimeoutMs: options.requestTimeoutMs, maxPromptChars: options.maxPromptChars, previous: collaboration.revision,
@@ -186,7 +191,7 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
       await publish()
       try {
         collaboration.revisionAudit = await auditRevisedContract({ primary: collaboration.primary!, draft: collaboration.revision, pack: bundle.pack,
-          env, fetcher: options.fetcher, signal, callsUsed, maxCalls, timeoutMs: remainingTime(), requestTimeoutMs: options.requestTimeoutMs, reasoningEffort: auditEffort,
+          env: roleEnvironment(env, options.models, "auditor"), fetcher: options.fetcher, signal, callsUsed, maxCalls, timeoutMs: remainingTime(), requestTimeoutMs: options.requestTimeoutMs, reasoningEffort: auditEffort,
           maxPromptChars: options.maxPromptChars, previous: collaboration.revisionAudit,
           strategy: options.auditStrategy,
           onBeforeCall: reserve, onModelExchange: value => exchange("auditor", value),
@@ -202,7 +207,7 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
           await publish()
           collaboration.phase = "revising"
           collaboration.revisionRepair = await repairRevisedContract({ primary: collaboration.primary!, pack: bundle.pack,
-            repair: collaboration.revisionRepair, env, fetcher: options.fetcher, signal, callsUsed, maxCalls: callsUsed + 1,
+            repair: collaboration.revisionRepair, env: roleEnvironment(env, options.models, "primary"), fetcher: options.fetcher, signal, callsUsed, maxCalls: callsUsed + 1,
             timeoutMs: remainingTime(), requestTimeoutMs: options.requestTimeoutMs, maxPromptChars: options.maxPromptChars,
             reasoningEffort: options.revisionEffort, onBeforeCall: reserve, onModelExchange: value => exchange("reviser", value),
             onCheckpoint: async value => { collaboration.revisionRepair = value; await publish() },
@@ -223,7 +228,7 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
           collaboration.phase = "auditing"
           await publish()
           collaboration.revisionAudit = await auditRevisedContract({ primary: collaboration.primary!, draft: collaboration.revision, pack: bundle.pack,
-            env, fetcher: options.fetcher, signal, callsUsed, maxCalls, timeoutMs: remainingTime(), requestTimeoutMs: options.requestTimeoutMs,
+            env: roleEnvironment(env, options.models, "auditor"), fetcher: options.fetcher, signal, callsUsed, maxCalls, timeoutMs: remainingTime(), requestTimeoutMs: options.requestTimeoutMs,
             reasoningEffort: auditEffort, maxPromptChars: options.maxPromptChars, strategy: options.auditStrategy,
             onBeforeCall: reserve, onModelExchange: value => exchange("auditor", value),
             onCheckpoint: async value => { collaboration.revisionAudit = value; await publish() },
@@ -240,7 +245,7 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
     collaboration.phase = "auditing"
     await publish()
     try {
-      collaboration.audit = await auditReview({ primary: collaboration.primary!, pack: bundle.pack, env, fetcher: options.fetcher,
+      collaboration.audit = await auditReview({ primary: collaboration.primary!, pack: bundle.pack, env: roleEnvironment(env, options.models, "auditor"), fetcher: options.fetcher,
         signal, callsUsed, maxCalls, timeoutMs: remainingTime(), requestTimeoutMs: options.requestTimeoutMs, maxPromptChars: options.maxPromptChars,
         reasoningEffort: auditEffort, previousResult: collaboration.audit,
         onBeforeCall: reserve, onModelExchange: value => exchange("auditor", value),
@@ -262,6 +267,7 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
 }
 
 export type RevisionOnlyOptions = AgentSettings & {
+  models?: RoleModels
   primary: ReviewResult
   ruleIds: string[]
   bundles: SceneBundle[]
@@ -295,6 +301,7 @@ export async function reviewRevisionOnly(options: RevisionOnlyOptions): Promise<
     options.maxKnownTokens !== undefined && (!Number.isSafeInteger(options.maxKnownTokens) || options.maxKnownTokens < 10000 || options.maxKnownTokens > 2000000))
     throw new ReviewError("REVIEW_INPUT_INVALID")
   const manifestSha256 = hash({ version: "revision-only-v1", bundles: bundles.map(item => item.sha256), primary: revisionHash(primary),
+    ...(options.models ? { models: options.models } : {}),
     ruleIds, revisionEffort, auditEffort, maxKnownTokens: options.maxKnownTokens })
   const prior = options.previousResult ? structuredClone(options.previousResult) : undefined
   if (prior && (prior.collaboration?.version !== "revision-only-v1" || prior.collaboration.manifestSha256 !== manifestSha256 ||
@@ -359,7 +366,7 @@ export async function reviewRevisionOnly(options: RevisionOnlyOptions): Promise<
       const revisionLimit = Math.max(1, maxCalls - reserveForAudit)
       if (callsUsed >= revisionLimit) throw new ReviewError("REVIEW_BUDGET_EXHAUSTED")
       collaboration.revision = await reviseContract({ primary, pack: bundle.pack, skill: bundle.revisionSkill, targets: ruleIds,
-        strategy: "prepared-v1", env, fetcher: options.fetcher, signal, callsUsed, maxCalls: Math.max(callsUsed, revisionLimit),
+        strategy: "prepared-v1", env: roleEnvironment(env, options.models, "primary"), fetcher: options.fetcher, signal, callsUsed, maxCalls: Math.max(callsUsed, revisionLimit),
         timeoutMs: remainingTime(), requestTimeoutMs: options.requestTimeoutMs, maxPromptChars: options.maxPromptChars,
         reasoningEffort: revisionEffort, previous: collaboration.revision,
         onBeforeCall: reserve, onModelExchange: value => exchange("reviser", value),
@@ -374,7 +381,7 @@ export async function reviewRevisionOnly(options: RevisionOnlyOptions): Promise<
       collaboration.phase = "auditing"
       await publish()
       collaboration.revisionAudit = await auditRevisedContract({ primary, draft: collaboration.revision, pack: bundle.pack, targets: ruleIds,
-        strategy: "prepared-v1", env, fetcher: options.fetcher, signal, callsUsed, maxCalls, timeoutMs: remainingTime(),
+        strategy: "prepared-v1", env: roleEnvironment(env, options.models, "auditor"), fetcher: options.fetcher, signal, callsUsed, maxCalls, timeoutMs: remainingTime(),
         requestTimeoutMs: options.requestTimeoutMs, maxPromptChars: options.maxPromptChars, reasoningEffort: auditEffort,
         previous: collaboration.revisionAudit,
         onBeforeCall: reserve, onModelExchange: value => exchange("auditor", value),

@@ -7,6 +7,7 @@ import type { ReviewAvailability, ReviewTask, SubmitReview } from "../../../lib/
 import type { ReviewTaskRepository } from "./repository"
 import { submitReviewSchema, revisionTaskSchema, documentRevisionSchema, documentReviewSchema } from "./schema"
 import { reviewBody, reviewFailure } from "./http"
+import { RevisionDownloadError } from "./errors"
 
 export type ReviewHttpServices = {
   sessions: DocumentSessionRepository
@@ -124,7 +125,17 @@ export function createReviewRevisionHandler(getServices: Services) {
         "Cache-Control": "private, no-store", "X-Document-Context": contextId, "X-Content-SHA256": file.sha256,
       } })
       return identity.apply(response)
-    } catch (failure) { return reviewFailure(failure) }
+    } catch (failure) {
+      // A task pointer is private data too; recheck before returning it, as for DOCX bytes.
+      if (failure instanceof RevisionDownloadError && failure.revisionTaskId) {
+        try {
+          const services = await getServices(), { identity, contextId } = await access(request, services, "read")
+          await services.repository.get(identity.owner, identifier((await context.params).id), contextId)
+          await services.repository.get(identity.owner, failure.revisionTaskId, contextId)
+        } catch (denied) { return reviewFailure(denied) }
+      }
+      return reviewFailure(failure)
+    }
   }
 }
 

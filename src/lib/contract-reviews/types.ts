@@ -1,6 +1,7 @@
 import type { ReviewResult, ReviewContext } from "../../../tools/contract-review/src/types"
 import type { DocumentTaskKind } from "../document-agent/types"
 import type { LetterPlan } from "../document-agent/types"
+import type { SceneId, SceneCandidate } from "../../../tools/contract-review/src/scenes"
 export type { ReviewResult, ReviewContext }
 export type ReviewTaskState = "queued" | "running" | "success" | "partial" | "failed"
 export type ReviewTask = {
@@ -8,6 +9,7 @@ export type ReviewTask = {
   asOf?: string
   maxKnownTokens?: number
   sourceTaskId?: string
+  sceneReselection?: { scene: SceneId; sourceTaskId: string; reason: string; selectedAt: string }
   id: string; documentId: string; revisionId: string; title: string; state: ReviewTaskState; stage: string
   createdAt: string; updatedAt: string; expiresAt: string; attempt: number; callsUsed: number; maxCalls: number
   progress: { readParagraphCount: number; paragraphCount: number; submittedRuleCount: number; agentRole?: "router" | "primary" | "reviser" | "auditor"; auditedRuleCount?: number }
@@ -15,11 +17,14 @@ export type ReviewTask = {
   result?: ReviewResult | null
 }
 export type ReviewAvailability = {
+  exchangeRetention?: "full" | "summary"
+  models?: { router: string; primary: string; auditor: string }
+  sceneCandidates?: SceneCandidate[]
   documentTasks?: { ready: boolean; configurationId: string; maxCalls: number; maxKnownTokens: number; error?: string }
   ready: boolean; mode: "published" | "debug"; model: string; providerHost: string; retentionDays: number; maxKnownTokens: number; configurationId: string; error?: string
 }
 /** 新网页任务由 Agent 识别场景；用户只确认其代表的立场与地域。 */
-export type SubmitContext = { scene: "auto"; role: "专业分包人"; region: string }
+export type SubmitContext = { scene: "auto" | SceneId; role: "专业分包人"; region: string }
 export type SubmitReview = {
   task?: "contract-review" | DocumentTaskKind
   asOf?: string
@@ -30,6 +35,9 @@ export type SubmitReview = {
   externalProcessingConsent: true; unreviewedMaterialsConsent: boolean
   configurationId: string
   generateRevision?: boolean
+  sceneSource?: "user"
+  sceneSourceTaskId?: string
+  sceneReason?: string
 }
 export const taskStateLabel: Record<ReviewTaskState, string> = {
   queued: "排队中", running: "处理中", success: "已完成", partial: "部分完成", failed: "失败",

@@ -50,12 +50,12 @@ export async function reviewAvailability(): Promise<ReviewAvailability> {
       ...(value.maxCalls < 2 ? { error: "资料整理和独立核对至少需要两次请求预算。" } : {}) }
   } catch (failure) { documentTasks = { ready: false, configurationId: "", maxCalls: 3, maxKnownTokens: 30000, error: safeError(failure).message } }
   try {
-    const { config, configurationId } = await resources()
-    return { ready: true, documentTasks, mode: config.mode, model: config.model, providerHost: new URL(config.baseURL).host, retentionDays: config.retentionDays,
+    const { config, configurationId, sceneCandidates } = await resources()
+    return { ready: true, documentTasks, sceneCandidates, exchangeRetention: config.exchangeRetention, models: config.models, mode: config.mode, model: config.model, providerHost: new URL(config.baseURL).host, retentionDays: config.retentionDays,
       maxKnownTokens: config.maxKnownTokens, configurationId }
   } catch (failure) {
     return { ready: false, documentTasks, mode: documentConfig?.mode ?? "published",
-      model: documentConfig?.model ?? "", providerHost: documentConfig ? new URL(documentConfig.baseURL).host : "", retentionDays: documentConfig?.retentionDays ?? 0, maxKnownTokens: documentConfig?.maxKnownTokens ?? 0, configurationId: "", error: safeError(failure).message }
+      exchangeRetention: documentConfig?.exchangeRetention, models: documentConfig?.models, model: documentConfig?.model ?? "", providerHost: documentConfig ? new URL(documentConfig.baseURL).host : "", retentionDays: documentConfig?.retentionDays ?? 0, maxKnownTokens: documentConfig?.maxKnownTokens ?? 0, configurationId: "", error: safeError(failure).message }
   }
 }
 export async function submitReview(owner: string, key: string, request: SubmitReview, contextId: string) {
@@ -70,7 +70,7 @@ export async function submitReview(owner: string, key: string, request: SubmitRe
     if (request.task === "collection-letter" && !request.letterPlan) throw new StoreError(422, "请确认催款函拟发送安排。")
     const { sources: letterSources, notAfter } = request.task === "collection-letter" ? await resolveLetterSources(repository, owner, request, contextId) : { sources: {}, notAfter: undefined }
     return repository.create(owner, key, request, { ...request, documentContextId: contextId, title: revision.title, revisionHash: revision.hash,
-      context: { role: request.context.role }, mode: config.mode, model: config.model, baseURL: config.baseURL,
+      context: { role: request.context.role }, mode: config.mode, exchangeRetention: config.exchangeRetention, models: config.models, model: config.models.primary, baseURL: config.baseURL,
       maxPromptChars: Math.min(config.maxPromptChars, 60000), maxKnownTokens, consentAt: new Date().toISOString(), workflow: "document-agent-v1", skill,
       ...(request.task === "collection-letter" ? { letterSources } : {}),
       packSha256: skill.sha256, pack: { manifest: { version: skill.version, name: skill.name, status: "草拟", ruleFiles: [], sourceFiles: [] }, rules: [], sources: [], warnings: [] },
@@ -80,14 +80,19 @@ export async function submitReview(owner: string, key: string, request: SubmitRe
   if (configurationId !== request.configurationId) throw new StoreError(409, "模型、规则或保留配置已变化，请刷新后重新确认。")
   if (config.mode === "debug" && !request.unreviewedMaterialsConsent) throw new StoreError(422, "请确认本次使用未核对的审查资料。")
   const revision = await repository.readRevision(owner, request.documentId, request.revisionId, contextId)
-  // 用户确认代表哪一方；工程场景必须在固定解析快照上由 Agent 识别。
-  const context = { role: request.context.role, region: request.context.region }
+  const manual = request.context.scene !== "auto"
+  let sourceExpiry: string | undefined
+  if (manual) {
+    if (request.sceneSource !== "user" || !request.sceneSourceTaskId || !request.sceneReason?.trim() || !sceneCandidates.some(item => item.id === request.context.scene)) throw new StoreError(422, "手选场景或来源记录无效。")
+    sourceExpiry = (await repository.sceneReselectionSource(owner, request.sceneSourceTaskId, contextId, request.documentId, request.revisionId)).expiresAt
+  } else if (request.sceneSource || request.sceneSourceTaskId || request.sceneReason) throw new StoreError(422, "自动识别不能提交手选记录。")
+  const context = { role: request.context.role, region: request.context.region, ...(manual ? { scene: request.context.scene } : {}) }
   return repository.create(owner, key, request, {
-    ...request, context, documentContextId: contextId, title: revision.title, revisionHash: revision.hash, mode: config.mode, model: config.model,
+    ...request, context, ...(manual ? { sceneSelectedAt: new Date().toISOString() } : {}), documentContextId: contextId, title: revision.title, revisionHash: revision.hash, mode: config.mode, exchangeRetention: config.exchangeRetention, models: config.models, model: config.models.primary,
     baseURL: config.baseURL, maxPromptChars: config.maxPromptChars, pack, packSha256, skill, sceneCandidates, sceneBundles,
     workflow: request.generateRevision ? "multi-agent-revision-v1" : "multi-agent-v1", auditEffort: config.auditEffort, consentAt: new Date().toISOString(),
     primaryStrategy: "prepared-v1", revisionStrategy: "prepared-v1", auditStrategy: "prepared-v1", repairStrategy: "one-round-v1", primaryEffort: config.primaryEffort, revisionEffort: config.revisionEffort, maxKnownTokens: config.maxKnownTokens,
-  }, config.maxCalls, config.retentionDays)
+  }, config.maxCalls, config.retentionDays, sourceExpiry)
 }
 export async function submitRevision(owner: string, key: string, sourceTaskId: string, ruleIds: string[], contextId: string) {
   const repository = await reviewTaskRepository()

@@ -15,6 +15,7 @@ import { listReviewTasks, readReviewTask, createReviewTask, actOnReviewTask } fr
 import { taskDisplayStage, taskDisplayState, taskStateHint, type ReviewAvailability, type ReviewTask, type SubmitReview } from "@/lib/contract-reviews/types"
 import { errorMessage } from "@/lib/documents/types"
 import { DocumentSessionError } from "@/lib/documents/client"
+import type { SceneId } from "../../tools/contract-review/src/scenes"
 
 export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initialTaskId, onSessionUnavailable }: {
   documentId: string; revisionId: string; dirty: boolean; busy: boolean; initialTaskId?: string
@@ -26,6 +27,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
   const [detail, setDetail] = useState<ReviewTask | null>(null)
   // 地域是用户确认的审查条件，不预填，避免默认值被直接提交。
   const [region, setRegion] = useState("")
+  const [manualScene, setManualScene] = useState<{ sourceTaskId: string; scene: SceneId | ""; reason: string } | null>(null)
   const [consentRevision, setConsentRevision] = useState("")
   const consent = consentRevision === revisionId
   const [draftConsent, setDraftConsent] = useState(false)
@@ -108,11 +110,12 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
   const alreadyRunning = tasks.some(item => item.revisionId === revisionId && ["queued", "running"].includes(item.state))
   async function submit(event: React.FormEvent) {
     event.preventDefault()
-    if (pending.current || !ready || !configurationId || dirty || busy || alreadyRunning || !consent || (needsDraftConsent && !draftConsent)) return
+    if (pending.current || !ready || !configurationId || dirty || busy || alreadyRunning || !consent || (needsDraftConsent && !draftConsent) || (!business && manualScene && (!manualScene.scene || !manualScene.reason.trim()))) return
     const controller = new AbortController()
     pending.current = controller; setSubmitting(true); setError("")
     const input: SubmitReview = { documentId, revisionId,
-      context: { scene: "auto", role: "专业分包人", region: region.trim() },
+      context: { scene: !business && manualScene?.scene ? manualScene.scene : "auto", role: "专业分包人", region: region.trim() },
+      ...(!business && manualScene?.scene ? { sceneSource: "user" as const, sceneSourceTaskId: manualScene.sourceTaskId, sceneReason: manualScene.reason.trim() } : {}),
       externalProcessingConsent: true, unreviewedMaterialsConsent: draftConsent, configurationId, generateRevision: !business && generateRevision,
       ...(business ? { task: kind, asOf: cutoff } : {}),
       ...(kind === "collection-letter" ? { letterPlan, ...(paymentTaskId ? { paymentTaskId } : {}), ...(evidenceTaskId ? { evidenceTaskId } : {}) } : {}) }
@@ -123,7 +126,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
       if (controller.signal.aborted) return
       setDetail(created); setSelected(created.id); cachedDetail.current = null
       setTasks(current => [created, ...current.filter(item => item.id !== created.id)])
-      operation.current = null; setConsentRevision(""); setDraftConsent(false); setReload(value => value + 1)
+      operation.current = null; setManualScene(null); setConsentRevision(""); setDraftConsent(false); setReload(value => value + 1)
     } catch (failure) { if (!controller.signal.aborted) { setError(errorMessage(failure)); if (failure instanceof DocumentSessionError) onSessionUnavailable?.(failure) } }
     finally { if (pending.current === controller) { pending.current = null; if (!controller.signal.aborted) setSubmitting(false) } }
   }
@@ -142,6 +145,12 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     <form onSubmit={event => void submit(event)} className="flex flex-col gap-4">
       <label className="grid gap-2 text-sm">处理业务<NativeSelect aria-label="处理业务" value={kind} disabled={submitting} onChange={event => { setKind(event.target.value as keyof typeof documentTaskLabels); setSelected(""); setDetail(null); setConsentRevision(""); operation.current = null }}>{Object.entries(documentTaskLabels).map(([value, label]) => <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}</NativeSelect></label>
       {!business && <p className="text-sm text-muted-foreground">审查立场：专业分包人</p>}
+      {!business && manualScene && <div className="space-y-3">
+        <p className="text-sm">基于任务 {manualScene.sourceTaskId.slice(0, 8)} 手动重选</p>
+        <label className="grid gap-2 text-sm">审查场景<NativeSelect required aria-label="审查场景" disabled={submitting} value={manualScene.scene} onChange={event => { setManualScene({ ...manualScene, scene: event.target.value as SceneId }); setConsentRevision("") }}><NativeSelectOption value="">请选择</NativeSelectOption>{configuration?.sceneCandidates?.map(item => <NativeSelectOption key={item.id} value={item.id}>{item.label}</NativeSelectOption>)}</NativeSelect></label>
+        <label className="grid gap-2 text-sm">选择理由<Input required maxLength={500} disabled={submitting} value={manualScene.reason} onChange={event => { setManualScene({ ...manualScene, reason: event.target.value }); setConsentRevision("") }} /></label>
+        <Button type="button" variant="ghost" disabled={submitting} onClick={() => { setManualScene(null); setConsentRevision("") }}>改为自动识别</Button>
+      </div>}
       {!business && <label className="grid gap-2 text-sm">项目地域<Input value={region} required maxLength={100} placeholder="如：上海" disabled={submitting} onChange={event => { setRegion(event.target.value); setConsentRevision("") }} /></label>}
       {business && <label className="grid gap-2 text-sm">核对截止日<Input type="date" value={cutoff} required disabled={submitting} onChange={event => { setCutoff(event.target.value); setConsentRevision(""); setPaymentTaskId(""); setEvidenceTaskId("") }} /></label>}
       {kind === "collection-letter" && <div className="space-y-3">
@@ -151,11 +160,11 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
       </div>}
       {!business && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={generateRevision} disabled={submitting} onChange={event => { setGenerateRevision(event.target.checked); setConsentRevision("") }} /><span>生成合同修订稿，并核对修改后的合同（会增加约 2–3 倍模型调用与 token）</span></label>}
       {needsDraftConsent && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draftConsent} disabled={submitting} onChange={event => setDraftConsent(event.target.checked)} /><span>我已知悉审查依据尚未核对，结果需人工复核。</span></label>}
-      {ready && configuration && <><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} disabled={submitting} onChange={event => setConsentRevision(event.target.checked ? revisionId : "")} /><span>我有权将此保存版本{kind === "collection-letter" ? "、上述拟发送安排及所选成果" : ""}发送至 {configuration.providerHost} 进行本次{documentTaskLabels[kind]}。{business && "最多 3 次模型请求。"}</span></label><Collapsible><CollapsibleTrigger asChild><Button type="button" variant="link" size="sm" className="px-0">查看模型与保留说明</Button></CollapsibleTrigger><CollapsibleContent className="space-y-1 text-xs text-muted-foreground"><p>模型：{configuration.model}。记录最多保留 {configuration.retentionDays} 天，原资料先到期时一并清理。</p><p>累计已记录 token 达到 {tokenLimit?.toLocaleString("zh-CN")} 时停止发送下一次请求。{business && "格式修正及独立核对共用 3 次请求上限。"}</p></CollapsibleContent></Collapsible></>}
+      {ready && configuration && <><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} disabled={submitting} onChange={event => setConsentRevision(event.target.checked ? revisionId : "")} /><span>我有权将此保存版本{kind === "collection-letter" ? "、上述拟发送安排及所选成果" : ""}发送至 {configuration.providerHost} 进行本次{documentTaskLabels[kind]}。{business && "最多 3 次模型请求。"}</span></label><Collapsible><CollapsibleTrigger asChild><Button type="button" variant="link" size="sm" className="px-0">查看模型与保留说明</Button></CollapsibleTrigger><CollapsibleContent className="space-y-1 text-xs text-muted-foreground"><p>模型：{configuration.model}。记录最多保留 {configuration.retentionDays} 天，原资料先到期时一并清理。</p><p>模型交互记录：{configuration.exchangeRetention === "full" ? "保存请求与响应全文" : "仅保存摘要与哈希"}，随任务记录在 {configuration.retentionDays} 天内清理。</p><p>累计已记录 token 达到 {tokenLimit?.toLocaleString("zh-CN")} 时停止发送下一次请求。{business && "格式修正及独立核对共用 3 次请求上限。"}</p></CollapsibleContent></Collapsible></>}
       {dirty && <p role="status" className="text-sm">请先保存更改，再开始处理。</p>}
       {(business ? configuration?.documentTasks?.error : configuration?.error) && <p role="alert" className="text-sm text-destructive">{business ? configuration?.documentTasks?.error : configuration?.error}</p>}
       <Button type="submit" disabled={loading || !ready || submitting || busy || dirty || alreadyRunning || (business ? !cutoff : !region.trim()) || !consent || (needsDraftConsent && !draftConsent)}>
-        {submitting && <LoaderCircleIcon className="animate-spin" />}{business ? "开始" + documentTaskLabels[kind] : generateRevision ? "审查并生成修订稿" : "开始审查"}
+        {submitting && <LoaderCircleIcon className="animate-spin" />}{business ? "开始" + documentTaskLabels[kind] : manualScene ? "新建审查并检查场景适配" : generateRevision ? "审查并生成修订稿" : "开始审查"}
       </Button>
     </form>
     {error && <div className="flex flex-col gap-2"><p role="alert" className="text-sm text-destructive">{error}</p><Button type="button" variant="outline" disabled={submitting} onClick={() => { setError(""); cachedDetail.current = null; setReload(value => value + 1) }}>重新读取</Button></div>}
@@ -170,6 +179,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
       <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{taskDisplayState(task)}</Badge><span role="status" className="text-sm">{taskDisplayStage(task)}</span></div>
       <p className="text-sm">{taskStateHint(task)}</p>
       {task.sourceTaskId && <p className="text-sm text-muted-foreground">基于审查任务 <span className="font-mono">{task.sourceTaskId.slice(0, 8)}</span> 的主审结果生成。</p>}
+      {task.sceneReselection && <p className="text-sm text-muted-foreground">基于任务 {task.sceneReselection.sourceTaskId.slice(0, 8)} 手动重选 · {task.sceneReselection.reason}</p>}
       <p className="text-sm text-muted-foreground">{new Date(task.createdAt).toLocaleString("zh-CN")} · 保留至 {new Date(task.expiresAt).toLocaleString("zh-CN")}</p>
       {task.revisionId !== revisionId && <div role="note" className="space-y-1 rounded-md border bg-muted/40 p-3 text-sm">
         <p className="font-medium">历史保存版本</p>
@@ -182,6 +192,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
         ? `已达到累计 ${(task.maxKnownTokens ?? configuration.maxKnownTokens).toLocaleString("zh-CN")} token 停止阈值；已有结果保留，可重新提交新任务。`
         : task.error.message}</p>}
       {active && <Button type="button" variant="outline" disabled={submitting} onClick={() => void action("cancel")}>取消任务</Button>}
+      {!active && task.revisionId === revisionId && ["REVIEW_SCENE_UNCERTAIN", "REVIEW_SCENE_UNSUPPORTED"].includes(task.error?.code ?? "") && <Button type="button" variant="outline" disabled={submitting || dirty || busy} onClick={() => { setKind("contract-review"); setManualScene({ sourceTaskId: task.id, scene: "", reason: "" }); setConsentRevision("") }}>手动选择场景后新建审查</Button>}
       {!active && !task.result?.documentAnalysis?.audit.complete && task.state !== "success" && task.stage !== "cancelled" && !["REVIEW_INPUT_EMPTY", "REVIEW_REVISION_UNSAFE", "REVIEW_TOKEN_BUDGET_EXHAUSTED"].includes(task.error?.code ?? "") && !task.result?.collaboration?.revision?.export && (!task.result?.sceneSelection || task.result.sceneSelection.status === "matched") && task.attempt < 3 && task.callsUsed < task.maxCalls && <Button type="button" variant="outline" disabled={submitting} onClick={() => setRetryDialog(true)}>继续原任务</Button>}
       {task.result && (task.result.documentAnalysis ? <DocumentAgentReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} /> : <ContractReviewReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} onRevisionCreated={id => { setSelected(id); setReload(value => value + 1) }} />)}
     </div>}

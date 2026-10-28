@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { StoreError } from "../../documents/repository"
 import { ReviewError, safeError } from "../../../../tools/contract-review/src/errors"
+import { RevisionDownloadError } from "./errors"
 
 export async function reviewBody(request: Request, limit = 4096): Promise<unknown> {
   if (!request.headers.get("content-type")?.startsWith("application/json")) throw new StoreError(415, "请求格式无效。")
@@ -22,6 +23,9 @@ export async function reviewBody(request: Request, limit = 4096): Promise<unknow
   catch { throw new StoreError(400, "审查参数无效。") }
 }
 export function reviewFailure(failure: unknown) {
+  if (failure instanceof RevisionDownloadError) return NextResponse.json({ error: failure.message, code: failure.code,
+    ...(failure.revisionTaskId ? { revisionTaskId: failure.revisionTaskId } : {}) },
+  { status: failure.status, headers: { "Cache-Control": "private, no-store" } })
   const known = failure instanceof StoreError || failure instanceof ReviewError
   const status = failure instanceof StoreError ? failure.status : 503
   return NextResponse.json({ error: known ? failure.message : "审查服务暂时不可用，请稍后重试。",

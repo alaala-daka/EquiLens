@@ -1,4 +1,6 @@
 import { modelConfig } from "../../ai/client"
+import { roleModels } from "../../ai/roles"
+import { exchangeRetention } from "../../ai/exchange"
 import { ReviewError } from "../../../../tools/contract-review/src/errors"
 import { DEFAULT_AGENT_CALLS, MAX_AGENT_CALLS } from "../../../../tools/contract-review/src/limits"
 
@@ -23,5 +25,5 @@ export function reviewTaskConfig() {
   const model = modelConfig(process.env)
   return { mode, retentionDays, maxCalls, maxPromptChars, auditEffort, primaryEffort: primaryEffort as "default" | "low",
     revisionEffort: revisionEffort as "default" | "low", maxKnownTokens,
-    model: model.model, baseURL: model.endpoint.replace(/\/chat\/completions$/, "") } as const
+    exchangeRetention: exchangeRetention(process.env), models: roleModels(process.env), model: model.model, baseURL: model.endpoint.replace(/\/chat\/completions$/, "") } as const
 }

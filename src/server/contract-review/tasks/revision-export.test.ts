@@ -8,6 +8,29 @@ import { buildRevisionDocx } from "../../../../tools/contract-review/src/revisio
 import { draftHash, revisionHash } from "../../../../tools/contract-review/src/agent/revision"
 import { createReviewRevisionHandler } from "./handlers"
 import type { ReviewResult } from "../../../lib/contract-reviews/types"
+import { StoreError } from "../../documents/errors"
+
+async function linkedRevisionTasks() {
+  const s = await setup()
+  const source = await s.create()
+  const request = { ...s.request, generateRevision: true }
+  const input = { ...s.input, ...request, workflow: "revision-only-v1" as const, revisionSource: { taskId: source.id, ruleIds: ["T-001"] } }
+  const child = await s.repository.create(s.owner, randomUUID(), request, input, 25, 7)
+  return { s, source, child, input }
+}
+
+function downloadHandler(s: Awaited<ReturnType<typeof setup>>) {
+  return createReviewRevisionHandler(async () => ({ sessions: s.sessions, repository: s.repository,
+    configuration: async () => ({ ready: false, mode: "debug", model: "", providerHost: "", retentionDays: 0, maxKnownTokens: 0, configurationId: "" }),
+    submit: async () => { throw new Error("download must not submit") }, submitRevision: async () => { throw new Error("download must not submit") },
+    wake: () => { throw new Error("download must not wake") }, cancel: () => {} }))
+}
+
+function downloadRequest(s: Awaited<ReturnType<typeof setup>>, id: string) {
+  return new NextRequest("https://equilens.invalid/api/contract-reviews/" + id + "/revision", {
+    headers: { Cookie: `equilens_session=${s.token}`, "X-Document-Context": s.contextId },
+  })
+}
 
 async function savedRevision() {
   const fixture = await revisionFixture()
@@ -77,5 +100,76 @@ test("AC-01/11/23: Word downloads recheck session, return saved bytes and stop a
     const expired = await handler(request(), context)
     assert.equal(expired.status, 410)
     assert.equal((await expired.json()).code, "RETENTION_EXPIRED")
+  } finally { await s.close() }
+})
+
+test("AC-01/11：原审查ID返回明确修订任务提示，未生成与任务ID用错分别处理，不自动下载", async () => {
+  const { s, source, child } = await linkedRevisionTasks()
+  try {
+    await assert.rejects(s.repository.revisionExport(s.owner, source.id, s.contextId), {
+      status: 409, code: "REVISION_TASK_REQUIRED", revisionTaskId: child.id,
+    })
+    await assert.rejects(s.repository.revisionExport(s.owner, child.id, s.contextId), { status: 409, code: "REVISION_NOT_READY" })
+    const response = await downloadHandler(s)(downloadRequest(s, source.id), { params: Promise.resolve({ id: source.id }) })
+    assert.equal(response.status, 409)
+    assert.equal(response.headers.get("Cache-Control"), "private, no-store")
+    const body = await response.json()
+    assert.equal(body.code, "REVISION_TASK_REQUIRED")
+    assert.equal(body.revisionTaskId, child.id)
+    assert.match(body.error, /请打开该任务后下载/)
+    assert.equal(response.headers.get("Content-Disposition"), null)
+    const target = await downloadHandler(s)(downloadRequest(s, child.id), { params: Promise.resolve({ id: child.id }) })
+    assert.equal((await target.json()).code, "REVISION_NOT_READY")
+  } finally { await s.close() }
+})
+
+test("AC-01/11：子修订任务提示拒绝跨会话、过期和错误版本，不泄漏目标ID", async () => {
+  const { s, source, child, input } = await linkedRevisionTasks()
+  try {
+    const other = createHash("sha256").update("other task lookup owner").digest("hex")
+    const otherSession = await s.sessions.view(other)
+    await assert.rejects(s.repository.revisionExport(other, source.id, otherSession.contextId), { status: 404 })
+    await assert.rejects(s.repository.revisionExport(s.owner, source.id, randomUUID()), { code: "SESSION_CHANGED" })
+    for (const changed of [{ revisionId: randomUUID() }, { revisionHash: "9".repeat(64) }, { documentContextId: randomUUID() }]) {
+      await s.database.transaction(c => c.query("UPDATE equilens_review_tasks SET input=$1 WHERE id=$2", [JSON.stringify({ ...input, ...changed }), child.id]))
+      await assert.rejects(s.repository.revisionExport(s.owner, source.id, s.contextId), { code: "REVISION_NOT_READY", revisionTaskId: undefined })
+    }
+    await s.database.transaction(c => c.query("UPDATE equilens_review_tasks SET input=$1,expires_at=$2 WHERE id=$3", [JSON.stringify(input), "2000-01-01T00:00:00.000Z", child.id]))
+    await assert.rejects(s.repository.revisionExport(s.owner, source.id, s.contextId), { code: "REVISION_NOT_READY", revisionTaskId: undefined })
+    await s.database.transaction(c => c.query("UPDATE equilens_review_tasks SET expires_at=$1 WHERE id=$2", ["2000-01-01T00:00:00.000Z", source.id]))
+    const expired = await downloadHandler(s)(downloadRequest(s, source.id), { params: Promise.resolve({ id: source.id }) })
+    assert.equal(expired.status, 404)
+    assert.equal((await expired.json()).revisionTaskId, undefined)
+  } finally { await s.close() }
+})
+
+test("AC-01/11：返回子任务ID之前再次鉴权，期间到期不提供跳转提示", async t => {
+  const { s, source } = await linkedRevisionTasks()
+  try {
+    const original = s.sessions.guardIn.bind(s.sessions)
+    let guards = 0
+    t.mock.method(s.sessions, "guardIn", async (...args: Parameters<typeof original>) => {
+      if (++guards === 2) throw new StoreError(410, "资料已到期。", "RETENTION_EXPIRED")
+      return original(...args)
+    })
+    await assert.rejects(s.repository.revisionExport(s.owner, source.id, s.contextId), { code: "RETENTION_EXPIRED" })
+    assert.equal(guards, 2)
+  } finally { await s.close() }
+})
+
+test("AC-01/11：下载HTTP在任务查找后再次核对保留期，过期响应不包含修订任务ID", async t => {
+  const { s, source } = await linkedRevisionTasks()
+  try {
+    const original = s.repository.revisionExport.bind(s.repository)
+    const expiration = new Date((await s.sessions.view(s.owner)).expiresAt!)
+    t.mock.method(s.repository, "revisionExport", async (...args: Parameters<typeof original>) => {
+      try { return await original(...args) }
+      catch (failure) { s.setClock(expiration); throw failure }
+    })
+    const response = await downloadHandler(s)(downloadRequest(s, source.id), { params: Promise.resolve({ id: source.id }) })
+    assert.equal(response.status, 410)
+    const body = await response.json()
+    assert.equal(body.code, "RETENTION_EXPIRED")
+    assert.equal(body.revisionTaskId, undefined)
   } finally { await s.close() }
 })

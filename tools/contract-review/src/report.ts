@@ -1,6 +1,6 @@
 import type { Finding, ReviewResult } from "./types"
 import { documentAnalysisMarkdown } from "../../../src/lib/document-agent/report"
-import { CATEGORY_LABELS, compactText, getReportView, sortFindings } from "./presentation"
+import { CATEGORY_LABELS, compactText, getReportView } from "./presentation"
 
 const plain = (value: string): string => value.replace(/[\r\n]+/g, " ").replace(/[\\`*_[\]{}<>|]/g, "\\$&")
 const details = (title: string, body: string[]) => ["<details>", "<summary>" + plain(title) + "</summary>", "", ...body, "", "</details>", ""]
@@ -71,7 +71,7 @@ export function toMarkdown(result: ReviewResult): string {
   const label = result.sceneCandidates?.find(item => item.id === selection?.sceneId)?.label ?? result.input.context.projectType ?? "合同审查"
   const lines = ["# 合同审查报告：" + plain(result.documentTitle), "",
     plain(label + " · 审查立场：" + (result.input.context.role ?? "未确认")), "", "**" + view.summary + "**", ""]
-  if (view.unfinished.length) lines.push("另有 " + view.unfinished.length + " 项检查未形成有效结论。", "")
+  lines.push(view.outcomeNotice, "")
   if (view.incomplete && !view.unfinished.length && !view.auditNotice) lines.push("审查尚未完成，请查看检查进度。", "")
   if (view.auditNotice) lines.push(view.auditNotice, "")
   for (const note of view.scopeNotes) lines.push(plain(note), "")
@@ -120,7 +120,7 @@ export function toMarkdown(result: ReviewResult): string {
   if (result.findings.some(item => item.pending.length)) progress.push(...details("原始待核实记录", result.findings.filter(item => item.pending.length)
     .map(item => "- " + plain(item.ruleId + "：" + item.pending.join("；")))))
   lines.push(...details("展开检查进度与停止原因", progress))
-  const clear = sortFindings(result.findings.filter(item => item.kind === "未发现问题"))
+  const clear = view.noIssueFindings
   if (clear.length) lines.push(...details("查看无问题结论（" + clear.length + "）", clear.flatMap(item => ["### " + plain(item.ruleId), "", ...findingDetails(item, result), ""])))
   lines.push(result.mode === "debug" ? "*本报告依据尚未核对，仅供联调，需专业人员审核。*"
     : "*AI 辅助审查，结论需人工复核；引文真实不代表法律适用正确。*", "")

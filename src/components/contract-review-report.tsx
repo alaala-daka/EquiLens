@@ -177,7 +177,7 @@ export function ContractReviewReport({ result, taskId, onSessionUnavailable, onR
     {result.errors.map((item, index) => <p role="alert" key={index} className="text-sm text-destructive">{item.message}</p>)}
     <div className="flex justify-end"><ExportReport result={result} /></div>
   </div>
-  if (result.collaboration?.version === "multi-agent-revision-v1" || result.collaboration?.version === "revision-only-v1") return <ContractRevisionResult key={result.reviewId} result={result} taskId={taskId} onSessionUnavailable={onSessionUnavailable}
+  if (result.collaboration?.version === "multi-agent-revision-v1" || result.collaboration?.version === "revision-only-v1") return <ContractRevisionResult key={result.reviewId} result={result} taskId={taskId} onSessionUnavailable={onSessionUnavailable} onOpenRevisionTask={onRevisionCreated}
     originalReview={<CompletedReviewReport result={{ ...(result.collaboration.primary ?? result), collaboration: undefined, sceneCandidates: result.sceneCandidates, sceneSelection: result.sceneSelection }} revision={result.collaboration.revision} revisionAudit={result.collaboration.revisionAudit} />} />
   if (result.collaboration?.version === "multi-agent-v1") return <div className="flex flex-col gap-6">
     <CompletedReviewReport result={result} />
@@ -188,13 +188,13 @@ export function ContractReviewReport({ result, taskId, onSessionUnavailable, onR
 function CompletedReviewReport({ result, revision, revisionAudit }: { result: ReviewResult; revision?: NonNullable<ReviewResult["collaboration"]>["revision"]; revisionAudit?: NonNullable<ReviewResult["collaboration"]>["revisionAudit"] }) {
   const view = getReportView(result)
   const candidate = result.sceneCandidates?.find(item => item.id === result.sceneSelection?.sceneId)
-  const clear = result.findings.filter(item => item.kind === "未发现问题")
+  const clear = view.noIssueFindings
   return <div className="flex flex-col gap-6">
     <header className="space-y-2">
       <h3 className="text-base font-semibold">合同审查报告</h3>
       <p className="text-sm text-muted-foreground">{candidate?.label ?? result.input.context.projectType ?? "合同审查"} · 审查立场：{result.input.context.role ?? "未确认"}</p>
       <p className="text-sm font-medium">{view.summary}</p>
-      {view.unfinished.length > 0 && <p className="text-sm">另有 {view.unfinished.length} 项检查未形成有效结论。</p>}
+      <p className="text-sm">{view.outcomeNotice}</p>
       {view.incomplete && !view.unfinished.length && !view.auditNotice && <p className="text-sm">审查尚未完成，请查看检查进度。</p>}
       {view.auditNotice && <p role="status" className="text-sm">{view.auditNotice}</p>}
       {view.scopeNotes.map(note => <p role="note" className="text-sm" key={note}>{note}</p>)}

@@ -64,7 +64,7 @@ ANONYMOUS_EMPTY_SESSION_RETENTION_DAYS 不使用时整项省略，不写空值�
 5. 点击「开始审查」才会向配置的模型服务发送材料并产生请求费用。新任务由独立场景识别、场景主审和复核三个 Agent 串行执行，关闭页面不会取消任务。
 6. 重新打开文档可查看任务进度、报告、待核实项和原版本引文；修改后保存需重新确认外发授权。
 
-当前联调场景为房建机电安装、装饰装修、幕墙、钢结构专业分包。sample-contract.docx 缺少明确场景信息时可能进入待确认，不能依赖文件名强制匹配。
+当前联调场景为房建机电安装、装饰装修、幕墙、钢结构专业分包。`sample-contract.docx` 由同名完整 TXT 生成，两者均为 18 段，正文明确办公楼机电安装专业分包关系。修改样本时只编辑 TXT，再执行 `pnpm exec tsx tools/contract-review/tests/make-docx-fixture.mts`；自动识别仍根据正文判断，不能依赖文件名强制匹配。
 多 Agent 合成复现可直接运行：
 
 ```powershell

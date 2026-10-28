@@ -3,16 +3,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { downloadRevisedContract } from "@/lib/contract-reviews/client"
+import { downloadRevisedContract, RevisionDownloadError } from "@/lib/contract-reviews/client"
 import { DocumentSessionError } from "@/lib/documents/client"
 import type { ReviewResult } from "@/lib/contract-reviews/types"
 import { canExportRevision } from "../../tools/contract-review/src/revision"
 
-export function ContractRevisionResult({ result, taskId, originalReview, onSessionUnavailable }: {
-  result: ReviewResult; taskId?: string; originalReview: ReactNode; onSessionUnavailable?: (error: DocumentSessionError) => void
+export function ContractRevisionResult({ result, taskId, originalReview, onSessionUnavailable, onOpenRevisionTask }: {
+  result: ReviewResult; taskId?: string; originalReview: ReactNode; onSessionUnavailable?: (error: DocumentSessionError) => void; onOpenRevisionTask?: (taskId: string) => void
 }) {
   const draft = result.collaboration?.revision, audit = result.collaboration?.revisionAudit
   const [downloading, setDownloading] = useState(false), [error, setError] = useState("")
+  const [revisionTarget, setRevisionTarget] = useState("")
   const pending = useRef<AbortController | null>(null)
   useEffect(() => () => { pending.current?.abort() }, [taskId, draft?.id])
   const ready = Boolean(draft?.export && canExportRevision(draft, audit))
@@ -20,13 +21,17 @@ export function ContractRevisionResult({ result, taskId, originalReview, onSessi
   const unsafe = audit?.checks.filter(item => item.outcome === "存在问题") ?? []
   async function download() {
     if (!taskId || pending.current || !ready) return
-    const controller = new AbortController(); pending.current = controller; setDownloading(true); setError("")
+    const controller = new AbortController(); pending.current = controller; setDownloading(true); setError(""); setRevisionTarget("")
     try {
       const blob = await downloadRevisedContract(taskId, controller.signal)
       if (controller.signal.aborted) return
       const url = URL.createObjectURL(blob), link = document.createElement("a")
       link.href = url; link.download = draft!.export!.filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 0)
-    } catch (failure) { if (!controller.signal.aborted) { setError(failure instanceof Error ? failure.message : "修订稿下载失败，请重试。"); if (failure instanceof DocumentSessionError) onSessionUnavailable?.(failure) } }
+    } catch (failure) { if (!controller.signal.aborted) {
+      setError(failure instanceof Error ? failure.message : "修订稿下载失败，请重试。")
+      if (failure instanceof RevisionDownloadError && failure.revisionTaskId) setRevisionTarget(failure.revisionTaskId)
+      if (failure instanceof DocumentSessionError) onSessionUnavailable?.(failure)
+    } }
     finally { if (pending.current === controller) { pending.current = null; if (!controller.signal.aborted) setDownloading(false) } }
   }
   const title = result.sceneCandidates?.find(item => item.id === result.sceneSelection?.sceneId)?.label ?? "合同修订"
@@ -37,6 +42,7 @@ export function ContractRevisionResult({ result, taskId, originalReview, onSessi
     </header>
     {ready && taskId && <Button type="button" disabled={downloading} onClick={() => void download()}>{downloading ? "正在读取修订稿" : "导出修订建议稿（Word）"}</Button>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    {revisionTarget && onOpenRevisionTask && <Button type="button" variant="outline" onClick={() => onOpenRevisionTask(revisionTarget)}>打开修订任务</Button>}
     {result.collaboration?.revisionRepair?.status === "failed" && <p role="status" className="text-sm">自动修正未通过检查，已保留原审查及核对意见。</p>}
     {originalReview}
     {unsafe.length > 0 && <ul className="list-disc space-y-2 pl-4 text-sm">{unsafe.map(item => <li className="break-words" key={item.ruleId}>{item.note}</li>)}</ul>}

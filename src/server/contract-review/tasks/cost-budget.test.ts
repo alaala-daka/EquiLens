@@ -46,3 +46,29 @@ test("AC-23: cache hits count toward token threshold, missing usage retains the 
     assert.equal(old.input.primaryStrategy, undefined)
   } finally { await s.close() }
 })
+
+test("AC-23: summary retention omits full exchange; full retention double-writes without double-counting the same call", async () => {
+  const s = await setup()
+  try {
+    const create = (retention: "summary" | "full") => s.repository.create(s.owner, randomUUID(), s.request,
+      { ...s.input, exchangeRetention: retention, maxKnownTokens: 10000 }, 5, 7)
+    await create("summary")
+    const summaryJob = (await s.repository.claim())!
+    await s.repository.reserve(summaryJob, 1, 1)
+    await s.repository.artifact(summaryJob, "model-exchange", 1, { response: { usage: { prompt_tokens: 6000, completion_tokens: 3000, total_tokens: 9000 } } })
+    await s.repository.reserve(summaryJob, 2, 2)
+    const summaryStages = (await s.database.transaction(c => c.query("SELECT stage,COUNT(*) AS count FROM equilens_review_artifacts WHERE task_id=$1 GROUP BY stage", [summaryJob.id]))).rows
+    assert.deepEqual(summaryStages.map(row => [String(row.stage), Number(row.count)]), [["model-summary", 1]])
+    await s.repository.finish(summaryJob, null, { code: "REVIEW_BUDGET_EXHAUSTED", message: "合成停止" }, 3)
+    await s.repository.release(summaryJob)
+
+    await create("full")
+    const fullJob = (await s.repository.claim())!
+    await s.repository.reserve(fullJob, 1, 1)
+    await s.repository.artifact(fullJob, "model-exchange", 1, { response: { usage: { prompt_tokens: 6000, completion_tokens: 3000, total_tokens: 9000 } } })
+    // 同一调用的摘要与全文不能重复计入；第二次预留在 9,000 时仍应通过。
+    await s.repository.reserve(fullJob, 2, 2)
+    const fullStages = (await s.database.transaction(c => c.query("SELECT stage,COUNT(*) AS count FROM equilens_review_artifacts WHERE task_id=$1 GROUP BY stage", [fullJob.id]))).rows
+    assert.deepEqual(fullStages.map(row => [String(row.stage), Number(row.count)]), [["model-exchange", 1], ["model-summary", 1]])
+  } finally { await s.close() }
+})

@@ -2,6 +2,13 @@ import type { ReviewAvailability, ReviewTask, SubmitReview } from "./types"
 import type { DocumentReview, DocumentRevision } from "../document-agent/revisions"
 import { DocumentSessionError, documentSessionFailure, getDocumentContext } from "../documents/client"
 
+export class RevisionDownloadError extends Error {
+  constructor(message: string, readonly code: "REVISION_TASK_REQUIRED" | "REVISION_NOT_READY", readonly revisionTaskId?: string) {
+    super(message)
+    this.name = "RevisionDownloadError"
+  }
+}
+
 async function request<T>(path: string, signal?: AbortSignal, init?: RequestInit): Promise<T> {
   signal?.throwIfAborted()
   const expectedContext = getDocumentContext()
@@ -81,9 +88,17 @@ async function downloadTaskWord(id: string, kind: "revision" | "letter", signal?
   })
   signal?.throwIfAborted()
   if (!response.ok) {
+    if (expectedContext !== getDocumentContext()) throw new DocumentSessionError("会话已变更，请重新读取文档。", 409, "SESSION_CHANGED")
     const error = await response.json()
+    signal?.throwIfAborted()
     const sessionFailure = documentSessionFailure(error, response.status)
     if (sessionFailure) throw sessionFailure
+    if (kind === "revision" && response.status === 409 && (error.code === "REVISION_NOT_READY" ||
+      (error.code === "REVISION_TASK_REQUIRED" && typeof error.revisionTaskId === "string" && /^[0-9a-f-]{36}$/.test(error.revisionTaskId)))) {
+      if (expectedContext !== getDocumentContext()) throw new DocumentSessionError("会话已变更，请重新读取文档。", 409, "SESSION_CHANGED")
+      throw new RevisionDownloadError(error.error || "请打开对应修订任务查看进度。", error.code,
+        error.code === "REVISION_TASK_REQUIRED" ? error.revisionTaskId : undefined)
+    }
     throw new Error(error.error || "修订稿下载失败，请重试。")
   }
   const assertContext = () => {

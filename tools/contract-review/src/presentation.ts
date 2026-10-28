@@ -13,9 +13,10 @@ export function compactText(value: string, limit: number): string {
 }
 
 export function groupIssues(findings: Finding[]) {
+  const unique = uniqueFindings(findings)
   return CHECK_CATEGORIES.map(category => ({
     category,
-    findings: sortFindings(findings.filter(item => item.category === category &&
+    findings: sortFindings(unique.filter(item => !item.placeholder && item.category === category &&
       (item.kind === "发现问题" || item.kind === "缺失条款"))),
   })).filter(group => group.findings.length > 0)
 }
@@ -45,10 +46,36 @@ function isUnfinishedFinding(item: Finding): boolean {
     item.risk === "该必检项尚未取得有效结论，需要补读或重新审查。")
 }
 
+/** 重试的占位和旧回答不重复计数；有效问题优先于无问题，原始记录不变。 */
+function uniqueFindings(findings: Finding[]): Finding[] {
+  const rank = (item: Finding) => isUnfinishedFinding(item) ? 0 : item.kind === "待核实" ? 1 : item.kind === "未发现问题" ? 2 : 3
+  const selected = new Map<string, Finding>()
+  for (const item of findings) {
+    if (!item.ruleId.trim()) continue
+    const previous = selected.get(item.ruleId)
+    if (!previous || rank(item) > rank(previous)) selected.set(item.ruleId, item)
+  }
+  return [...selected.values()]
+}
+
 /** 只生成展示投影；不更改 findings、复核状态、已保存 JSON 或完整无风险闸门。 */
 export function getReportView(result: ReviewResult) {
-  const groups = groupIssues(result.findings)
+  const findings = uniqueFindings(result.findings)
+  const groups = groupIssues(findings)
   const issueCount = groups.reduce((count, group) => count + group.findings.length, 0)
+  const noIssueFindings = sortFindings(findings.filter(item => !item.placeholder && item.kind === "未发现问题"))
+  const noIssueCount = noIssueFindings.length
+  const acceptedIds = new Set([...groups.flatMap(group => group.findings), ...noIssueFindings].map(item => item.ruleId))
+  const allIds = new Set([
+    ...findings.map(item => item.ruleId), ...result.notLocated.map(item => item.ruleId),
+    ...result.rejected.map(item => item.ruleId), ...result.coverage.flatMap(item => item.findingIds),
+    ...result.errors.flatMap(item => item.ruleIds),
+  ].filter(id => id.trim()))
+  const invalidIds = new Set([...result.notLocated, ...result.rejected].map(item => item.ruleId)
+    .filter(id => id.trim() && !acceptedIds.has(id)))
+  const rejectedOrNotLocatedCount = invalidIds.size
+  const totalChecks = allIds.size
+  const unfinishedCount = totalChecks - issueCount - noIssueCount - rejectedOrNotLocatedCount
   const confirmations: { text: string; ruleIds: string[]; categories: Finding["category"][] }[] = []
   const unfinished: { ruleId: string; category?: Finding["category"]; detail: string }[] = []
   const addUnfinished = (ruleId: string, detail: string, category?: Finding["category"]) => {
@@ -56,7 +83,7 @@ export function getReportView(result: ReviewResult) {
     if (!existing) unfinished.push({ ruleId, detail, category })
     else if (detail && !existing.detail.includes(detail)) existing.detail += "；" + detail
   }
-  for (const item of result.findings) {
+  for (const item of findings) {
     if (isUnfinishedFinding(item)) { addUnfinished(item.ruleId, item.pending.join("；") || item.risk, item.category); continue }
     const notes = item.pending.length ? item.pending : item.kind === "待核实" ? [item.risk] : []
     const texts = notes.flatMap(note => note.split(/[；;\n]/)).map(note => note.trim())
@@ -71,10 +98,15 @@ export function getReportView(result: ReviewResult) {
       }
     }
   }
-  for (const item of result.notLocated) addUnfinished(item.ruleId, item.detail)
+  for (const item of result.notLocated) if (item.ruleId.trim() && !acceptedIds.has(item.ruleId)) addUnfinished(item.ruleId, item.detail)
   for (const item of result.rejected) {
-    if (!result.findings.some(finding => finding.ruleId === item.ruleId && !isUnfinishedFinding(finding)))
+    if (item.ruleId.trim() && !acceptedIds.has(item.ruleId))
       addUnfinished(item.ruleId, item.reason + "：" + item.detail)
+  }
+  for (const ruleId of allIds) if (!acceptedIds.has(ruleId) && !unfinished.some(item => item.ruleId === ruleId)) {
+    const errors = result.errors.filter(item => item.ruleIds.includes(ruleId)).map(item => item.message)
+    const category = result.coverage.find(item => item.findingIds.includes(ruleId))?.category
+    addUnfinished(ruleId, errors.join("；") || "该检查项尚未形成有效结论。", category)
   }
   const unfinishedGroups: { label: string; count: number }[] = []
   for (const item of unfinished) {
@@ -94,10 +126,11 @@ export function getReportView(result: ReviewResult) {
   const uncovered = result.coverage.filter(item => item.status === "未覆盖")
   if (uncovered.length) scopeNotes.push(uncovered.map(item => CATEGORY_LABELS[item.category]).join("、") + "尚未覆盖。")
   const incomplete = result.status !== "success" || unfinished.length > 0 || scopeNotes.length > 0 || result.errors.length > 0 || auditIncomplete
-  const summary = issueCount > 0
-    ? (incomplete ? "初步结果：" : "") + `发现 ${issueCount} 项问题，涉及 ${groups.length} 类事项。`
+  const summary = `共 ${totalChecks} 项检查结论，其中问题 ${issueCount} 项、无问题 ${noIssueCount} 项、未完成 ${unfinishedCount} 项、被拒绝或未定位 ${rejectedOrNotLocatedCount} 项。`
+  const outcomeNotice = issueCount > 0 ? (incomplete ? "初步问题" : "问题") + `涉及 ${groups.length} 类事项。`
     : isCompleteNoRisk(result) ? "本次检查范围内未发现问题，仍需人工复核。" : "尚不能确认无风险，请查看待确认事项与检查进度。"
   const auditNotice = auditIncomplete ? "AI 复查尚未完成，当前结论仍需进一步核对。"
     : auditFlagCount ? `AI 复查提出 ${auditFlagCount} 项需人工核对的意见。` : null
-  return { groups, issueCount, confirmations, unfinished, unfinishedGroups, scopeNotes, incomplete, summary, auditNotice, auditFlagCount }
+  return { groups, issueCount, totalChecks, noIssueCount, unfinishedCount, rejectedOrNotLocatedCount, noIssueFindings,
+    confirmations, unfinished, unfinishedGroups, scopeNotes, incomplete, summary, outcomeNotice, auditNotice, auditFlagCount }
 }

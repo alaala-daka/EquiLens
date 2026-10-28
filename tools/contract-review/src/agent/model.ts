@@ -11,7 +11,7 @@ export type AgentModelOptions = {
   beforeRequest: () => Promise<void>
   afterResponse: () => void
   onFailure: (failure: ReviewError) => void
-  onExchange?: (exchange: { request: unknown; response: unknown }) => Promise<void>
+  onExchange?: (exchange: { request: unknown; response: unknown; elapsedMs?: number }) => Promise<void>
   lengthRepairInstruction?: string
   lengthRepair?: boolean
 }
@@ -38,6 +38,22 @@ async function responseBytes(response: Response, signal: AbortSignal): Promise<U
   return new Uint8Array(Buffer.concat(chunks))
 }
 
+/** 信封先校验；参数 JSON 与业务 schema 留给 SDK，允许既有有界纠正流程处理。 */
+function validToolEnvelope(message: Record<string, unknown>, finishReason: string): boolean {
+  const calls = message.tool_calls
+  if (finishReason === "stop") return calls == null || (Array.isArray(calls) && calls.length === 0)
+  if (!Array.isArray(calls) || !calls.length || calls.length > 32) return false
+  const ids = new Set<string>()
+  for (const item of calls) {
+    if (!item || typeof item !== "object" || item.type !== "function" || typeof item.id !== "string" ||
+      !item.id.trim() || item.id.length > 256 || /[\u0000-\u001f\u007f]/.test(item.id) || ids.has(item.id) ||
+      !item.function || typeof item.function !== "object" || typeof item.function.name !== "string" ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(item.function.name) || typeof item.function.arguments !== "string") return false
+    ids.add(item.id)
+  }
+  return true
+}
+
 /** SDK 自动重试由调用方关闭；每次真正发出的 HTTP 请求都经过同一预算入口。 */
 export function createAgentModel(options: AgentModelOptions) {
   const config = modelConfig(options.env ?? process.env)
@@ -56,6 +72,7 @@ export function createAgentModel(options: AgentModelOptions) {
           await options.beforeRequest()
           options.signal.throwIfAborted()
           requestSignal = AbortSignal.any([options.signal, AbortSignal.timeout(options.requestTimeoutMs), ...(init.signal ? [init.signal] : [])])
+          const sentAt = Date.now()
           const response = await (options.fetcher ?? fetch)(url, { ...init, body, signal: requestSignal, redirect: "error", cache: "no-store" })
           if (!response.ok) {
             await response.body?.cancel().catch(() => {})
@@ -69,7 +86,7 @@ export function createAgentModel(options: AgentModelOptions) {
           catch { throw new ReviewError("AI_RESPONSE_INVALID") }
           options.signal.throwIfAborted()
           // 失败响应也属于本次不可变调用证据，须在结束原因校验之前保存；不记录 header 或密钥。
-          try { await options.onExchange?.({ request: JSON.parse(body), response: value }) }
+          try { await options.onExchange?.({ request: JSON.parse(body), response: value, elapsedMs: Date.now() - sentAt }) }
           catch { options.signal.throwIfAborted(); throw new ReviewError("REVIEW_PROGRESS_FAILED") }
           const choice = value?.choices?.[0]
           if (!Array.isArray(value?.choices) || value.choices.length !== 1 || !choice?.message) throw new ReviewError("AI_RESPONSE_INVALID")
@@ -82,7 +99,7 @@ export function createAgentModel(options: AgentModelOptions) {
             continue
           }
           if (choice.message.refusal || !["stop", "tool_calls"].includes(choice.finish_reason)) throw incompleteOutput(choice.finish_reason, choice.message.refusal)
-          if (choice.finish_reason === "tool_calls" && (!Array.isArray(choice.message.tool_calls) || !choice.message.tool_calls.length || choice.message.tool_calls.length > 32)) throw new ReviewError("AI_RESPONSE_INVALID")
+          if (!validToolEnvelope(choice.message, choice.finish_reason)) throw new ReviewError("AI_RESPONSE_INVALID")
           options.signal.throwIfAborted()
           options.afterResponse()
           const headers = new Headers(response.headers)
