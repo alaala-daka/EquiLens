@@ -24,6 +24,8 @@
 | `src/server/payments/validation.ts` | 行校验、整数分、期间/税口径、计算、去重、负值 |
 | `src/server/payments/repository.ts` | 款项表版本、基础版本、计算快照 |
 | `src/server/payments/payments.test.ts` | 500,000 元、重复付款、负余额、旧版本、跨项目 |
+| `src/server/document-agent/projection.ts` | 把款项/证据结果投影为事实版本；款项任务另生成款项表版本 |
+| `src/server/document-agent/projection.test.ts` | 投影事实/款项版本、500,000 元、证据只生成事实 |
 
 ## 验证
 
@@ -31,11 +33,21 @@
 pnpm test
 ```
 
-结果：313 项，312 通过、1 平台跳过、0 失败；`pnpm check`、`pnpm build` 通过。
+结果：315 项，314 通过、1 平台跳过、0 失败；`pnpm check`、`pnpm build` 通过。
+
+## 投影服务
+
+`projectDocumentAnalysis` 接受明确的 `projectId` 和文档版本，把整理结果写成：
+
+- 每条金额 → 一个 FactVersion，并保留 source 段落/引文
+- 款项任务的金额同时映射为 LedgerRow，生成 PaymentLedgerRevision，计算余额
+- 证据事件 → FactVersion（材料记载/人工陈述、支持/冲突状态）
+- 返回 `factVersionIds` 与 `ledgerRevisionId`，供证据/催款函后续引用
 
 ## 尚未接入
 
-- 没有 HTTP API、页面或项目成员校验；`projectId` 由调用方传入，项目权限属于后续第 3 项。
+- 投影服务尚未由任务工作流调用，也没有 HTTP/UI；`projectId` 必须由未来项目上下文提供，不能用匿名 owner 冒充。
+- 没有项目成员校验；项目权限属于后续第 3 项。
 - 只做来源结构校验，未验证来源是否真实存在于文档仓储。
-- 文档 Agent/证据/催款函尚未改为引用 FactVersion/PaymentLedgerRevision。
+- 证据/催款函结果还没有写回 `factVersionIds`/`ledgerRevisionId` 引用。
 - 款项计算是当前 Demo 口径，不覆盖所有期次、扣抵和资金归属场景。

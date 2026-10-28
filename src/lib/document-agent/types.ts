@@ -30,4 +30,6 @@ export type DocumentAnalysis = {
   audit: { complete: boolean; checks: { id: string; accepted: boolean; reason: string }[]; gaps: string[]; notes?: string[] }
   calculation: { netDueFen: string; paidFen: string; unpaidFen: string; formula: string } | null
   calculationNotes: string[]; reviewStatus: "待人工复核"
+  /** 由项目投影服务写入的共享事实/款项版本引用；未接入项目前为空。 */
+  shared?: { factVersionIds: string[]; ledgerRevisionId?: string }
 }
