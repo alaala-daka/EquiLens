@@ -53,13 +53,14 @@ export function parseDocxBytes(bytes: Uint8Array): { paragraphs: Paragraph[]; co
   }
   const files = unzipSync(bytes, { filter: file => file.name === "word/document.xml" })
   const nodes = children(parser.parse(new TextDecoder("utf8", { fatal: true }).decode(files["word/document.xml"])))
-  // 公式、符号、子文档、内容部件与隐藏文本无法按段落模型完整表达，逐个记入复杂结构。
+  // 公式、符号、子文档、内容部件与隐藏文本无法按段落模型完整表达，每个出现计一次；
+  // oMathPara 与其内嵌 oMath 是同一显示公式，只按 oMathPara 计一次。
   const complexKeys = new Set(["oMath", "oMathPara", "sym", "subDoc", "contentPart", "vanish", "webHidden"])
-  const scanComplex = (items: Node[]) => {
+  const scanComplex = (items: Node[], inMathPara = false) => {
     for (const node of items) for (const [key, value] of Object.entries(node)) {
       if (skipTree(key)) continue
-      if (complexKeys.has(key)) coverage.complex++
-      if (Array.isArray(value)) scanComplex(children(value))
+      if (complexKeys.has(key) && !(key === "oMath" && inMathPara)) coverage.complex++
+      if (Array.isArray(value)) scanComplex(children(value), inMathPara || key === "oMathPara")
     }
   }
   scanComplex(nodes)
@@ -100,12 +101,13 @@ export function parseDocxBytes(bytes: Uint8Array): { paragraphs: Paragraph[]; co
     }
   }
   // preserveOrder 保留 p/tbl 交错顺序及各个 run 的顺序；sdt/customXml 等未知块容器递归提取段落并记入复杂结构，不再整体拒绝。
+  // complexKeys 成员已由 scanComplex 按出现计过一次，这里只递归提取，不再重复计数。
   function collectBlocks(items: Node[], table?: Paragraph["table"]) {
     for (const node of items) for (const [key, value] of Object.entries(node)) {
       if (skipTree(key) || key.endsWith("Pr") || markers.has(key)) continue
       if (key === "p") push(value, table)
       else if (key === "tbl") collectTable(value, table)
-      else if (knownContainers.has(key)) collectInner(children(value), table)
+      else if (knownContainers.has(key) || complexKeys.has(key)) collectInner(children(value), table)
       else { coverage.complex++; collectInner(children(value), table) }
     }
   }

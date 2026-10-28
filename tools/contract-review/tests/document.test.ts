@@ -28,16 +28,24 @@ test("AC-24: 修订与复杂结构不再拒绝，覆盖记入 coverage 且 compl
   const revisionFixture = structureFixtures.find(item => item.id === "revisions-all")
   assert.ok(revisionFixture)
   const parsedRevision = parseDocxBytes(revisionFixture.build())
-  assert.equal(parsedRevision.coverage.revisions > 0, true)
+  assert.deepEqual(parsedRevision.coverage, { images: 0, revisions: 5, textboxes: 0, complex: 0 })
   assert.equal(coverageComplete(parsedRevision.coverage), false)
   assert.equal(parsedRevision.paragraphs.map(item => item.text).join(""), revisionFixture.expected.text)
 
   const nested = await withBody("<w:tbl><w:tr><w:tc><w:tbl><w:tr><w:tc>" + p("嵌套") + "</w:tc></w:tr></w:tbl></w:tc></w:tr></w:tbl>")
   const parsedNested = parseDocxBytes(nested)
-  assert.equal(parsedNested.coverage.complex > 0, true)
+  assert.deepEqual(parsedNested.coverage, { images: 0, revisions: 0, textboxes: 0, complex: 1 })
   assert.throws(() => parseDocxBytes(new Uint8Array([1, 2, 3])))
   assert.throws(() => parseDocxBytes(Buffer.from("<xml/>")))
   await assert.rejects(parseDocument("synthetic.pdf"), { code: "REVIEW_DOCUMENT_INVALID" })
+})
+
+test("AC-24: 显示公式按出现计一次，不因 oMathPara/oMath 嵌套或块级位置重复计数", async () => {
+  const math = '<m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><m:oMath><m:r><m:t>x=1</m:t></m:r></m:oMath></m:oMathPara>'
+  const parsedBlock = parseDocxBytes(await withBody(math))
+  assert.deepEqual(parsedBlock.coverage, { images: 0, revisions: 0, textboxes: 0, complex: 1 })
+  const parsedInline = parseDocxBytes(await withBody("<w:p>" + math + "</w:p>"))
+  assert.deepEqual(parsedInline.coverage, { images: 0, revisions: 0, textboxes: 0, complex: 1 })
 })
 
 test("AC-24: 文本框样本解析正文不双计且 complete 为 false", () => {
@@ -45,7 +53,7 @@ test("AC-24: 文本框样本解析正文不双计且 complete 为 false", () => 
   assert.ok(textboxFixture)
   const parsed = parseDocxBytes(textboxFixture.build())
   assert.equal(parsed.paragraphs.map(item => item.text).join(""), "框内文字")
-  assert.equal(parsed.coverage.textboxes, 1)
+  assert.deepEqual(parsed.coverage, { images: 1, revisions: 0, textboxes: 1, complex: 0 })
   assert.equal(coverageComplete(parsed.coverage), false)
 })
 
