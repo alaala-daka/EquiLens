@@ -3,7 +3,7 @@ import { test } from "node:test"
 import { connectDatabase } from "../database/connection"
 import { createSyntheticObjectStore, objectKey, createFaultyObjectStore, documentObjectKey, exportObjectKey, assertObjectKey } from "../storage/obs"
 import { UploadIntents } from "./upload-intents"
-import { uploadIntentStatements } from "./schema"
+import { applyMaterialSchema, uploadIntentStatements } from "./schema"
 
 const id = "11111111-1111-4111-8111-111111111111"
 const key = objectKey({ projectId: id, materialId: id, versionId: id, sha256: "a".repeat(64) })
@@ -12,6 +12,7 @@ const authorization = { sourceKind: "synthetic" as const, sourceReference: "åˆæ
 test("C2c/AC-25: persist before put; recover orphan and protect committed object; repair enqueue idempotently", async () => {
   const database = await connectDatabase({ provider: "sqlite", path: ":memory:" })
   try {
+    await applyMaterialSchema(database)
     await database.transaction(async c => { for (const sql of uploadIntentStatements) await c.query(sql) })
     let now = 0
     const intents = new UploadIntents(database, () => new Date(now))
@@ -43,6 +44,7 @@ test("C2c/AC-25: persist before put; recover orphan and protect committed object
 test("C2c: cleanup failure persists attempts; expiry protects active upload; retries reuse intent", async () => {
   const database = await connectDatabase({ provider: "sqlite", path: ":memory:" })
   try {
+    await applyMaterialSchema(database)
     await database.transaction(async c => { for (const sql of uploadIntentStatements) await c.query(sql) })
     let now = 0
     const intents = new UploadIntents(database, () => new Date(now))
@@ -66,6 +68,7 @@ test("C2c: cleanup failure persists attempts; expiry protects active upload; ret
 test("C2c/AC-25: authorization survives crash after put; retention expiry precedes orphan grace", async () => {
   const database = await connectDatabase({ provider: "sqlite", path: ":memory:" })
   try {
+    await applyMaterialSchema(database)
     await database.transaction(async c => { for (const sql of uploadIntentStatements) await c.query(sql) })
     let now = Date.parse("2026-12-31T23:59:59Z")
     const intents = new UploadIntents(database, () => new Date(now))

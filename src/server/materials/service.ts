@@ -120,7 +120,7 @@ export class MaterialService {
     try {
       const object = await this.deps.store.get(version.objectKey)
       if (!object) throw unavailable("原件读取失败，未改写历史解析快照。")
-      if (object.sha256 !== version.sha256) throw unavailable("原件校验失败，未改写历史解析快照。")
+      if (object.sha256 !== version.sha256 || digest(object.bytes) !== version.sha256) throw unavailable("原件校验失败，未改写历史解析快照。")
       bytes = object.bytes
     } catch (failure) {
       if (failure instanceof BusinessError) throw failure
@@ -156,7 +156,7 @@ export class MaterialService {
     } catch {
       throw unavailable("原件暂不可用，请稍后重试。")
     }
-    if (!object || object.sha256 !== version.sha256) throw unavailable("原件暂不可用，请稍后重试。")
+    if (!object || object.sha256 !== version.sha256 || digest(object.bytes) !== version.sha256) throw unavailable("原件暂不可用，请稍后重试。")
     return { material, version, bytes: object.bytes, contentType: version.contentType, fileName: version.fileName }
   }
 

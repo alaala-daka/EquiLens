@@ -105,8 +105,8 @@ function storedHeadingPath(value: unknown): string[] {
 export type NewMaterial = {
   material: MaterialRecord
   version: MaterialVersionRecord
-  snapshot: ParseSnapshotRecord
-  fragments: SourceFragmentRecord[]
+  snapshot?: ParseSnapshotRecord
+  fragments?: SourceFragmentRecord[]
 }
 
 /**
@@ -125,6 +125,15 @@ export class MaterialRepository {
   }
 
   uploadIntents(): UploadIntents { return new UploadIntents(this.database, this.now) }
+
+  async parseTaskId(projectId: string, materialId: string): Promise<string | null> {
+    const result = await this.database.transaction(c => c.query("SELECT parse_task_id FROM equilens_materials WHERE project_id=$1 AND id=$2", [projectId, materialId]))
+    return result.rows[0]?.parse_task_id == null ? null : String(result.rows[0].parse_task_id)
+  }
+
+  async linkTask(projectId: string, materialId: string, taskId: string): Promise<void> {
+    await this.database.transaction(c => c.query("UPDATE equilens_materials SET parse_task_id=$1 WHERE project_id=$2 AND id=$3", [taskId, projectId, materialId]))
+  }
 
   async objectReferenced(objectKey: string): Promise<boolean> {
     const result = await this.database.transaction(c => c.query("SELECT id FROM equilens_material_versions WHERE object_key=$1 LIMIT 1", [objectKey]))
@@ -146,7 +155,7 @@ export class MaterialRepository {
         "INSERT INTO equilens_material_versions(id,project_id,material_id,revision,sha256,size_bytes,content_type,object_key,file_name,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
         [version.id, version.projectId, version.materialId, version.revision, version.sha256, version.size, version.contentType, version.objectKey, version.fileName, version.createdAt],
       )
-      await this.insertSnapshot(connection, snapshot, input.fragments)
+      if (snapshot) await this.insertSnapshot(connection, snapshot, input.fragments ?? [])
     })
   }
 
@@ -241,7 +250,7 @@ export class MaterialRepository {
 
   async listMaterials(projectId: string): Promise<MaterialSummary[]> {
     const { rows } = await this.database.transaction(connection =>
-      connection.query("SELECT m.*, v.id AS version_id, v.sha256, v.size_bytes, s.id AS snapshot_id, s.coverage_json FROM equilens_materials m JOIN equilens_material_versions v ON v.id=m.latest_version_id LEFT JOIN equilens_parse_snapshots s ON s.material_id=m.id AND s.revision=m.latest_revision WHERE m.project_id=$1 AND m.status='active' ORDER BY m.created_at, m.id", [projectId]))
+      connection.query("SELECT m.*, v.id AS version_id, v.sha256, v.size_bytes, s.id AS snapshot_id, s.coverage_json, t.state AS parse_state FROM equilens_materials m JOIN equilens_material_versions v ON v.id=m.latest_version_id LEFT JOIN equilens_parse_snapshots s ON s.material_id=m.id AND s.revision=m.latest_revision LEFT JOIN equilens_tasks t ON t.id=m.parse_task_id AND t.project_id=m.project_id WHERE m.project_id=$1 AND m.status='active' ORDER BY m.created_at, m.id", [projectId]))
     return rows.map(row => ({
       id: String(row.id),
       title: String(row.title),
@@ -251,6 +260,8 @@ export class MaterialRepository {
       sha256: String(row.sha256),
       versionId: String(row.version_id),
       createdAt: String(row.created_at),
+      parseTaskId: row.parse_task_id == null ? null : String(row.parse_task_id),
+      parseState: row.parse_state == null ? null : String(row.parse_state),
       snapshotId: row.snapshot_id === null ? null : String(row.snapshot_id),
       coverage: row.coverage_json === null || row.coverage_json === undefined ? null : storedCoverage(row.coverage_json),
     }))
