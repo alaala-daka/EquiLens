@@ -1,4 +1,6 @@
 import "server-only"
+import { taskExecutorRegistry } from "./executors"
+import { TaskError } from "./errors"
 import type { ProjectAction } from "../../lib/business/contracts"
 import type { AuthIdentity } from "../auth/service"
 import { TaskBudgetRepository, type BudgetSettlement, type BudgetUsage, type ProjectBudgetView, type TaskBudgetView } from "./budget"
@@ -49,6 +51,7 @@ export async function taskBudgetRepository(): Promise<TaskBudgetRepository> {
 }
 
 export async function submitTask(identity: AuthIdentity, authorize: ProjectTaskAuthorizer, submission: TaskSubmission): Promise<SubmitResult> {
+  if (!taskExecutorRegistry.get(submission.kind)) throw new TaskError(503, "SERVICE_UNAVAILABLE", "该任务类型尚未开放。")
   const operationId = parseOperationId(submission.operationId)
   await authorize(identity, submission.projectId, "edit")
   const repository = await taskRepository()

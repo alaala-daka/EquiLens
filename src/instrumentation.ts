@@ -5,6 +5,6 @@ export async function register() {
   const { startRetentionRuntime } = await import("./server/documents/retention-cleanup")
   // Data readiness belongs to document requests; health and server startup remain available on failure.
   startRetentionRuntime()
-  const { startReviewRunner } = await import("./server/contract-review/tasks/runner")
-  startReviewRunner()
+  const { startTaskRunner } = await import("./server/tasks/runner")
+  startTaskRunner()
 }

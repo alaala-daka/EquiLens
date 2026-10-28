@@ -186,3 +186,14 @@ test("A3a: task HTTP reads are project-scoped and detail ids are validated", asy
   assert.equal(found.status, 200)
   assert.equal((await found.json()).id, taskId)
 })
+
+test("A3c HTTP rejects browser model, price and budget fields before submit", async () => {
+  for (const field of ["model", "price", "budget", "operationId", "executor"]) {
+    const { seen, value } = services()
+    const handlers = createTaskCollectionHandlers(async () => value)
+    const response = await handlers.POST(request("/api/tasks", { method: "POST", body: { ...body, [field]: "untrusted" }, headers: { "Idempotency-Key": "strict" } }))
+    assert.equal(response.status, 422)
+    assert.equal((await response.json()).error.code, "INVALID_SUBMISSION")
+    assert.equal(seen.submission, undefined)
+  }
+})

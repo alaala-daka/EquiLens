@@ -133,6 +133,9 @@ export function createTaskCollectionHandlers(getServices: Services) {
         const operationId = request.headers.get("idempotency-key")
         if (!operationId) throw new TaskError(422, "INVALID_SUBMISSION", "缺少任务提交标识。")
         const body = await jsonBody(request)
+        if (Object.keys(body).some(key => !["kind", "projectId", "refs", "conditions"].includes(key))) {
+          throw new TaskError(422, "INVALID_SUBMISSION", "请求内容无效。")
+        }
         const result = await services.submit(identity, services.authorize, { ...body, operationId } as unknown as TaskSubmission)
         return NextResponse.json(result, { status: 202, headers: { "Cache-Control": "private, no-store" } })
       } catch (failure) { return taskFailure(failure) }
