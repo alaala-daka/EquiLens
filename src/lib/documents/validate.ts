@@ -1,7 +1,9 @@
 import { MAX_FILE_BYTES } from "./docx"
+import type { DocxWorkerRequest, DocxWorkerResponse } from "./docx.worker"
+import type { ExportExpectation } from "./structures"
 import { DOCX_TYPE } from "./types"
 
-export async function validateDocx(blob: Blob, signal?: AbortSignal, prepare = false, expectedText?: string): Promise<Blob> {
+export async function validateDocx(blob: Blob, signal?: AbortSignal, prepare = false, expected?: ExportExpectation): Promise<Blob> {
   if (!blob.size || blob.size > MAX_FILE_BYTES) throw new Error("文件大小须在 20 MiB 以内。")
   const bytes = await blob.arrayBuffer()
   signal?.throwIfAborted()
@@ -17,8 +19,9 @@ export async function validateDocx(blob: Blob, signal?: AbortSignal, prepare = f
     const abort = () => finish(new Error("操作已取消。"))
     const timer = setTimeout(() => finish(new Error("DOCX 校验超时，请重试。")), 60000)
     signal?.addEventListener("abort", abort, { once: true })
-    worker.onmessage = (event: MessageEvent<{ ok: boolean; message?: string; bytes?: ArrayBuffer }>) => finish(event.data.ok ? undefined : new Error(event.data.message ?? "DOCX 校验失败。"), event.data.bytes)
+    worker.onmessage = (event: MessageEvent<DocxWorkerResponse>) => finish(event.data.ok ? undefined : new Error(event.data.message ?? "DOCX 校验失败。"), event.data.bytes)
     worker.onerror = () => finish(new Error("无法校验 DOCX 文件，请重试。"))
-    worker.postMessage({ bytes, prepare, expectedText }, [bytes])
+    const message: DocxWorkerRequest = { bytes, prepare, expected }
+    worker.postMessage(message, [bytes])
   })
 }

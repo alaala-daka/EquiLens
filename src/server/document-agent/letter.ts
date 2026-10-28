@@ -46,7 +46,7 @@ export async function renderCollectionLetter(letter: CollectionLetter, signal: A
   files["word/document.xml"] = strToU8(strFromU8(files["word/document.xml"]).replace("<w:p/>", lines.map(text => `<w:p><w:r><w:t xml:space="preserve">${xml(text)}</w:t></w:r></w:p>`).join("")))
   const bytes = Buffer.from(zipSync(files)); await validateUpload(bytes)
   const parsed = await readDocxInChild(bytes, signal)
-  if (JSON.stringify(parsed.map(item => item.text)) !== JSON.stringify(lines)) throw new ReviewError("REVIEW_REVISION_EXPORT_FAILED")
+  if (JSON.stringify(parsed.paragraphs.map(item => item.text)) !== JSON.stringify(lines)) throw new ReviewError("REVIEW_REVISION_EXPORT_FAILED")
   return bytes
 }
 export function letterVerificationAllowed(analysis: DocumentAnalysis) {

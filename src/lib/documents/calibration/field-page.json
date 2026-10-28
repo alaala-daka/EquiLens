@@ -1,0 +1,18 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "run", "content": [{ "type": "text", "marks": [], "text": "页码示例：第 " }] },
+        { "type": "page-number", "attrs": { "marksAsAttrs": [], "instruction": "PAGE", "pageNumberFormat": null, "pageNumberZeroPadding": null } },
+        { "type": "run", "content": [{ "type": "text", "marks": [], "text": " 页，共 " }] },
+        {
+          "type": "total-page-number",
+          "attrs": { "marksAsAttrs": [], "instruction": null, "pageNumberFormat": null, "pageNumberZeroPadding": null, "pageNumberNumericPicture": null, "importedCachedText": "1", "resolvedText": null }
+        },
+        { "type": "run", "content": [{ "type": "text", "marks": [], "text": "页。" }] }
+      ]
+    }
+  ]
+}

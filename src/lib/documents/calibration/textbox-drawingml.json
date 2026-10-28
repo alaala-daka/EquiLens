@@ -1,0 +1,23 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "shapeContainer",
+      "attrs": { "kind": "rect", "width": 227, "height": 76, "wrapAttributes": null, "anchorData": { "hRelativeFrom": "column", "vRelativeFrom": "paragraph" } },
+      "content": [
+        {
+          "type": "shapeTextbox",
+          "attrs": { "textInsets": { "top": 4.8, "right": 9.6, "bottom": 4.8, "left": 9.6 }, "textVerticalAlign": "top" },
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "run", "content": [{ "type": "text", "marks": [], "text": "框内文字" }] }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { Unzip, UnzipInflate, strFromU8, strToU8, unzipSync, zipSync } from "fflate"
 import { XMLParser, XMLValidator } from "fast-xml-parser"
+import { compareExport, emptyCounts, emptyStructures, type DocxInspection, type ExportExpectation } from "./structures"
 import { DOCX_TYPE } from "./types"
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -12,15 +13,18 @@ const packageNamespace = "http://schemas.openxmlformats.org/package/2006/relatio
 const stylesType = "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"
 const stylesXml = `<w:styles xmlns:w="${wordNamespace}"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Microsoft YaHei"/><w:sz w:val="24"/><w:lang w:val="zh-CN" w:eastAsia="zh-CN"/></w:rPr></w:rPrDefault><w:pPrDefault/></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>${[1, 2, 3].map(level => `<w:style w:type="paragraph" w:styleId="Heading${level}"><w:name w:val="heading ${level}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:outlineLvl w:val="${level - 1}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${36 - level * 4}"/></w:rPr></w:style>`).join("")}</w:styles>`
 
-export function blankDocx(): Blob {
+export function blankDocxFiles(): Record<string, Uint8Array> {
   const xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-  const files = {
+  return {
     "[Content_Types].xml": strToU8(`${xml}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="${mainType}"/></Types>`),
     "_rels/.rels": strToU8(`${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`),
     "word/_rels/document.xml.rels": strToU8(`${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`),
     "word/document.xml": strToU8(`${xml}<w:document xmlns:w="${wordNamespace}"><w:body><w:p/><w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`),
   }
-  return new Blob([prepareDocxBytes(zipSync(files)) as Uint8Array<ArrayBuffer>], { type: DOCX_TYPE })
+}
+
+export function blankDocx(): Blob {
+  return new Blob([prepareDocxBytes(zipSync(blankDocxFiles())) as Uint8Array<ArrayBuffer>], { type: DOCX_TYPE })
 }
 
 /**
@@ -37,7 +41,8 @@ export async function docxFromParagraphs(paragraphs: readonly string[]): Promise
   const files = unzipSync(new Uint8Array(await blankDocx().arrayBuffer()))
   files["word/document.xml"] = strToU8(`${xml}<w:document xmlns:w="${wordNamespace}"><w:body>${body || "<w:p/>"}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`)
   const prepared = prepareDocxBytes(zipSync(files))
-  validateDocxBytes(prepared, clean.join(""))
+  // 干净副本按设计剥离结构，此处只核对正文文字，不施加结构对账。
+  validateDocxBytes(prepared, { text: clean.join(""), structures: emptyCounts() })
   return new Blob([prepared as Uint8Array<ArrayBuffer>], { type: DOCX_TYPE })
 }
 
@@ -114,7 +119,50 @@ function visit(value: unknown, callback: (name: string, value: unknown) => void)
   for (const [name, child] of Object.entries(value)) { callback(name, child); visit(child, callback) }
 }
 
-export function validateDocxBytes(bytes: Uint8Array, expectedText?: string): string {
+type OrderedNode = Record<string, unknown>
+
+// preserveOrder 输出中属性在 ":@"，文本在 "#text"；Fallback 子树跳过防文本框 Choice/Fallback 双计。
+// inMoveFrom 标记 moveFrom 子树内部：Word 合规 moveFrom 内容为 delText 或 w:t，两者均不计入正文。
+function walkOrdered(nodes: unknown[], onElement: (key: string, attrs: Record<string, string>, children: unknown[], inMoveFrom: boolean) => void, inMoveFrom = false) {
+  if (!Array.isArray(nodes)) return
+  for (const node of nodes as OrderedNode[]) {
+    const attrs = (node[":@"] ?? {}) as Record<string, string>
+    for (const [key, value] of Object.entries(node)) {
+      if (key === ":@" || key === "#text") continue
+      const children = Array.isArray(value) ? value : []
+      onElement(key, attrs, children, inMoveFrom)
+      if (key !== "Fallback") walkOrdered(children, onElement, inMoveFrom || key === "moveFrom")
+    }
+  }
+}
+
+function textOf(children: unknown[]): string {
+  let out = ""
+  for (const node of children as OrderedNode[]) for (const [key, value] of Object.entries(node)) {
+    if (key === "#text") out += String(value)
+    else if (Array.isArray(value)) out += textOf(value)
+  }
+  return out
+}
+
+function countElement(key: string, attrs: Record<string, string>, structures: ReturnType<typeof emptyStructures>) {
+  const field = (name: string) => attrs[`@_${name}`] ?? attrs[`@_w:${name}`]
+  if (key === "drawing" || key === "pict") structures.images++
+  if (key === "headerReference" || key === "footerReference") structures.headerFooterRefs++
+  if (key === "fldSimple") structures.fields.simple++
+  if (key === "fldChar" && field("fldCharType") === "begin") structures.fields.complex++
+  if (key === "ins") structures.revisions.insertions++
+  if (key === "del") structures.revisions.deletions++
+  if (key === "moveFrom" || key === "moveTo") structures.revisions.moves++
+  if (/PrChange$/.test(key)) structures.revisions.formatChanges++
+  if (key === "txbxContent") structures.textboxes++
+  if (key === "commentReference") structures.comments++
+  if (key === "footnoteReference" || key === "endnoteReference") structures.notes++
+  if (key === "sdt") structures.contentControls++
+  if (key === "gridSpan" || key === "vMerge") structures.mergedCells++
+}
+
+export function validateDocxBytes(bytes: Uint8Array, expected?: ExportExpectation): DocxInspection {
   if (!bytes.length || bytes.length > MAX_FILE_BYTES) throw invalid("文件大小须在 20 MiB 以内。")
   const entries = directory(bytes)
   const xmlFiles = new Map<string, string>()
@@ -152,9 +200,13 @@ export function validateDocxBytes(bytes: Uint8Array, expectedText?: string): str
   for (let offset = 0; offset < bytes.length; offset += 32768) unzip.push(bytes.subarray(offset, offset + 32768), offset + 32768 >= bytes.length)
   if (found.size !== entries.size) throw invalid()
   const parser = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, processEntities: true, parseTagValue: false, trimValues: false })
+  const orderedParser = new XMLParser({ preserveOrder: true, ignoreAttributes: false, removeNSPrefix: true, processEntities: true, parseTagValue: false, trimValues: false })
   let typesValid = false
   let documentValid = false
   let rootRelationship = false
+  const structures = emptyStructures()
+  // 对账清单只覆盖正文（word/document.xml）；全量 structures 另供覆盖率分析使用。
+  const bodyStructures = emptyStructures()
   let bodyText = ""
   for (const [name, text] of xmlFiles) {
     if (/<!DOCTYPE|<!ENTITY/i.test(text) || XMLValidator.validate(text) !== true) throw invalid("DOCX XML 结构无效。")
@@ -174,27 +226,27 @@ export function validateDocxBytes(bytes: Uint8Array, expectedText?: string): str
         for (const relation of Array.isArray(value) ? value : [value]) {
           const target = String(relation?.["@_Target"] ?? "")
           if (relation?.["@_TargetMode"]?.toLowerCase() === "external" || /^(?:[a-z][\w+.-]*:|\/\/)/i.test(target)) throw invalid("文档包含外部资源，请移除外部链接后导入。")
-          if (/attachedTemplate|oleObject|aFChunk/i.test(String(relation?.["@_Type"]))) throw invalid("不支持外部模板或嵌入内容。")
+          if (/attachedTemplate|oleObject|aFChunk|altChunk/i.test(String(relation?.["@_Type"]))) throw invalid("不支持外部模板或嵌入内容。")
           if (name === "_rels/.rels" && /\/officeDocument$/.test(String(relation?.["@_Type"])) && target === "word/document.xml") rootRelationship = true
         }
       })
     }
     if (name === "word/document.xml") {
       documentValid = Boolean(parsed.document && Object.hasOwn(parsed.document, "body")) && text.includes(wordNamespace)
-      const ordered = new XMLParser({ preserveOrder: true, ignoreAttributes: true, removeNSPrefix: true, processEntities: true, parseTagValue: false, trimValues: false }).parse(text)
-      visit(ordered, (key, value) => {
-        if (key === "t") {
-          for (const run of Array.isArray(value) ? value : [value]) bodyText += typeof run === "string" ? run : String(run?.["#text"] ?? "")
-        }
-      })
     }
     if (/^word\/.*\.xml$/i.test(name)) {
-      visit(parsed, key => {
-        if (/PrChange$/.test(key) || ["txbxContent", "fldChar", "instrText", "ins", "del", "moveFrom", "moveTo", "altChunk", "object", "drawing", "pict", "gridSpan", "vMerge", "headerReference", "footerReference", "sdt", "commentRangeStart", "commentRangeEnd", "commentReference", "footnoteReference", "endnoteReference"].includes(key)) throw invalid("文档包含暂不支持的图片、页眉页脚、域、修订或复杂结构。")
+      walkOrdered(orderedParser.parse(text), (key, attrs, children, inMoveFrom) => {
+        if (key === "altChunk" || key === "object") throw invalid("不支持外部模板或嵌入内容。")
+        countElement(key, attrs, structures)
+        if (name === "word/document.xml") {
+          countElement(key, attrs, bodyStructures)
+          if (key === "t" && !inMoveFrom) bodyText += textOf(children)
+        }
       })
     }
   }
   if (!typesValid || !documentValid || !rootRelationship) throw invalid()
-  if (expectedText !== undefined && bodyText !== expectedText) throw invalid("导出正文与编辑内容不一致，此次结果未保存，请重试。")
-  return bodyText
+  const inspection: DocxInspection = { text: bodyText, structures, bodyStructures }
+  if (expected) compareExport(inspection, expected)
+  return inspection
 }
