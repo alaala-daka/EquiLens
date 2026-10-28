@@ -72,7 +72,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
           consentConfiguration.current = consentVersion
           setConsentRevision(""); setDraftConsent(false)
         }
-        const id = selected || value.tasks[0]?.id || ""
+        const id = selected || value.tasks.find(item => (item.kind ?? "contract-review") === kind)?.id || ""
         if (!selected && id) setSelected(id)
         const listed = value.tasks.find(item => item.id === id)
         if (id && (!cachedDetail.current || cachedDetail.current.id !== id || cachedDetail.current.updatedAt !== listed?.updatedAt)) {
@@ -100,7 +100,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     document.addEventListener("visibilitychange", onVisibility)
     void refresh()
     return () => { disposed = true; controller.abort(); clearTimeout(timer); document.removeEventListener("visibilitychange", onVisibility) }
-  }, [documentId, selected, reload, onSessionUnavailable])
+  }, [documentId, selected, reload, onSessionUnavailable, kind])
   useEffect(() => () => { pending.current?.abort() }, [])
 
   const task = detail?.id === selected ? detail : null
@@ -140,7 +140,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
   }
   return <section aria-label="文档业务处理" className="flex flex-col gap-6 p-4">
     <form onSubmit={event => void submit(event)} className="flex flex-col gap-4">
-      <label className="grid gap-2 text-sm">处理业务<NativeSelect aria-label="处理业务" value={kind} disabled={submitting} onChange={event => { setKind(event.target.value as keyof typeof documentTaskLabels); setConsentRevision(""); operation.current = null }}>{Object.entries(documentTaskLabels).map(([value, label]) => <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}</NativeSelect></label>
+      <label className="grid gap-2 text-sm">处理业务<NativeSelect aria-label="处理业务" value={kind} disabled={submitting} onChange={event => { setKind(event.target.value as keyof typeof documentTaskLabels); setSelected(""); setDetail(null); setConsentRevision(""); operation.current = null }}>{Object.entries(documentTaskLabels).map(([value, label]) => <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}</NativeSelect></label>
       {!business && <p className="text-sm text-muted-foreground">审查立场：专业分包人</p>}
       {!business && <label className="grid gap-2 text-sm">项目地域<Input value={region} required maxLength={100} placeholder="如：上海" disabled={submitting} onChange={event => { setRegion(event.target.value); setConsentRevision("") }} /></label>}
       {business && <label className="grid gap-2 text-sm">核对截止日<Input type="date" value={cutoff} required disabled={submitting} onChange={event => { setCutoff(event.target.value); setConsentRevision(""); setPaymentTaskId(""); setEvidenceTaskId("") }} /></label>}
@@ -185,6 +185,6 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
       {!active && !task.result?.documentAnalysis?.audit.complete && task.state !== "success" && task.stage !== "cancelled" && !["REVIEW_INPUT_EMPTY", "REVIEW_REVISION_UNSAFE", "REVIEW_TOKEN_BUDGET_EXHAUSTED"].includes(task.error?.code ?? "") && !task.result?.collaboration?.revision?.export && (!task.result?.sceneSelection || task.result.sceneSelection.status === "matched") && task.attempt < 3 && task.callsUsed < task.maxCalls && <Button type="button" variant="outline" disabled={submitting} onClick={() => setRetryDialog(true)}>继续原任务</Button>}
       {task.result && (task.result.documentAnalysis ? <DocumentAgentReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} /> : <ContractReviewReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} onRevisionCreated={id => { setSelected(id); setReload(value => value + 1) }} />)}
     </div>}
-    <AlertDialog open={retryDialog} onOpenChange={setRetryDialog}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>继续原审查任务？</AlertDialogTitle><AlertDialogDescription>将使用原保存版本、审查条件和模型服务继续处理，可能产生费用。已有结果保留，调用预算和保留期限不会重置。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><Button type="button" disabled={submitting} onClick={() => void action("retry")}>同意并继续</Button></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={retryDialog} onOpenChange={setRetryDialog}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>继续原任务？</AlertDialogTitle><AlertDialogDescription>将使用原保存版本、原处理条件和模型服务继续处理，可能产生费用。已有结果保留，调用预算和保留期限不会重置。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><Button type="button" disabled={submitting} onClick={() => void action("retry")}>同意并继续</Button></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </section>
 }
