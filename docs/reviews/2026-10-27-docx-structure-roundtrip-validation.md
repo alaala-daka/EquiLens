@@ -1,6 +1,6 @@
 # DOCX 结构往返验证记录（2026-10-27 计划）
 
-> 状态：骨架（Task 10 建立，Task 11 定稿）。本记录只登记本轮实际执行的检查与其原始输出；未测量的边界写入"残余缺口"，不计入结论。
+> 状态：**定稿**（Task 10 建立，Task 11 定稿复跑归档，2026-10-28）。本记录只登记实际执行的检查与其原始输出；未测量的边界写入"残余缺口"，不计入结论。
 > **本地验证声明：本文所有 Word 实开结果均为本地验证（本机 Word 16.0，Microsoft® Word for Microsoft 365 / Office16），与 CI 分开。CI 不运行 Word；CI 通过不等于 Word 实开通过，Word 实开通过也不代表 CI 覆盖。**
 
 - 计划：`docs/superpowers/plans/2026-10-27-docx-structure-roundtrip.md`（设计第 3 节处置口径）
@@ -32,8 +32,22 @@
 核对脚本实现说明（必要偏差，已随脚本提交）：
 
 - `verify-word.ps1` 的只读实开核对全部在 PowerShell 5.1 + Word COM 内完成；**另存轮经 `save-copy.vbs`（`cscript //nologo`）执行**——本机 PowerShell 对 Word `SaveAs2`/`SaveCopyAs` 的 COM 调用会无限挂起（空白文档同样复现；同一调用在 VBScript 正常，另存件实测生成），判定为本机 PowerShell 5.1 IDispatch 封送问题，故按"只读核对留 PowerShell、另存走 VBScript"分工，13 份回存件均成功生成。
+- `save-copy.vbs` 具备失败保全：`Open`/`SaveAs2` 出错经 `On Error Resume Next` 捕获后统一 `Cleanup`（`d.Close False` + `w.Quit`）再退出（exit 3），报错文案原样输出，不留下隐藏 WINWORD 孤儿进程。失败模式实测（2026-10-28，目标路径不存在）：`resave error 5152: 这不是有效文件名。……`，cscript exit 3，WINWORD 进程 0→0，目标文件未生成。
 - Word COM 解析相对路径时以 Word 自身进程目录（`C:\Windows\system32`）为基准，脚本已先将 `-Directory` 解析为绝对路径。
 - 脚本以 UTF-8 BOM 保存（PS 5.1 否则按 ANSI 解析中文常量）；`word-report.json` 以 UTF-8 无 BOM 写出（PS 5.1 `Set-Content -Encoding UTF8` 带 BOM，会破坏 Node `JSON.parse`），读写均显式指定编码。
+
+### 1.1 定稿复跑（Task 11，2026-10-28 21:38–21:43，本机）
+
+按 Task 11 Step 1 顺序完整执行一次（均为本机执行，非 CI；时间取命令启动时刻）：
+
+1. `pnpm install --frozen-lockfile`（21:38）→ `Already up to date`，`Done in 334ms using pnpm v11.6.0`。
+2. `pnpm check`（21:38:40）→ **通过**：`eslint . --max-warnings 0` 无输出（0 警告）、`next typegen` ✓ Types generated successfully、`tsc --noEmit` 无错。
+3. `pnpm test`（21:38:55）→ **命令本身未通过**：前置 `node scripts/build-docx-validator.mjs` 在 esbuild 直写 `scripts/generated/docx-validator.mjs` 时被宿主安全软件拒绝（`X [ERROR] Failed to write to output file: ... Access is denied.`，已知宿主问题复现），测试体未执行。绕行（等价产物）：`node .superpowers/sdd/2026-10-27-docx-structure-roundtrip/esbuild-workaround.mjs`（esbuild JS API `write: false` + `fs.writeFileSync`）重建 3 个 bundle（`docx-validator.mjs` 174131 / `contract-reader.mjs` 184536 / `anonymous-retention.mjs` 38338 字节），随后直接执行 `pnpm test` 的同一组测试 glob（21:39:10）：`pnpm exec tsx --test src/lib/documents/*.test.ts src/server/database/*.test.ts src/server/auth/*.test.ts src/server/documents/*.test.ts src/server/ai/*.test.ts src/server/contract-review/tasks/*.test.ts tools/contract-review/tests/*.test.ts` → **tests 221 / pass 220 / fail 0 / skipped 1**（skip 为既有 Linux fsync 证据用例 `DB-08: Linux file journal…`，非本轮退化）。
+4. `pnpm build`（21:39:25）→ **命令本身未通过**（同一 esbuild 前置失败，报错同上）；绕行：bundle 已按上条重建，`pnpm exec next build`（21:39:31）→ `✓ Compiled successfully in 17.5s`（TypeScript 通过、静态页 3/3、9 条路由）；`node scripts/prepare-standalone.mjs`（21:40:01）→ exit 0，`.next/standalone/server.js` 存在。
+5. `pnpm roundtrip`：先起 `EQUILENS_ROUNDRIP_HARNESS=1 pnpm exec next dev -- --port 3105`（后台，`✓ Ready in 379ms`；`GET /dev/roundtrip 200`），再 `EQUILENS_BASE_URL=http://localhost:3105 pnpm roundtrip`（21:41:07）→ `Structure fixtures: .superpowers/previews/word-structures (13 files)` → `Engine round-trip: 13/13 exported` → `verify-word.ps1` 12 项 OK、`revisions-all: FAIL 原样=0项失败 导出=1项失败 另存=True`（`修订数:4!=5`）、`Word 核对失败 1 项（Word 16.0，报告 word-report.json）` → **exit 1**。exit 1 为已知诚实失败：`expect.revisions: 5` 哨兵未放宽，格式变更修订语义降级如实暴露（第 4 节）。
+6. 停止 dev server（仅杀 3105 监听进程 PID 77868）。
+
+复跑归档核对：`word-report.json`（`generatedAt 2026-10-28T21:42:19.7291319+08:00`，`wordVersion: "16.0"`）13 条结论与第 2–4 节矩阵完全一致——12 条 `original: [] / exported: [] / resaved: true`，唯一失败条目 `revisions-all: original: [] / exported: ["修订数:4!=5"] / resaved: true`。存档引用：`engine-report.json`、`word-report.json`、13 份引擎快照 `<id>.json`、13 份 `<id>.export.docx` 与 13 份 `engine/<id>.word-resaved.docx` 均在 `.superpowers/previews/word-structures/`（本地保留、不入库）。
 
 ## 2. 检查矩阵（类别 × 样本 × 引擎导出 × Word 实开 × 结论）
 
@@ -66,8 +80,8 @@
 
 原样与导出件各做一次 Word 只读实开，对照 `manifest.json` 的 `expect` 逐项核对：
 
-- **正文契约（bodyContains）**：原样与导出件共 36 条短语核对（18 条/侧）全部命中，0 失败。含 field-page 的「页码示例」「页，共」（已避开域结果刷新值）、header-footer 的「正文第一页」、revisions-all 的「一、合同工期」「三、价款结算方式见附件」、comments 的「第一条付款期限为三十日」、content-control 的「第一条工程概况」「二〇二六年一月十五日」、table-merge 的「分包范围」「机电安装工程」、contract-full 的「房建机电安装专业分包合同」「第一条工程概况」等（完整清单见 `manifest.json` 的 `expect`）。
-- **页眉契约（headerContains）**：header-footer 的「某某建设集团有限公司」「内部文件」、contract-full 的「某某建设集团有限公司」，原样与导出件均命中，0 失败。
+- **正文契约（bodyContains）**：原样与导出件共 30 条短语核对（15 条/侧）全部命中，0 失败。含 field-page 的「页码示例」「页，共」（已避开域结果刷新值）、header-footer 的「正文第一页」、revisions-all 的「一、合同工期」「三、价款结算方式见附件」、comments 的「第一条付款期限为三十日」、content-control 的「第一条工程概况」「二〇二六年一月十五日」、table-merge 的「分包范围」「机电安装工程」、contract-full 的「房建机电安装专业分包合同」「第一条工程概况」等（完整清单见 `manifest.json` 的 `expect`）。
+- **页眉契约（headerContains）**：原样与导出件共 6 条短语核对（3 条/侧）——header-footer 的「某某建设集团有限公司」「内部文件」、contract-full 的「某某建设集团有限公司」，均命中，0 失败。
 - 口径：短语均不依赖域结果的稳定文字；正文取 `Document.Content.Text`，页眉页脚取各节 Headers/Footers 的 Range.Text。
 
 ## 4. 结构对账（Word 计数 vs expect）
@@ -108,6 +122,23 @@ Word 实开实测计数（原样 → 导出，另存轮仅证明可开可存不�
 - **`expect.revisions: 5` 保留为哨兵断言**——它正确标记了该语义降级（4≠5），未放宽、不修改。
 - **不可在本应用内修复**：修复需改写引擎导出字节（补回前态负值写法），违反导出溯源规则（导出字节与明确保存版本一致）。正式处置交设计第 3 节；编辑快照口径的 compareExport 不数格式变更修订，故此前结构对账 13/13 通过不能覆盖本项。
 
+### 4.1 结构对账拦截演示（受控破坏演示，非真实导出）
+
+**口径声明：本节为受控破坏演示（人为构造不一致的期望值），不涉及任何真实导出件；用于证明 WD-14 的拦截与报错文案保持。** 演示脚本 `.superpowers/sdd/2026-10-27-docx-structure-roundtrip/interception-demo.mts`（本地保留、不入库）：在空白 DOCX 基底上构造"1 行内图 + 正文『正文』"的最小包，向 `validateDocxBytes` 传入被破坏的期望（与 `src/lib/documents/structures.ts` 的 `compareExport` 同一路径，即保存路径实际使用的对账）。
+
+```text
+$ pnpm exec tsx .superpowers/sdd/2026-10-27-docx-structure-roundtrip/interception-demo.mts
+演示 1（正文不一致：期望文本被篡改）: 拦截，报错文案：
+导出正文与编辑内容不一致，此次结果未保存，请重试。
+演示 2（结构计数不足：快照期望图片 99，导出仅 1）: 拦截，报错文案：
+导出结果与编辑内容不一致（图片未保留），此次结果未保存，请重试。
+对照（一致导出）: 通过对账，无拦截、无误报
+```
+
+- **正文不一致**：拒绝提交，报错文案原样保留（含"此次结果未保存，请重试"，当前编辑不被覆盖）。
+- **结构数量少于编辑快照**：按类别拒绝（图片未保留），文案原样保留。
+- **对照组**：一致的导出通过对账、不误报（正常编辑（含删除内容）不误报口径，与 `pnpm test` 的 WD-14 用例一致）。
+
 ## 5. 引擎操作冒烟（冒烟，非 WD 验收）
 
 在 harness 页面（`/dev/roundtrip`，`EQUILENS_ROUNDRIP_HARNESS=1`）用真实浏览器（系统 Edge）操作，只登记实际执行过的操作。DOM 事实：可见排版层为 `.presentation-editor__pages`，唯一的 `.ProseMirror` 是离屏隐藏宿主（`presentation-editor__hidden-host`，x≈-9900），点击须落在可见文本行上。
@@ -137,9 +168,35 @@ Word 实开实测计数（原样 → 导出，另存轮仅证明可开可存不�
 - **修订属性**：`revisions-all` 只核对修订计数（Word `Revisions.Count`），修订作者、时间、moveFrom/moveTo 配对、格式变更明细未核对。
 - **文本框双存储**：DrawingML Choice/Fallback 双存储样本经引擎导出后 Word 侧呈现为浮动图形（`Shapes.Count`），Choice/Fallback 是否保留在导出件中未解包核对。
 - **Word 另存轮**：`engine/<id>.word-resaved.docx` 仅证明 Word 可打开并另存导出件，未对回存件再跑 expect 断言（Word 规范化行为与引擎丢失需人工区分，留待 Task 11 决定是否纳入）。
-- **重跑稳定性**：本记录为单轮运行证据；多轮运行的稳定性未测量。
+- **重跑稳定性**：已有两轮运行证据（Task 10 建立轮与 Task 11 定稿复跑，逐样本结论完全一致）；多轮运行的稳定性仍未测量。
 
 - **批注/内容控件 Word 侧未断言**：`WordExpectation` 无批注数、内容控件数字段，Word 实开只核对正文短语；批注存在性仅由导出结构对账（`comments ≥ 1`）覆盖，内容控件（sdt 2）两侧均无 Word 侧断言。
 - **格式变更修订（rPrChange）前态规范化的影响面**：根因已定位（见第 4 节：引擎规范化前态负值 `w:val="0"`，Word 作废空格式修订），本轮不修（修复需改写引擎导出字节，违反导出溯源规则）；其影响面（所有"前态含负值属性"的格式变更修订）未逐一测量，该处文字的格式呈现是否与原样一致未验证。
 - **textbox-vml 的 `Fields.Count=1` 来源未调查**：原样与导出件一致（1→1），expect 无域断言，本轮不计入结论。
 - **PowerShell COM 另存挂起**：仅影响另存轮的实现方式（已绕行），不影响实开核对结论；根因（本机 PS 5.1 IDispatch 封送）未修复。
+
+## 8. WD-13 / WD-14 验收结论（定稿）
+
+- **WD-13（往返样本逐类别（图片、页眉页脚、域、修订标记、文本框、批注、脚注、内容控件、合并表格）经 导入→编辑→导出 后由 Microsoft Word 实际打开核对，保留/降级结论如实记录）：带降级通过。** 13 份样本覆盖全部 9 类别，原样 13/13 与 expect 完全一致、导出件 Word 实开 12/13 通过；第 2 节矩阵结论为保留 15 项 / 降级 1 项 / 丢失 0 项。唯一降级为 `revisions-all` 的格式变更修订（w:rPrChange）语义降级（元素往返保留，前态负值写法被引擎规范化后 Word 不注册为修订），已如实记录并同步 `spec/03-word-editing.md` §6 降级声明；插入、删除、移动修订完整保留，元素级丢失 0。
+- **WD-14（导出核对拦截静默丢失：正文不一致或结构数量少于编辑快照时拒绝提交、保留编辑、可重试；正常编辑不误报）：通过。** 保存路径内 compareExport 对 13 份真实导出 13/13 通过对账、0 误报（第 4 节第 2 层）；受控破坏演示（4.1）证明正文不一致与结构丢失均被拦截、报错文案逐字保留、当前编辑不被覆盖（"此次结果未保存，请重试"）；`pnpm test` 对应用例（WD-14 三项）全部通过。
+- **可发布状态**：文档校验、导出结构对账与验证记录链路可发布。`pnpm roundtrip` 的 exit 1 为已知诚实失败——`expect.revisions: 5` 哨兵断言如实标记上述引擎语义降级，未放宽、未修改；发布说明须随本记录披露该降级与残余缺口。
+
+## 9. 未决项（拟入 GitHub Issues，创建前需用户授权；以下为草案文本，未创建）
+
+来源：`docs/superpowers/specs/2026-10-27-docx-structure-roundtrip-design.md` §8 四项。
+
+**Issue 1**
+- 标题：`roundtrip: moveFrom/moveTo 修订处置口径——降级声明 vs 导入时显式处理`
+- 正文：背景：设计 §8 预设"moveFrom/moveTo 修订在 superdoc 1.47.2 实测丢失时"需定处置；本轮实测未丢失（Word COM Type 14/15 两侧一致保留，导出 XML 计数 1:1，证据见 docs/reviews/2026-10-27-docx-structure-roundtrip-validation.md 第 4 节）。待决：若未来引擎版本该类修订丢失，处置选"降级声明"还是"该类修订导入时显式处理"。范围：spec/03-word-editing.md §6 保留声明与 engine-roundtrip 核对口径。验收：明确选择、写入 spec，并附对应版本实测证据。
+
+**Issue 2**
+- 标题：`roundtrip: 域结果刷新口径——往返核对对域结果文字变化的比对容差`
+- 正文：背景：Word 打开可自动刷新域结果（PAGE/NUMPAGES/TOC），域结果文字随之变化；本轮 bodyContains 短语已避开域结果刷新值（验证记录 §3 口径），域结果正确性未测量（§7 残余缺口）。待决：正式往返核对是否对域结果文字设容差（忽略 / 冻结缓存值 / 重算后比较）。范围：`validateDocxBytes` 文本契约与 `verify-word.ps1` 短语口径。验收：定义容差规则与用例——域结果变化不误报、正文真实变化仍拦截。
+
+**Issue 3**
+- 标题：`分析覆盖：页眉页脚/页码文字是否纳入业务分析正文`
+- 正文：背景：当前业务分析正文提取不含页眉页脚/页码文字（仅记录存在；导出核对口径同样排除，spec/03 §6），而页眉可能含合同主体等信息。待决：未来是否纳入业务分析正文覆盖。范围：提取契约、覆盖统计、引文定位、spec/01 业务口径。验收：产品与规格决策记录（纳入/不纳入）及影响面清单；未决期间维持"仅记录存在，不冒充已分析"。
+
+**Issue 4**
+- 标题：`工具链：Word COM 自动化本机配置项与执行脚本登记位置`
+- 正文：背景：`scripts/roundtrip/verify-word.ps1` + `scripts/roundtrip/save-copy.vbs` 依赖本机 Microsoft Word COM（Word 16.0），受宏安全/受保护视图/信任位置/区域标记影响；本机 PowerShell 5.1 对 Word `SaveAs2` 的 COM 调用挂起（VBScript 同调用正常，已绕行；验证记录 §1）。待决：自动化所需本机配置项清单（宏安全级别、受保护视图、信任位置、Unblock-File）与执行脚本的登记位置（`docs/deployment.md` 或 `docs/reviews/`）。验收：配置清单文档化，新环境按清单可复现执行并留运行记录。
