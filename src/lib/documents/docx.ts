@@ -186,6 +186,8 @@ export function validateDocxBytes(bytes: Uint8Array, expected?: ExportExpectatio
   let documentValid = false
   let rootRelationship = false
   const structures = emptyStructures()
+  // 对账清单只覆盖正文（word/document.xml）；全量 structures 另供覆盖率分析使用。
+  const bodyStructures = emptyStructures()
   let bodyText = ""
   for (const [name, text] of xmlFiles) {
     if (/<!DOCTYPE|<!ENTITY/i.test(text) || XMLValidator.validate(text) !== true) throw invalid("DOCX XML 结构无效。")
@@ -217,12 +219,15 @@ export function validateDocxBytes(bytes: Uint8Array, expected?: ExportExpectatio
       walkOrdered(orderedParser.parse(text), (key, attrs, children, inMoveFrom) => {
         if (key === "altChunk" || key === "object") throw invalid("不支持外部模板或嵌入内容。")
         countElement(key, attrs, structures)
-        if (name === "word/document.xml" && key === "t" && !inMoveFrom) bodyText += textOf(children)
+        if (name === "word/document.xml") {
+          countElement(key, attrs, bodyStructures)
+          if (key === "t" && !inMoveFrom) bodyText += textOf(children)
+        }
       })
     }
   }
   if (!typesValid || !documentValid || !rootRelationship) throw invalid()
-  const inspection: DocxInspection = { text: bodyText, structures }
+  const inspection: DocxInspection = { text: bodyText, structures, bodyStructures }
   if (expected) compareExport(inspection, expected)
   return inspection
 }

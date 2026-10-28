@@ -19,7 +19,7 @@ export type EditorStructureCounts = {
   mergedCells: number
 }
 
-export type DocxInspection = { text: string; structures: DocumentStructures }
+export type DocxInspection = { text: string; structures: DocumentStructures; bodyStructures: DocumentStructures }
 export type ExportExpectation = { text: string; structures: EditorStructureCounts }
 
 export function emptyStructures(): DocumentStructures {
@@ -50,9 +50,10 @@ export function countComparable(structures: DocumentStructures): EditorStructure
 }
 
 // 导出字节不得少于编辑快照：少即为导出丢内容。正文按同一提取契约精确相等。
+// 结构对账按 body 范围比较：页眉/页脚等部件中的同名结构不得掩盖正文结构丢失。
 export function compareExport(actual: DocxInspection, expected: ExportExpectation): void {
   if (actual.text !== expected.text) throw new Error("导出正文与编辑内容不一致，此次结果未保存，请重试。")
-  const counts = countComparable(actual.structures)
+  const counts = countComparable(actual.bodyStructures)
   const lost = (Object.keys(expected.structures) as (keyof EditorStructureCounts)[]).filter(key => counts[key] < expected.structures[key])
   if (lost.length) throw new Error(`导出结果与编辑内容不一致（${lost.map(key => labels[key]).join("、")}未保留），此次结果未保存，请重试。`)
 }

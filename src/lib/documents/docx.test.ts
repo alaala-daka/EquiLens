@@ -167,6 +167,19 @@ test("WD-14: expected 传入时执行正文与结构对账", async () => {
   assert.doesNotThrow(() => validateDocxBytes(bytes, { text: "正文", structures: { images: 1, revisions: 0, comments: 0, notes: 0, textboxes: 0, mergedCells: 0 } }))
 })
 
+test("WD-14: 页眉图片不得掩盖正文图片丢失（body 范围对账）", async () => {
+  // 正文丢失图片、页眉另有一图：全量清单 images=1，body 清单 images=0，
+  // 快照期望正文1图时必须拒绝，不得被页眉图片掩盖。
+  const bytes = await fixture(files => {
+    withBody('<w:p><w:r><w:t>正文</w:t></w:r></w:p>')(files)
+    files["word/header1.xml"] = strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:drawing><w:inline/></w:drawing></w:r></w:p></w:hdr>')
+  })
+  const inspection = validateDocxBytes(bytes)
+  assert.equal(inspection.structures.images, 1)
+  assert.equal(inspection.bodyStructures.images, 0)
+  assert.throws(() => validateDocxBytes(bytes, { text: "正文", structures: { images: 1, revisions: 0, comments: 0, notes: 0, textboxes: 0, mergedCells: 0 } }), /图片未保留/)
+})
+
 test("WD-09: 安全拒绝保持不变（宏、外链、嵌套压缩、altChunk、object）", async () => {
   const bytes = await fixture(withBody('<w:p><w:altChunk r:id="rIdA"/></w:p>'))
   assert.throws(() => validateDocxBytes(bytes), /嵌入内容|暂不支持|外部资源|无效/)

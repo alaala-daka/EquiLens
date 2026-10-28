@@ -6,7 +6,8 @@ import "superdoc/style.css"
 import { Button } from "@/components/ui/button"
 import { createEngineLoad } from "@/lib/documents/engine-lifecycle"
 import type { EngineState } from "@/lib/documents/editor-session"
-import { createWordSerializer, editorText, WordExportTimeout } from "@/lib/documents/serialize"
+import { createWordSerializer, editorStructures, editorText, WordExportTimeout } from "@/lib/documents/serialize"
+import type { ExportExpectation } from "@/lib/documents/structures"
 import { editorFocusShortcut } from "@/lib/documents/editor-keyboard"
 import { validateDocx } from "@/lib/documents/validate"
 
@@ -129,7 +130,7 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
         try {
           return await serialize(async () => {
             const snapshot = structuredClone(editor.getJSON())
-            const text = editorText(snapshot)
+            const expected: ExportExpectation = { text: editorText(snapshot), structures: editorStructures(snapshot) }
             const editable = editor.isEditable
             editor.setEditable(false, false)
             try {
@@ -139,12 +140,12 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
               // The vendor can return original bytes after emitting an error.
               if (errors !== before || !blob?.size) throw new Error("Word 文档导出失败，当前编辑已保留，请重试。")
               if (!ready) throw new Error("操作已取消。")
-              if (editorText(editor.getJSON()) !== text) throw new Error("导出过程改变了编辑内容，此次结果未保存，请重试。")
-              await validateDocx(blob, load.signal, false, text)
+              if (editorText(editor.getJSON()) !== expected.text) throw new Error("导出过程改变了编辑内容，此次结果未保存，请重试。")
+              await validateDocx(blob, load.signal, false, expected)
               if (!current() || !ready) throw new Error("操作已取消。")
               return blob
             } catch (failure) {
-              if (current() && editorText(editor.getJSON()) !== text) {
+              if (current() && editorText(editor.getJSON()) !== expected.text) {
                 const restored = editor.schema.nodeFromJSON(snapshot)
                 editor.dispatch(editor.state.tr.replaceWith(0, editor.state.doc.content.size, restored.content).setMeta("addToHistory", false))
               }
