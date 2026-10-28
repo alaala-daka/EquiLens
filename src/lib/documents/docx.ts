@@ -13,15 +13,18 @@ const packageNamespace = "http://schemas.openxmlformats.org/package/2006/relatio
 const stylesType = "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"
 const stylesXml = `<w:styles xmlns:w="${wordNamespace}"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Microsoft YaHei"/><w:sz w:val="24"/><w:lang w:val="zh-CN" w:eastAsia="zh-CN"/></w:rPr></w:rPrDefault><w:pPrDefault/></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>${[1, 2, 3].map(level => `<w:style w:type="paragraph" w:styleId="Heading${level}"><w:name w:val="heading ${level}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:outlineLvl w:val="${level - 1}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${36 - level * 4}"/></w:rPr></w:style>`).join("")}</w:styles>`
 
-export function blankDocx(): Blob {
+export function blankDocxFiles(): Record<string, Uint8Array> {
   const xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-  const files = {
+  return {
     "[Content_Types].xml": strToU8(`${xml}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="${mainType}"/></Types>`),
     "_rels/.rels": strToU8(`${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`),
     "word/_rels/document.xml.rels": strToU8(`${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`),
     "word/document.xml": strToU8(`${xml}<w:document xmlns:w="${wordNamespace}"><w:body><w:p/><w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`),
   }
-  return new Blob([prepareDocxBytes(zipSync(files)) as Uint8Array<ArrayBuffer>], { type: DOCX_TYPE })
+}
+
+export function blankDocx(): Blob {
+  return new Blob([prepareDocxBytes(zipSync(blankDocxFiles())) as Uint8Array<ArrayBuffer>], { type: DOCX_TYPE })
 }
 
 // Engine working copy only: valid minimal OOXML can omit styles and document rels.
