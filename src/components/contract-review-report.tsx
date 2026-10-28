@@ -42,6 +42,10 @@ function ExportReport({ result }: { result: ReviewResult }) {
 type Finding = ReviewResult["findings"][number]
 export type CitationLocator = (paragraphIndex: number, quote: string) => Promise<boolean>
 export const CitationLocatorContext = createContext<CitationLocator | null>(null)
+export const ReportExpandContext = createContext<(() => void) | null>(null)
+function friendlyError(message: string): string {
+  return /长度上限|token|输出|预算/i.test(message) ? "部分条款未能完成审查，已有结论保留；可以继续原任务或重新提交。" : message
+}
 function Citation({ result, index, quote }: { result: ReviewResult; index: number; quote: string }) {
   const locate = useContext(CitationLocatorContext)
   const [open, setOpen] = useState(false)
@@ -109,10 +113,10 @@ function FindingDetail({ finding, result, revision, revisionAudit }: { finding: 
           {source.type}：{source.name} {source.article} {source.version} · {source.status}
           {source.officialUrl?.startsWith("https://") && <> · <a className="underline" href={source.officialUrl} target="_blank" rel="noreferrer">来源</a></>}
         </li>)}</ul> : finding.basis.length > 0 ? <p className="break-words text-sm text-muted-foreground">依据：{finding.basis.join("、")}</p> : null}
-        {result.collaboration && <div className="space-y-2 text-sm"><p className="font-medium">AI 复查意见</p>
-          <p className="break-words">{audit ? audit.note : "此项尚未完成 AI 复查。"}</p>
-          {audit?.quote && <Citation result={result} index={audit.paragraphIndex} quote={audit.quote} />}
-          {audit && <p className="text-xs text-muted-foreground">{audit.outcome} · 机器意见，仍需人工复核</p>}
+        {result.collaboration && audit && <div className="space-y-2 text-sm"><p className="font-medium">AI 复查意见</p>
+          <p className="break-words">{audit.note}</p>
+          {audit.quote && <Citation result={result} index={audit.paragraphIndex} quote={audit.quote} />}
+          <p className="text-xs text-muted-foreground">{audit.outcome} · 机器意见，仍需人工复核</p>
         </div>}
       </CollapsibleContent>
     </Collapsible>
@@ -157,7 +161,7 @@ function IndependentAudit({ result }: { result: ReviewResult }) {
       <CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm">查看需核对意见（{flagged.length}）</Button></CollapsibleTrigger>
       <CollapsibleContent className="space-y-3 pt-3">{flagged.map(check)}</CollapsibleContent>
     </Collapsible>}
-    {(audit?.unreviewedRuleIds.length ?? 0) > 0 && <p className="break-words text-sm">尚未复核：{audit!.unreviewedRuleIds.join("、")}</p>}
+    {(audit?.unreviewedRuleIds.length ?? 0) > 0 && <p className="break-words text-sm">还有 {audit!.unreviewedRuleIds.length} 项未完成独立复查。</p>}
     {clear.length > 0 && <Collapsible>
       <CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm">查看保留意见（{clear.length}）</Button></CollapsibleTrigger>
       <CollapsibleContent className="space-y-3 pt-3">{clear.map(check)}</CollapsibleContent>
@@ -206,7 +210,7 @@ export function ContractReviewReport({ result, taskId, onSessionUnavailable, onR
   if (result.sceneCandidates && result.sceneSelection?.status !== "matched") return <div className="flex flex-col gap-4">
     <SceneIdentification result={result} />
     {!result.sceneSelection && <p role="status" className="text-sm">{result.errors.length ? "场景识别未完成" : "正在识别场景"}</p>}
-    {result.errors.map((item, index) => <p role="alert" key={index} className="text-sm text-destructive">{item.message}</p>)}
+    {result.errors.map((item, index) => <p role="alert" key={index} className="text-sm text-destructive">{friendlyError(item.message)}</p>)}
     <div className="flex justify-end"><ExportReport result={result} /></div>
   </div>
   if (result.collaboration?.version === "multi-agent-revision-v1" || result.collaboration?.version === "revision-only-v1") return <ContractRevisionResult key={result.reviewId} result={result} taskId={taskId} onSessionUnavailable={onSessionUnavailable} onOpenRevisionTask={onRevisionCreated}
@@ -221,6 +225,7 @@ function CompletedReviewReport({ result, revision, revisionAudit }: { result: Re
   const view = getReportView(result)
   const candidate = result.sceneCandidates?.find(item => item.id === result.sceneSelection?.sceneId)
   const clear = view.noIssueFindings
+  const expand = useContext(ReportExpandContext)
   const groups = [...view.groups].sort((a, b) => severityOrder(a.findings[0].severity) - severityOrder(b.findings[0].severity))
   const severityCounts = { 重大: 0, 一般: 0, 提示: 0 }
   for (const finding of groups.flatMap(group => group.findings)) {
@@ -231,6 +236,7 @@ function CompletedReviewReport({ result, revision, revisionAudit }: { result: Re
   return <div className="flex flex-col gap-6">
     <header className="space-y-2">
       <h3 className="text-base font-semibold">合同审查报告</h3>
+      {expand && <Button type="button" variant="outline" size="sm" className="w-fit" onClick={expand}>在宽区域打开</Button>}
       <p className="text-sm text-muted-foreground">{candidate?.label ?? result.input.context.projectType ?? "合同审查"} · 审查立场：{result.input.context.role ?? "未确认"}</p>
       <p className="text-sm font-medium">{view.summary}</p>
       <p className="text-sm">重大 {severityCounts.重大} 项 · 一般 {severityCounts.一般} 项 · 提示 {severityCounts.提示} 项</p>
@@ -239,7 +245,7 @@ function CompletedReviewReport({ result, revision, revisionAudit }: { result: Re
     </header>
     {(view.incomplete || view.auditNotice) && <div role="status" className="space-y-1 rounded-md border bg-muted/40 p-3 text-sm">
       <p className="font-medium">{view.incomplete ? "阶段性结果" : "审查说明"}</p>
-      {view.incomplete && <p>审查尚未全部完成，以下问题可能继续变化。</p>}
+      {view.incomplete && <p>审查尚未全部完成，已有结论可能继续变化；<span className="font-medium">还有 {view.unfinishedCount} 项检查未完成</span>。</p>}
       {view.auditNotice && <p>{view.auditNotice}</p>}
     </div>}
     {groups.length > 0 && <section className="flex flex-col gap-4"><h3 className="text-sm font-semibold">审查发现</h3>
@@ -253,11 +259,11 @@ function CompletedReviewReport({ result, revision, revisionAudit }: { result: Re
         </Collapsible>}
       </section>)}
     </section>}
-    <section className="flex flex-col gap-3"><h3 className="text-sm font-semibold">{view.incomplete ? "尚未完成的检查" : "检查记录"}</h3>
-      {view.unfinishedGroups.map(item => <p className="text-sm" key={item.label}>{item.label}：还有 {item.count} 项检查未形成有效结论。</p>)}
-      {result.errors.filter(item => !["REVIEW_AUDIT_INCOMPLETE", "REVIEW_PRIMARY_INCOMPLETE"].includes(item.code)).map((item, index) => <p role="alert" key={index} className="text-sm text-destructive">{item.message}</p>)}
-      <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm">展开检查进度与停止原因</Button></CollapsibleTrigger>
+    <section className="flex flex-col gap-3"><h3 className="text-sm font-semibold">检查进度</h3>
+      <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm">展开检查进度与技术详情</Button></CollapsibleTrigger>
         <CollapsibleContent className="space-y-4 pt-3">
+          {view.unfinishedGroups.map(item => <p className="text-sm" key={item.label}>{item.label}：还有 {item.count} 项检查未形成有效结论。</p>)}
+          {result.errors.filter(item => !["REVIEW_AUDIT_INCOMPLETE", "REVIEW_PRIMARY_INCOMPLETE"].includes(item.code)).map((item, index) => <p role="alert" key={index} className="text-sm text-destructive">{friendlyError(item.message)}</p>)}
           <p className="break-words text-xs text-muted-foreground">本报告基于提交时的保存版本生成。</p>
           <SceneIdentification result={result} />
           {result.agent && <p className="text-sm">已读正文 {result.agent.readParagraphIndexes.length} / {result.paragraphs.length} 段</p>}
@@ -265,7 +271,7 @@ function CompletedReviewReport({ result, revision, revisionAudit }: { result: Re
           <Table><TableHeader><TableRow><TableHead>检查类别</TableHead><TableHead>状态</TableHead></TableRow></TableHeader><TableBody>{result.coverage.map(item => <TableRow key={item.category}><TableCell className="whitespace-normal">{item.category}</TableCell><TableCell className="whitespace-normal">{item.status}：{item.note}</TableCell></TableRow>)}</TableBody></Table>
           {view.unfinished.map(item => <p className="break-words text-sm" key={item.ruleId}>{item.ruleId}：{item.detail}</p>)}
           {result.notLocated.length > 0 && <div className="space-y-2 text-sm"><p className="font-medium">未定位的检查项</p>{result.notLocated.map(item => <p className="break-words" key={item.ruleId}>{item.ruleId}：{item.reason === "no-match" ? "未执行" : "仅有目录，待核实"}；{item.detail}</p>)}<p>以上检查项不计为已通过。</p></div>}
-          {result.errors.map((item, index) => <p className="break-words text-sm" key={index}>{item.code}：{item.message}</p>)}
+          {result.errors.map((item, index) => <p className="break-words text-sm" key={index}>{item.code}：{friendlyError(item.message)}</p>)}
           {result.warnings.map((item, index) => <p className="break-words text-sm text-muted-foreground" key={index}>{item}</p>)}
           {result.findings.some(item => item.pending.length) && <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm">原始待核实记录</Button></CollapsibleTrigger><CollapsibleContent className="space-y-2 pt-3">{result.findings.filter(item => item.pending.length).map(item => <p className="break-words text-sm" key={item.ruleId}>{item.ruleId}：{item.pending.join("；")}</p>)}</CollapsibleContent></Collapsible>}
           {result.rejected.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm">未采用的回答（{result.rejected.length}）</Button></CollapsibleTrigger><CollapsibleContent className="space-y-2 pt-3">{result.rejected.map((item, index) => <p className="break-words text-sm" key={index}>{item.ruleId}：{item.reason} · {item.detail}</p>)}</CollapsibleContent></Collapsible>}
