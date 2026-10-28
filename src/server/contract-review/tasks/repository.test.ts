@@ -120,7 +120,7 @@ test("AC-21/23: task recovery retains catalog, scene evidence and cumulative cal
     assert.equal(first.input.sceneCandidates![0].version, "1")
     assert.ok(first.input.workflow !== "document-agent-v1")
     const paragraphs = [{ index: 0, text: "合成办公楼机电安装专业分包合同。", inTable: false }]
-    const snapshot = { id: randomUUID(), paragraphs, complete: true, textSha256: createHash("sha256").update(paragraphs[0].text).digest("hex") }
+    const snapshot = { id: randomUUID(), paragraphs, complete: true, textSha256: createHash("sha256").update(paragraphs[0].text).digest("hex"), coverage: { images: 0, revisions: 0, textboxes: 0, complex: 0 } }
     await s.repository.snapshot(first, snapshot)
     const session = new ReviewSession({ paragraphs, context: first.input.context, parseSnapshotId: snapshot.id }, first.input.pack, first.input.skill, "synthetic", 2, 64000, first.input.sceneCandidates)
     session.readParagraphs([0]); session.commitReads()

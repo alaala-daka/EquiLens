@@ -1,0 +1,60 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "table",
+      "content": [
+        {
+          "type": "tableRow",
+          "content": [
+            {
+              "type": "tableCell",
+              "attrs": { "colspan": 1, "rowspan": 1, "tableCellProperties": { "cellWidth": { "value": 3000, "type": "dxa" } } },
+              "content": [{ "type": "paragraph", "content": [{ "type": "run", "content": [{ "type": "text", "marks": [], "text": "分包范围" }] }] }]
+            },
+            {
+              "type": "tableCell",
+              "attrs": { "colspan": 2, "rowspan": 1, "tableCellProperties": { "cellWidth": { "value": 6000, "type": "dxa" }, "gridSpan": 2 } },
+              "content": [{ "type": "paragraph", "content": [{ "type": "run", "content": [{ "type": "text", "marks": [], "text": "机电安装工程" }] }] }]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "content": [
+            {
+              "type": "tableCell",
+              "attrs": { "colspan": 1, "rowspan": 1, "tableCellProperties": { "cellWidth": { "value": 3000, "type": "dxa" } } },
+              "content": [{ "type": "paragraph", "content": [{ "type": "run", "content": [{ "type": "text", "marks": [], "text": "合同价款" }] }] }]
+            },
+            {
+              "type": "tableCell",
+              "attrs": { "colspan": 1, "rowspan": 2, "tableCellProperties": { "cellWidth": { "value": 3000, "type": "dxa" }, "vMerge": "restart" } },
+              "content": [{ "type": "paragraph", "content": [{ "type": "run", "content": [{ "type": "text", "marks": [], "text": "暂定伍佰万元" }] }] }]
+            },
+            {
+              "type": "tableCell",
+              "attrs": { "colspan": 1, "rowspan": 1, "tableCellProperties": { "cellWidth": { "value": 3000, "type": "dxa" } } },
+              "content": [{ "type": "paragraph", "content": [{ "type": "run", "content": [{ "type": "text", "marks": [], "text": "工期一百八十日" }] }] }]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "content": [
+            {
+              "type": "tableCell",
+              "attrs": { "colspan": 1, "rowspan": 1, "tableCellProperties": { "cellWidth": { "value": 3000, "type": "dxa" } } },
+              "content": [{ "type": "paragraph" }]
+            },
+            {
+              "type": "tableCell",
+              "attrs": { "colspan": 1, "rowspan": 1, "tableCellProperties": { "cellWidth": { "value": 3000, "type": "dxa" } } },
+              "content": [{ "type": "paragraph" }]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

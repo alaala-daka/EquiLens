@@ -12,7 +12,7 @@ const skill = revisionTestSkill
 export async function revisionFixture() {
   const files = unzipSync(new Uint8Array(await blankDocx().arrayBuffer()))
   files["word/document.xml"] = strToU8(strFromU8(files["word/document.xml"]).replace("<w:p/>", '<w:p><w:r><w:t>进度款按60%支付。</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>交接界面。</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>其余约定保持。</w:t></w:r></w:p>'))
-  const bytes = zipSync(files), paragraphs = parseDocxBytes(bytes), pack = testPack()
+  const bytes = zipSync(files), paragraphs = parseDocxBytes(bytes).paragraphs, pack = testPack()
   const primary = await reviewContract({ documentText: paragraphs.map(item => item.text).join("\n"), pack, model: validModel, context: { role: "专业分包人", region: "上海" } })
   primary.paragraphs = paragraphs
   for (const [index, item] of primary.findings.entries()) if (index < 2) Object.assign(item, { kind: "发现问题", quote: paragraphs[index].text, paragraphIndex: index })

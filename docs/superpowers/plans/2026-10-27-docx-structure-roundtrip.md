@@ -100,7 +100,7 @@ export async function readDocxInChild(bytes: Buffer, signal?: AbortSignal): Prom
 
 ```markdown
 先支持普通中文段落、标题、列表和简单表格，并往返保留图片、页眉页脚、页码、域、修订标记、
-文本框、批注、脚注/尾注、内容控件和合并表格等结构。修订标记只保留、不编辑：不提供接受/拒绝、
+文本框、批注、脚注/尾注、内容控件和合并表格等结构（保留能力以验证记录逐类别为准）。修订标记只保留、不编辑：不提供接受/拒绝、
 不提供修订模式开关。旧版 DOC、加密文件、宏、扫描件、实时协作和任意复杂版式无损还原不进入本步承诺。
 ```
 
@@ -151,7 +151,7 @@ export async function readDocxInChild(bytes: Buffer, signal?: AbortSignal): Prom
 `README.md` 第 48 行"宏、加密、外部资源、图片、页眉页脚、域、批注、修订和复杂合并表格按当前范围拒绝。"替换为：
 
 ```markdown
-宏、加密、外部资源、嵌入对象、altChunk 与嵌套压缩按安全边界拒绝；图片、页眉页脚、域、批注、修订和合并表格可导入、编辑并往返保留，保留能力逐类别以验证记录为准。
+宏、加密、外部资源、嵌入对象、altChunk 与嵌套压缩按安全边界拒绝；图片、页眉页脚、域、批注、修订和合并表格可导入并往返保留，文档可正常编辑，保留能力逐类别以验证记录为准。
 ```
 
 `tools/contract-review/README.md` 第 223 行含"支持 UTF-8 TXT 与通过主应用校验器的基础 DOCX；图片、页眉页脚、域、修订、外链、"的句子：删除其中结构拒绝表述，改为"支持 UTF-8 TXT 与通过主应用校验器的 DOCX；外链、宏、嵌入对象按安全边界拒绝；图片、修订标记、文本框等结构不再拒绝，超出分析覆盖的类别记入解析覆盖并使 `complete` 为 false"，保持该段其余文字不变。
@@ -936,7 +936,7 @@ test("校准: 文本框、脚注、批注、合并单元格计数", () => {
   assert.equal(editorText(sample("textbox-drawingml")), "框内文字")
   assert.equal(editorStructures(sample("footnotes")).notes, 1)
   assert.equal(editorStructures(sample("comments")).comments, 1)
-  assert.equal(editorStructures(sample("table-merge")).mergedCells, 2)
+  assert.equal(editorStructures(sample("table-merge")).mergedCells, 3)
 })
 ```
 
@@ -1373,7 +1373,7 @@ pnpm roundtrip
 
 - [ ] **Step 2: 验证记录定稿**
 
-验证记录须包含：逐类别矩阵（图片、页眉页脚、域、修订标记、文本框、批注、脚注、内容控件、合并表格 × 保留/降级/丢失）、正文契约核对结果、结构对账拦截演示（人为构造一次不一致并记录报错文案）、引擎操作冒烟结果、Word 版本、"本地验证 vs CI"声明、残余缺口（域指令、页眉文字等快照不可计量项）。实测丢失的类别同步回 spec/03 支持表降级声明。
+验证记录须包含：逐类别矩阵（图片、页眉页脚、域、修订标记、文本框、批注、脚注、内容控件、合并表格 × 保留/降级/丢失）、正文契约核对结果、结构对账拦截演示（人为构造一次不一致并记录报错文案）、引擎操作冒烟结果、Word 版本、"本地验证 vs CI"声明、残余缺口（域指令、页眉文字等快照不可计量项）。实测丢失的类别同步回 spec/03 支持表降级声明。格式变更修订（w:rPrChange）实测语义降级：元素往返保留，但变更前属性状态的负值写法（w:val="0"）被引擎规范化，Word 实开不识别为修订；插入、删除、移动修订完整保留。证据见 docs/reviews/2026-10-27-docx-structure-roundtrip-validation.md。
 
 - [ ] **Step 3: 收尾提交**
 

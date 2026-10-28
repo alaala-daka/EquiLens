@@ -107,6 +107,6 @@ test("AC-05/11/22: human letter edits save a version and download only after rev
     await assert.rejects(s.repository.reviewedLetterExport(s.owner, job.id, s.contextId, revision.versionId), { status: 409 })
     await s.repository.reviewDocumentRevision(s.owner, job.id, s.contextId, revision.versionId, { decision: "通过", reviewer: "复核人乙", note: "正文核对通过。" })
     const file = await s.repository.reviewedLetterExport(s.owner, job.id, s.contextId, revision.versionId)
-    assert.ok(parseDocxBytes(file.bytes).some(item => item.text === paragraphs[3]))
+    assert.ok(parseDocxBytes(file.bytes).paragraphs.some(item => item.text === paragraphs[3]))
   } finally { await s.close() }
 })

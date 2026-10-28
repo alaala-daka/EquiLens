@@ -1,0 +1,148 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "run", "content": [{ "type": "text", "marks": [], "text": "一、合同工期：" }] },
+        {
+          "type": "run",
+          "content": [
+            {
+              "type": "text",
+              "marks": [{ "type": "trackInsert", "attrs": { "id": "1", "author": "校准", "date": "2026-01-15T09:00:00Z", "sourceId": "10" } }],
+              "text": "新增"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "run", "content": [{ "type": "text", "marks": [], "text": "二、质量标准：" }] },
+        {
+          "type": "run",
+          "content": [
+            {
+              "type": "text",
+              "marks": [{ "type": "trackDelete", "attrs": { "id": "2", "author": "校准", "date": "2026-01-15T09:05:00Z", "sourceId": "11" } }],
+              "text": "删除"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "run",
+          "marks": [
+            {
+              "type": "trackFormat",
+              "attrs": {
+                "id": "3",
+                "author": "校准",
+                "date": "2026-01-15T09:10:00Z",
+                "before": [{ "type": "bold", "attrs": { "value": false } }],
+                "after": [{ "type": "bold", "attrs": { "value": true } }]
+              }
+            }
+          ],
+          "content": [
+            {
+              "type": "text",
+              "marks": [
+                { "type": "bold", "attrs": { "value": true } },
+                {
+                  "type": "trackFormat",
+                  "attrs": {
+                    "id": "3",
+                    "author": "校准",
+                    "date": "2026-01-15T09:10:00Z",
+                    "before": [{ "type": "bold", "attrs": { "value": false } }],
+                    "after": [{ "type": "bold", "attrs": { "value": true } }]
+                  }
+                }
+              ],
+              "text": "三、价款结算方式见附件"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "run", "content": [{ "type": "text", "marks": [], "text": "四、" }] },
+        {
+          "type": "passthroughInline",
+          "attrs": {
+            "originalName": "w:moveFromRangeStart",
+            "originalXml": { "type": "element", "name": "w:moveFromRangeStart", "attributes": { "w:id": "40", "w:name": "move1" }, "marks": [] }
+          }
+        },
+        {
+          "type": "passthroughInline",
+          "attrs": {
+            "originalName": "w:moveFrom",
+            "originalXml": {
+              "type": "element",
+              "name": "w:moveFrom",
+              "attributes": { "w:id": "5", "w:author": "校准", "w:date": "2026-01-15T09:15:00Z" },
+              "elements": [
+                {
+                  "type": "element",
+                  "name": "w:r",
+                  "elements": [{ "type": "element", "name": "w:t", "elements": [{ "type": "text", "text": "移出文字" }] }]
+                }
+              ],
+              "marks": []
+            }
+          }
+        },
+        {
+          "type": "passthroughInline",
+          "attrs": {
+            "originalName": "w:moveFromRangeEnd",
+            "originalXml": { "type": "element", "name": "w:moveFromRangeEnd", "attributes": { "w:id": "40" }, "marks": [] }
+          }
+        },
+        {
+          "type": "passthroughInline",
+          "attrs": {
+            "originalName": "w:moveToRangeStart",
+            "originalXml": { "type": "element", "name": "w:moveToRangeStart", "attributes": { "w:id": "41", "w:name": "move1" }, "marks": [] }
+          }
+        },
+        {
+          "type": "passthroughInline",
+          "attrs": {
+            "originalName": "w:moveTo",
+            "originalXml": {
+              "type": "element",
+              "name": "w:moveTo",
+              "attributes": { "w:id": "6", "w:author": "校准", "w:date": "2026-01-15T09:15:00Z" },
+              "elements": [
+                {
+                  "type": "element",
+                  "name": "w:r",
+                  "elements": [{ "type": "element", "name": "w:t", "elements": [{ "type": "text", "text": "移入文字" }] }]
+                }
+              ],
+              "marks": []
+            }
+          }
+        },
+        {
+          "type": "passthroughInline",
+          "attrs": {
+            "originalName": "w:moveToRangeEnd",
+            "originalXml": { "type": "element", "name": "w:moveToRangeEnd", "attributes": { "w:id": "41" }, "marks": [] }
+          }
+        }
+      ]
+    }
+  ]
+}
