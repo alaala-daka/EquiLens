@@ -15,7 +15,7 @@
 [数据库 DB-08](../../spec/04-database-deployment.md)、
 [Word WD 验收](../../spec/03-word-editing.md)。本记录不另立业务契约。
 操作配置沿用 [README](../../README.md)、[开发约定](../../DEVELOPMENT.md)
-及[部署说明](../deployment.md#匿名资料维护与恢复)。
+及[运维说明](../operations.md#匿名资料维护与恢复)。
 
 本次实现覆盖列表三列/移动端元数据、仅标题检索、空/加载/失败状态、取消与迟到响应保护，
 服务端匿名固定期限及确认、到期拒绝、存量只读导出、新会话、清理与维护工具。
