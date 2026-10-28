@@ -6,7 +6,7 @@ import { cleanExpiredAuth } from "./cleanup"
 async function fixture(count: number) {
   const db = await connectDatabase({ provider: "sqlite", path: ":memory:" }); await migrateBusiness(db)
   await db.transaction(async c => {
-    await c.query("INSERT INTO equilens_auth_accounts VALUES ('a','synthetic','unused',1,1)")
+    await c.query("INSERT INTO equilens_auth_accounts VALUES ('a','synthetic','unused',1,1,'member')")
     await c.query("INSERT INTO equilens_auth_audit VALUES ('audit','a','create','synthetic',1)")
     for (let i = 0; i < count; i++) {
       await c.query("INSERT INTO equilens_auth_sessions VALUES ($1,'a',1000000)", [String(i).padStart(8, "0")])

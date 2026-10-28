@@ -8,7 +8,7 @@ import { migrateBusiness } from "../src/server/database/migrations"
 let db: Awaited<ReturnType<typeof connectDatabase>> | undefined
 try {
   const [action, nameFlag, username, actorFlag, actor, ...extra] = process.argv.slice(2)
-  if (!["create", "reset", "disable", "enable"].includes(action) || nameFlag !== "--username" || !username || actorFlag !== "--actor" || !actor || extra.length) {
+  if (!["create", "reset", "disable", "enable", "grant-admin", "revoke-admin"].includes(action) || nameFlag !== "--username" || !username || actorFlag !== "--actor" || !actor || extra.length) {
     throw new Error("Invalid arguments")
   }
   let password: string | undefined
@@ -30,7 +30,7 @@ try {
   if (process.env.DATABASE_PROVIDER === "sqlite" && (!process.env.SQLITE_PATH || !isAbsolute(process.env.SQLITE_PATH))) throw new Error("Absolute SQLite path required")
   db = await connectDatabase()
   await migrateBusiness(db)
-  await new AuthService(db).maintain({ action: action as "create" | "reset" | "disable" | "enable", username, actor, password })
+  await new AuthService(db).maintain({ action: action as "create" | "reset" | "disable" | "enable" | "grant-admin" | "revoke-admin", username, actor, password })
   console.log("账号维护完成。")
 } catch (error) {
   console.error(error instanceof AuthError ? error.message : "账号维护失败：检查操作参数、私有标准输入及数据库配置。")

@@ -24,7 +24,7 @@ test("AC-01: normalized controlled account, duplicate rejection and safe princip
     await assert.rejects(auth.maintain({ action: "create", username: "operator", password, actor: "synthetic-admin" }), { code: "ACCOUNT_CONFLICT" })
     const session = await auth.login("OPERATOR", password, "source-one")
     assert.match(session.token, /^[a-f0-9]{64}$/)
-    assert.deepEqual(await auth.current(session.token), { id: session.user.id, username: "operator" })
+    assert.deepEqual(await auth.current(session.token), { id: session.user.id, username: "operator", role: "member" })
     const stored = await db.transaction(c => c.query("SELECT token_hash FROM equilens_auth_sessions"))
     assert.notEqual(stored.rows[0].token_hash, session.token)
     await auth.logout(session.token)

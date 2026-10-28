@@ -10,8 +10,8 @@ function setup() {
   const calls: unknown[][] = []
   let failure: unknown
   const service = {
-    async login(...args: unknown[]) { calls.push(args); if (failure) throw failure; return { token, user: { id: "1", username: "demo" }, expiresAt: 120999 } },
-    async session(...args: unknown[]) { calls.push(args); if (failure) throw failure; return args[0] === token ? { account: { id: "1", username: "demo" }, session: { id: "secret", expiresAt: 120999 } } : null },
+    async login(...args: unknown[]) { calls.push(args); if (failure) throw failure; return { token, user: { id: "1", username: "demo", role: "member" as const }, expiresAt: 120999 } },
+    async session(...args: unknown[]) { calls.push(args); if (failure) throw failure; return args[0] === token ? { account: { id: "1", username: "demo", role: "member" as const }, session: { id: "secret", expiresAt: 120999 } } : null },
     async logout(...args: unknown[]) { calls.push(args); if (failure) throw failure },
   }
   const handlers = createAuthHandlers({ services: () => service as unknown as AuthService, config: () => authConfig({ APP_ORIGIN: origin, NODE_ENV: "production" }), now: () => 999 })
@@ -44,7 +44,7 @@ test("AUTH-02/03 cookie, fixed source and safe session view", async () => {
   const response = await handlers.login(login(undefined, { Cookie: `__Host-equilens-auth=${token}; equilens-auth-dev=other`, "X-Forwarded-For": "evil", Forwarded: "evil" }))
   await check(response, 200)
   assert.deepEqual(calls[0], ["demo", "unchanged", "deployment", token])
-  assert.deepEqual(await response.json(), { user: { id: "1", username: "demo" }, expiresAt: new Date(120999).toISOString() })
+  assert.deepEqual(await response.json(), { user: { id: "1", username: "demo", role: "member" as const }, expiresAt: new Date(120999).toISOString() })
   const cookie = response.headers.get("set-cookie")!
   for (const part of ["__Host-equilens-auth=", "HttpOnly", "Secure", "SameSite=Lax", "Path=/", "Max-Age=120"]) assert.ok(cookie.includes(part))
   assert.ok(!cookie.includes("Domain"))
@@ -93,7 +93,7 @@ test("AUTH-03 production ignores development cookie; HTTP development writes sep
   const production = setup()
   const ignored = await production.handlers.session(new Request(`${origin}/api/auth/session`, { headers: { Cookie: `equilens-auth-dev=${token}` } }))
   await check(ignored, 401, "UNAUTHENTICATED"); assert.equal(production.calls.length, 0)
-  const handlers = createAuthHandlers({ config: () => authConfig({ APP_ORIGIN: "http://localhost:3000", NODE_ENV: "development" }), services: () => ({ login: async () => ({ token, user: { id: "1", username: "demo" }, expiresAt: 120999 }), session: async () => null, logout: async () => {} }), now: () => 999 })
+  const handlers = createAuthHandlers({ config: () => authConfig({ APP_ORIGIN: "http://localhost:3000", NODE_ENV: "development" }), services: () => ({ login: async () => ({ token, user: { id: "1", username: "demo", role: "member" as const }, expiresAt: 120999 }), session: async () => null, logout: async () => {} }), now: () => 999 })
   const result = await handlers.login(login(undefined, { Origin: "http://localhost:3000" }))
   await check(result, 200)
   const value = result.headers.get("set-cookie")!

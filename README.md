@@ -99,7 +99,7 @@ Agent 累计请求上限默认 25 次，可配置 1–40；重试与恢复不重
 ## 数据库配置
 
 A1 已实现 `/login`、登录/会话/退出 HTTP、可撤销身份、持久化登录限流和有界清理。合成 SQLite 实际接口、默认生产构建、生产冒烟和本地 TLS 浏览器交互已验证；本地自签证书测试不等于有效公网 HTTPS 验收，项目权限和完整 AC-01/AC-15 仍待联验。详见[认证验证记录](docs/reviews/2026-10-27-a1-auth-validation.md)。
-从源码运行的服务器维护入口为 `pnpm account:maintain <create|reset|disable|enable> --username <账号> --actor <运维标识>`；当前未打包此命令到 standalone 镜像。
+从源码运行的服务器维护入口为 `pnpm account:maintain <create|reset|disable|enable|grant-admin|revoke-admin> --username <账号> --actor <运维标识>`；当前未打包此命令到 standalone 镜像。
 创建/重置只从私有标准输入接收 UTF-8 密码（去除一个末尾换行），拒绝在终端明文键入，不支持密码参数；
 使用受保护的输入来源，不将密码写入 shell 历史、Git 或日志。停用/重置撤销已有会话，账号创建不自动获得项目权限。
 维护命令必须显式配置 `DATABASE_PROVIDER=sqlite|gaussdb`；SQLite 必须使用指向目标库的绝对 `SQLITE_PATH`，不接受开发默认路径。命令会初始化业务迁移，先备份目标数据库。
@@ -183,3 +183,5 @@ Windows 中文输入法候选选字、人工 Word 验收及平台恢复仍待验
 
 项目用于华为 ICT 大赛创新赛，按实际开工日起十二天 Demo、随后一个月完善的两阶段范围交付。
 业务验收尚未开始，设计目标不作为已完成功能或质量指标。
+
+可选首次部署初始化见[预设超级管理员](docs/deployment.md#预设超级管理员)：显式成对秘密配置仅创建一次，完成后移除；角色守卫已提供，正式项目授权仍待接入，不接管匿名资料。

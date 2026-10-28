@@ -20,7 +20,21 @@ export function createAccountAccess(deps: AccessDependencies) {
     if (!identity) throw new AuthError("UNAUTHENTICATED", "请先登录。")
     return identity
   }
+  async function admin(identity: Promise<AuthIdentity>) {
+    const current = await identity
+    if (current.account.role !== "superadmin") throw new AuthError("FORBIDDEN", "无管理权限。")
+    return current
+  }
   return {
+    requireSuperAdmin(request: Request): Promise<AuthIdentity> {
+      return admin(check(async (services, config) => {
+        const token = readAuthCookie(request, config.cookieName)
+        return token ? services.session(token) : null
+      }))
+    },
+    revalidateSuperAdminSession(sessionId: string): Promise<AuthIdentity> {
+      return admin(check(async services => /^[a-f0-9]{64}$/.test(sessionId) ? services.revalidateSession(sessionId) : null))
+    },
     requireAccount(request: Request): Promise<AuthIdentity> {
       return check(async (services, config) => {
         const token = readAuthCookie(request, config.cookieName)
@@ -34,6 +48,7 @@ export function createAccountAccess(deps: AccessDependencies) {
   }
 }
 const messages = {
+  FORBIDDEN: [403, "无管理权限。"],
   INVALID_INPUT: [400, "输入结构不合法。"], INVALID_CREDENTIALS: [401, "账号或密码错误。"],
   UNAUTHENTICATED: [401, "请先登录。"], INVALID_ORIGIN: [403, "请求来源无效。"],
   PAYLOAD_TOO_LARGE: [413, "请求正文过大。"], UNSUPPORTED_MEDIA_TYPE: [415, "请求正文须为 JSON。"],
@@ -76,7 +91,7 @@ async function readBody(request: Request, limit: number) {
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
   return bytes
 }
-function view(user: SessionView["user"], expiresAt: number): SessionView { return { user: { id: user.id, username: user.username }, expiresAt: new Date(expiresAt).toISOString() } }
+function view(user: SessionView["user"], expiresAt: number): SessionView { return { user: { id: user.id, username: user.username, role: user.role }, expiresAt: new Date(expiresAt).toISOString() } }
 export function createAuthHandlers(deps: Dependencies) {
   return {
     async login(request: Request): Promise<Response> {

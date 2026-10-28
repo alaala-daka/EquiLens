@@ -11,6 +11,9 @@ export const businessMigrations: readonly BusinessMigration[] = [{ id: "0001", s
 ] }, { id: "0002", statements: [
   "CREATE INDEX equilens_auth_session_expiry ON equilens_auth_sessions(expires_at)",
   "CREATE INDEX equilens_auth_limit_window ON equilens_auth_limits(window_start)",
+] }, { id: "0003", statements: [
+  "ALTER TABLE equilens_auth_accounts ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'member'",
+  "CREATE TABLE equilens_auth_bootstrap (id INTEGER PRIMARY KEY)",
 ] }]
 
 /** Explicit initialization only; never runs on module import. */

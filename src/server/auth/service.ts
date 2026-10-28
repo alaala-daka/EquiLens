@@ -3,12 +3,12 @@ import type { Database } from "../database/connection"
 import { AuthError } from "./errors"
 import { hashPassword, validPassword, verifyPassword } from "./password"
 
-export type Account = { id: string; username: string }
+export type Account = { id: string; username: string; role: "member" | "superadmin" }
 export type Principal = Account
 export type AuthIdentity = { account: Account; session: { id: string; expiresAt: number } }
 export type SessionView = { user: Account; expiresAt: string }
 export type LoginResult = { token: string; expiresAt: number; user: Account }
-export type AccountOperation = { action: "create" | "reset" | "disable" | "enable"; username: string; password?: string; actor: string }
+export type AccountOperation = { action: "create" | "reset" | "disable" | "enable" | "grant-admin" | "revoke-admin"; username: string; password?: string; actor: string }
 const sha = (value: string) => createHash("sha256").update(value).digest("hex")
 const windowMs = 15 * 60000
 function username(value: string) {
@@ -22,11 +22,28 @@ const invalidCredentials = () => new AuthError("INVALID_CREDENTIALS", "账号或
 export class AuthService {
   constructor(private readonly db: Database, private readonly now: () => number = Date.now) {}
 
+  async bootstrapAdmin(rawUsername: string, password: string): Promise<void> {
+    const name = username(rawUsername)
+    if (typeof password !== "string" || !validPassword(password)) throw new AuthError("INVALID_INPUT", "密码长度须为 12—128 个字符。")
+    if (await this.db.transaction(async c => (await c.query("SELECT id FROM equilens_auth_bootstrap WHERE id=1")).rows.length > 0)) return
+    const encoded = await hashPassword(password)
+    await this.db.transaction(async c => {
+      if ((await c.query("SELECT id FROM equilens_auth_bootstrap WHERE id=1")).rows.length) return
+      // Reserve the unique marker first; concurrent losers roll back and remain unready.
+      await c.query("INSERT INTO equilens_auth_bootstrap(id) VALUES (1)")
+      if ((await c.query("SELECT id FROM equilens_auth_accounts WHERE username=$1", [name])).rows.length) throw new AuthError("ACCOUNT_CONFLICT", "账号已存在。")
+      const id = randomUUID()
+      await c.query("INSERT INTO equilens_auth_accounts(id,username,password_hash,enabled,revision,role) VALUES ($1,$2,$3,1,1,'superadmin')", [id, name, encoded])
+      await c.query("INSERT INTO equilens_auth_audit(id,account_id,action,actor,created_at) VALUES ($1,$2,'bootstrap','deployment',$3)", [randomUUID(), id, this.now()])
+    })
+  }
+
   async maintain(input: AccountOperation) {
     const name = username(input.username)
-    if (!input.actor.trim() || input.actor.length > 128 || !["create", "reset", "disable", "enable"].includes(input.action)) throw new AuthError("INVALID_INPUT", "账号维护参数无效。")
+    if (!input.actor.trim() || input.actor.length > 128 || !["create", "reset", "disable", "enable", "grant-admin", "revoke-admin"].includes(input.action)) throw new AuthError("INVALID_INPUT", "账号维护参数无效。")
     const needsPassword = input.action === "create" || input.action === "reset"
     if (needsPassword && (typeof input.password !== "string" || !validPassword(input.password))) throw new AuthError("INVALID_INPUT", "密码长度须为 12—128 个字符。")
+    if (!needsPassword && input.password !== undefined) throw new AuthError("INVALID_INPUT", "此操作不接受密码。")
     const encoded = needsPassword ? await hashPassword(input.password!) : null
     return this.db.transaction(async c => {
       const account = (await c.query("SELECT id FROM equilens_auth_accounts WHERE username=$1", [name])).rows[0]
@@ -37,6 +54,7 @@ export class AuthService {
         await c.query("INSERT INTO equilens_auth_accounts(id,username,password_hash,enabled,revision) VALUES ($1,$2,$3,1,1)", [id, name, encoded])
       } else {
         if (input.action === "reset") await c.query("UPDATE equilens_auth_accounts SET password_hash=$1,revision=revision+1 WHERE id=$2", [encoded, id])
+        else if (input.action === "grant-admin" || input.action === "revoke-admin") await c.query("UPDATE equilens_auth_accounts SET role=$1,revision=revision+1 WHERE id=$2", [input.action === "grant-admin" ? "superadmin" : "member", id])
         else await c.query("UPDATE equilens_auth_accounts SET enabled=$1,revision=revision+1 WHERE id=$2", [input.action === "enable" ? 1 : 0, id])
         await c.query("DELETE FROM equilens_auth_sessions WHERE account_id=$1", [id])
       }
@@ -61,11 +79,13 @@ export class AuthService {
       // Acquire the same row write lock as reset/disable before session insertion.
       const guard = await c.query("UPDATE equilens_auth_accounts SET revision=revision WHERE id=$1 AND enabled=1 AND revision=$2", [String(account.id), Number(account.revision)])
       if (guard.changes !== 1) throw invalidCredentials()
+      const current = (await c.query("SELECT role FROM equilens_auth_accounts WHERE id=$1", [String(account.id)])).rows[0]
+      const role = accountRole(current?.role)
       const token = randomBytes(32).toString("hex")
       const expiresAt = this.now() + 12 * 3600000
       await c.query("INSERT INTO equilens_auth_sessions(token_hash,account_id,expires_at) VALUES ($1,$2,$3)", [sha(token), String(account.id), expiresAt])
       if (previousToken && /^[a-f0-9]{64}$/.test(previousToken)) await c.query("DELETE FROM equilens_auth_sessions WHERE token_hash=$1", [sha(previousToken)])
-      return { token, expiresAt, user: { id: String(account.id), username: name } }
+      return { token, expiresAt, user: { id: String(account.id), username: name, role } }
     })
   }
 
@@ -81,8 +101,8 @@ export class AuthService {
   async revalidateSession(sessionId: string): Promise<AuthIdentity | null> {
     if (!/^[a-f0-9]{64}$/.test(sessionId)) return null
     return this.db.transaction(async c => {
-      const row = (await c.query("SELECT a.id,a.username,s.expires_at FROM equilens_auth_accounts a JOIN equilens_auth_sessions s ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>$2 AND a.enabled=1", [sessionId, this.now()])).rows[0]
-      return row ? { account: { id: String(row.id), username: String(row.username) }, session: { id: sessionId, expiresAt: Number(row.expires_at) } } : null
+      const row = (await c.query("SELECT a.id,a.username,a.role,s.expires_at FROM equilens_auth_accounts a JOIN equilens_auth_sessions s ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>$2 AND a.enabled=1", [sessionId, this.now()])).rows[0]
+      return row ? { account: { id: String(row.id), username: String(row.username), role: accountRole(row.role) }, session: { id: sessionId, expiresAt: Number(row.expires_at) } } : null
     })
   }
   async logout(token: string) {
@@ -125,4 +145,9 @@ export class AuthService {
     }
     throw new AuthError("AUTH_UNAVAILABLE", "认证服务暂不可用。")
   }
+}
+
+function accountRole(value: unknown): Account["role"] {
+  if (value !== "member" && value !== "superadmin") throw new AuthError("AUTH_UNAVAILABLE", "认证服务暂不可用。")
+  return value
 }

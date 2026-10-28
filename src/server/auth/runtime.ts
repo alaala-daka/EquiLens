@@ -4,6 +4,7 @@ import { migrateBusiness } from "../database/migrations"
 import { authConfig } from "./config"
 import { cleanExpiredAuth } from "./cleanup"
 import { createAuthRuntime } from "./runtime-core"
+import { bootstrapAdmin } from "./bootstrap"
 import { AuthService } from "./service"
 const state = globalThis as typeof globalThis & {
   equilensAuthRuntime?: ReturnType<typeof createAuthRuntime>
@@ -13,7 +14,9 @@ const runtime = state.equilensAuthRuntime ??= createAuthRuntime({
     authConfig(process.env)
     const db = await applicationDatabase()
     await migrateBusiness(db)
-    return new AuthService(db)
+    const auth = new AuthService(db)
+    await bootstrapAdmin(auth, process.env)
+    return auth
   },
   async sweep() { await cleanExpiredAuth(await applicationDatabase(), Date.now) },
   schedule(tick, interval) { const timer = setInterval(tick, interval); timer.unref(); return () => clearInterval(timer) },

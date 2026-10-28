@@ -4,7 +4,7 @@ import { safeReturnTarget } from "./return-target"
 import { createLoginController } from "./login-controller"
 import { createSessionController } from "./session-controller"
 import { AuthClientError, createAuthClient } from "./client"
-const session = { user: { id: "synthetic", username: "operator" }, expiresAt: "2026-10-28T00:00:00.000Z" }
+const session = { user: { id: "synthetic", username: "operator", role: "member" as const }, expiresAt: "2026-10-28T00:00:00.000Z" }
 test("return targets reject external, encoded and control attacks and preserve queries", () => {
   for (const input of [null, "https://evil.example", "//evil.example", "/\\evil.example", "%2f%2fevil.example", "/%2fhost", "/%255chost", "/%250ahost", "/\nhost", "/%00host", "/%zz"]) assert.equal(safeReturnTarget(input, "https://equilens.example"), "/")
   assert.equal(safeReturnTarget("/?document=one&name=%E4%B8%AD", "https://equilens.example"), "/?document=one&name=%E4%B8%AD")

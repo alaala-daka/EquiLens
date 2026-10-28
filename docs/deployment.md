@@ -261,3 +261,23 @@ pnpm account:maintain enable --username controlled-user --actor approved-operato
 `docker compose up -d --force-recreate` 重新注入配置），再用合成账号验证登录、session、退出及旧 cookie 失效。
 `/healthz` 成功只表示进程存活，不证明认证 ready；不要通过删库或清空限流绕过故障。
 真实 HTTPS、Linux 容器及 GaussDB 验证需分别记录，不以本地 SQLite 测试代替。
+
+## 预设超级管理员
+
+可选在部署平台秘密配置中同时注入 `BOOTSTRAP_ADMIN_USERNAME`、`BOOTSTRAP_ADMIN_PASSWORD`，无默认值。
+均不配置时跳过；缺一、空值、非法用户名或不符合上述密码限制时认证拒绝 ready。值不得进入命令参数、源码、镜像或日志。
+初始化仅在显式运行生命周期、迁移后且 ready 前执行。账号、角色、bootstrap 审计和一次性标记原子提交；失败全部回滚。
+无完成标记而同名账号已存在时拒绝初始化，不接管该账号。并发失败实例保持未就绪，检查安全错误后显式重启。
+
+成功后移除两项秘密配置。保留或修改配置不会重置密码、恢复停用账号、重新提权或创建第二个账号；持久标记随数据库备份和恢复。
+勿删除标记恢复权限。忘记密码时沿用上述私有 stdin reset 流程，reset 保留角色；需恢复管理角色时使用私有运维命令：
+
+```powershell
+pnpm account:maintain grant-admin --username controlled-user --actor approved-operator
+pnpm account:maintain revoke-admin --username controlled-user --actor approved-operator
+```
+
+角色操作不接受密码，沿用显式数据库及绝对 SQLite 路径限制；角色变更、审计及撤销该账号全部会话同事务完成。
+需重新登录使用新角色。disable/enable/reset 保留角色，enable 不恢复旧会话。
+登录和 session 响应含服务器读取的 user.role；管理守卫每次检查当前会话及角色。未提供网页或公众 HTTP 账号维护。
+正式项目授权仍待接入和验收；超级管理员不接管匿名资料。GaussDB、Linux 容器及有效公网 HTTPS 另行验证。

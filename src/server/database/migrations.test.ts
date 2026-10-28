@@ -21,7 +21,7 @@ test("DB-01: failed migration rolls back schema and ledger together", async () =
   const db = await connectDatabase({ provider: "sqlite", path: ":memory:" })
   try {
     await migrateBusiness(db)
-    await assert.rejects(migrateBusiness(db, [...businessMigrations, { id: "0003", statements: [
+    await assert.rejects(migrateBusiness(db, [...businessMigrations, { id: String(businessMigrations.length + 1).padStart(4, "0"), statements: [
       "CREATE TABLE synthetic_rollback (id INTEGER)", "INSERT INTO missing_synthetic_table(id) VALUES (1)",
     ] }]))
     assert.equal((await db.transaction(c => c.query("SELECT name FROM sqlite_master WHERE name='synthetic_rollback'"))).rows.length, 0)

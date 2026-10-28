@@ -6,3 +6,6 @@ import { authServices } from "./runtime"
 const access = createAccountAccess({ services: authServices, config: () => authConfig(process.env) })
 export const requireAccount = access.requireAccount
 export const revalidateAccountSession = access.revalidateAccountSession
+
+export const requireSuperAdmin = access.requireSuperAdmin
+export const revalidateSuperAdminSession = access.revalidateSuperAdminSession
