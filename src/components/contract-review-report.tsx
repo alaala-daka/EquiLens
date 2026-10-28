@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { createContext, useContext, useState } from "react"
 import type { ReviewResult } from "@/lib/contract-reviews/types"
 import { createRevisionTask } from "@/lib/contract-reviews/client"
+import { reportDocx } from "@/lib/contract-reviews/report-docx"
 import { CATEGORY_LABELS, compactText, getReportView } from "../../tools/contract-review/src/presentation"
 import { toMarkdown } from "../../tools/contract-review/src/report"
 import { ContractRevisionResult } from "@/components/contract-revision-result"
@@ -23,7 +24,19 @@ function downloadReport(result: ReviewResult) {
   URL.revokeObjectURL(url)
 }
 function ExportReport({ result }: { result: ReviewResult }) {
-  return <Button type="button" variant="outline" size="sm" onClick={() => downloadReport(result)}>导出报告（Markdown）</Button>
+  const [downloading, setDownloading] = useState(false), [error, setError] = useState("")
+  const filename = (result.documentTitle.trim() || "合同审查").replace(/[\\/:*?"<>|]/g, "_") + "-审查报告"
+  const downloadWord = async () => {
+    if (downloading) return
+    setDownloading(true); setError("")
+    try {
+      const blob = await reportDocx(result)
+      const url = URL.createObjectURL(blob), link = document.createElement("a")
+      link.href = url; link.download = filename + ".docx"; link.click(); URL.revokeObjectURL(url)
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "报告导出失败，请重试。") }
+    finally { setDownloading(false) }
+  }
+  return <div className="flex flex-wrap items-center justify-end gap-2"><Button type="button" variant="outline" size="sm" disabled={downloading} onClick={() => void downloadWord()}>{downloading ? "正在生成" : "导出 Word 报告"}</Button><Button type="button" variant="ghost" size="sm" onClick={() => downloadReport(result)}>Markdown</Button>{error && <p role="alert" className="w-full text-right text-sm text-destructive">{error}</p>}</div>
 }
 
 type Finding = ReviewResult["findings"][number]

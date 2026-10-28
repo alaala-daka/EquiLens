@@ -31,6 +31,8 @@ export function DocumentAgentReport({ result, taskId, onSessionUnavailable }: { 
   }
   const gaps = [...new Set([...(data?.gaps ?? []), ...analysis.audit.gaps, ...analysis.calculationNotes])]
   const notes = [...new Set([...(data?.notes ?? []), ...(analysis.audit.notes ?? [])])]
+  const amountTotal = data?.amounts.length ?? 0
+  const amountChecked = data?.amounts.filter((_, index) => checked("amount:" + index)).length ?? 0
   const downloadLetter = async () => {
     if (!taskId || download.current || !analysis.letter?.export) return
     const controller = new AbortController(); download.current = controller; setDownloading(true); setDownloadError("")
@@ -45,6 +47,12 @@ export function DocumentAgentReport({ result, taskId, onSessionUnavailable }: { 
     <div className="flex flex-wrap items-center gap-2"><h3 className="text-base font-semibold">{documentTaskLabels[analysis.task]}</h3><Badge variant="outline">待人工复核</Badge></div>
     <p className="text-sm text-muted-foreground">核对截至 {analysis.cutoff}</p>
     {data && checked("overview") && <p className="text-sm">{data.overview}</p>}
+    {analysis.task === "payment-reconciliation" && data && <div className="space-y-1 rounded-lg border p-4">
+      <p className="text-sm font-medium">本次核对结论</p>
+      {analysis.calculation ? <p className="text-sm">有条件测算：已到期未付 <span className="font-semibold">{formatFen(analysis.calculation.unpaidFen)}</span>；仍需人工复核，不能作为确定欠款。</p>
+        : <p className="text-sm">本次不能形成确定金额结论；请根据下方缺口补充材料后重新提交。</p>}
+      <p className="text-sm text-muted-foreground">金额条目已核对 {amountChecked} / {amountTotal} 项{amountTotal > amountChecked ? `，待复核 ${amountTotal - amountChecked} 项` : ""}。</p>
+    </div>}
     {analysis.letter && <div className="space-y-3 rounded-lg border p-4"><h4 className="text-base font-medium">{analysis.letter.title}</h4>{analysis.letter.paragraphs.map((line, index) => <p key={index} className="whitespace-pre-wrap text-sm">{line}</p>)}</div>}
     {analysis.calculation && <div className="space-y-2 rounded-lg border p-4"><p className="text-sm">有条件测算余额</p><p className="text-xl font-semibold">{formatFen(analysis.calculation.unpaidFen)}</p><p className="text-sm text-muted-foreground">{analysis.calculation.formula}</p></div>}
     {data && data.amounts.some((_, index) => usable("amount:" + index)) && <div className="space-y-2"><h4 className="text-sm font-medium">材料记载金额</h4><Table><TableHeader><TableRow><TableHead>项目</TableHead><TableHead>金额</TableHead></TableRow></TableHeader><TableBody>

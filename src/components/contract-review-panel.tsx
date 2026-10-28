@@ -54,6 +54,7 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
   const [error, setError] = useState("")
   const [reload, setReload] = useState(0)
   const [retryDialog, setRetryDialog] = useState(false)
+  const [reportExpanded, setReportExpanded] = useState(false)
   const operation = useRef<{ signature: string; key: string } | null>(null)
   const pending = useRef<AbortController | null>(null)
   const cachedDetail = useRef<{ id: string; updatedAt: string } | null>(null)
@@ -163,6 +164,11 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
         <p className="text-xs text-muted-foreground">地域用于确定适用的地方规则和审查范围；可输入省级行政区，如“上海”或“北京市”。</p>
       </div>}
       {business && <label className="grid gap-2 text-sm">核对截止日<Input type="date" value={cutoff} required disabled={submitting} onChange={event => { setCutoff(event.target.value); setConsentRevision(""); setPaymentTaskId(""); setEvidenceTaskId("") }} /></label>}
+      {business && kind !== "collection-letter" && <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
+        <p className="font-medium">提交前材料检查</p>
+        <p>{kind === "payment-reconciliation" ? "建议提供：合同或付款条款、计量/结算资料、付款凭证、收付款汇总或对账确认。" : "建议提供：合同、计量/结算资料、付款凭证、往来通知等。"}</p>
+        <p className="text-muted-foreground">{kind === "payment-reconciliation" ? "材料不足时只能做有条件测算，不能形成确定欠款结论。" : "材料不足时报告会保留缺口，不会补写事实。"}</p>
+      </div>}
       {kind === "collection-letter" && <div className="space-y-3">
         {([['sender', '发函方'], ['recipient', '收函方'], ['contractTitle', '合同名称或编号'], ['demand', '履行要求'], ['method', '拟用送达方式'], ['address', '拟送达地址']] as const).map(([field, label]) => <label key={field} className="grid gap-2 text-sm">{label}<Input value={letterPlan[field]} maxLength={field === "demand" ? 300 : field === "address" || field === "contractTitle" ? 200 : 100} disabled={submitting} onChange={event => changePlan(field, event.target.value)} /></label>)}
         <label className="grid gap-2 text-sm">拟发送日期<Input type="date" required value={letterPlan.plannedDate} disabled={submitting} onChange={event => changePlan("plannedDate", event.target.value)} /></label>
@@ -186,14 +192,15 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     {error && <div className="flex flex-col gap-2"><p role="alert" className="text-sm text-destructive">{error}</p><Button type="button" variant="outline" disabled={submitting} onClick={() => { setError(""); cachedDetail.current = null; setReload(value => value + 1) }}>重新读取</Button></div>}
     {loading && <p role="status" className="text-sm text-muted-foreground">正在读取任务</p>}
     {tasks.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline">处理记录（{tasks.length}）</Button></CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-2 pt-3">{tasks.map(item => <Button type="button" key={item.id} variant={selected === item.id ? "secondary" : "ghost"} className="h-auto justify-start whitespace-normal text-left" onClick={() => { setSelected(item.id); setKind(item.kind ?? "contract-review"); setConsentRevision(""); setError("") }}>
-        <span className="flex min-w-0 flex-col gap-0.5"><span className="truncate font-medium">{item.title}</span>
+      <CollapsibleContent className="flex flex-col gap-2 pt-3">{tasks.map((item, index) => <Button type="button" key={item.id} variant={selected === item.id ? "secondary" : "ghost"} className="h-auto justify-start whitespace-normal text-left" onClick={() => { setSelected(item.id); setKind(item.kind ?? "contract-review"); setConsentRevision(""); setError("") }}>
+        <span className="flex min-w-0 flex-col gap-0.5"><span className="truncate font-medium">第 {tasks.length - index} 次 · {item.title}</span>
           <span className="text-xs text-muted-foreground">{documentTaskLabels[item.kind ?? "contract-review"]} · {new Date(item.createdAt).toLocaleString("zh-CN")} · {taskDisplayState(item)}</span></span>
       </Button>)}</CollapsibleContent>
     </Collapsible>}
     {task && <div className="flex flex-col gap-4 border-t pt-4">
       <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{taskDisplayState(task)}</Badge><span role="status" className="text-sm">{taskDisplayStage(task)}</span></div>
       <p className="text-sm">{taskStateHint(task)}</p>
+      {task.result && !task.result.documentAnalysis && <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => setReportExpanded(true)}>展开报告</Button>}
       {task.sourceTaskId && <p className="text-sm text-muted-foreground">基于之前的审查结果生成。</p>}
       {task.sceneReselection && <p className="text-sm text-muted-foreground">基于之前的停止任务手动重选 · {task.sceneReselection.reason}</p>}
       <p className="text-sm text-muted-foreground">{new Date(task.createdAt).toLocaleString("zh-CN")} · 保留至 {new Date(task.expiresAt).toLocaleString("zh-CN")}</p>
@@ -214,6 +221,15 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
         {task.result.documentAnalysis ? <DocumentAgentReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} /> : <ContractReviewReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} onRevisionCreated={id => { setSelected(id); setReload(value => value + 1) }} />}
       </CitationLocatorContext.Provider>}
     </div>}
+    <AlertDialog open={reportExpanded} onOpenChange={setReportExpanded}>
+      <AlertDialogContent size="lg" className="max-h-[90vh] overflow-y-auto">
+        <AlertDialogHeader><AlertDialogTitle>完整审查报告</AlertDialogTitle><AlertDialogDescription>在较宽的阅读区域查看报告；关闭后回到处理面板。</AlertDialogDescription></AlertDialogHeader>
+        {task?.result && !task.result.documentAnalysis && <CitationLocatorContext.Provider value={onLocateCitation ?? null}>
+          <ContractReviewReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} onRevisionCreated={id => { setSelected(id); setReload(value => value + 1) }} />
+        </CitationLocatorContext.Provider>}
+        <AlertDialogFooter><AlertDialogCancel>关闭</AlertDialogCancel></AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <AlertDialog open={retryDialog} onOpenChange={setRetryDialog}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>继续原任务？</AlertDialogTitle><AlertDialogDescription>将使用原保存版本、原处理条件和模型服务继续处理，可能产生费用。已有结果保留，调用预算和保留期限不会重置。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><Button type="button" disabled={submitting} onClick={() => void action("retry")}>同意并继续</Button></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </section>
 }
