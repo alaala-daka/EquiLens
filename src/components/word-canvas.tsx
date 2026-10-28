@@ -10,7 +10,7 @@ import { createWordSerializer, editorText, WordExportTimeout } from "@/lib/docum
 import { editorFocusShortcut } from "@/lib/documents/editor-keyboard"
 import { validateDocx } from "@/lib/documents/validate"
 
-export type WordCanvasHandle = { serialize: () => Promise<Blob> }
+export type WordCanvasHandle = { serialize: () => Promise<Blob>; snapshot: () => unknown }
 
 export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChange, keyboardHelpId, keyboardBlocked, controlsDisabled, onFocusShortcut, ref }: {
   initialBlob: Blob
@@ -42,6 +42,10 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
     async serialize() {
       if (!engine.current) throw new Error("文档尚未就绪。")
       return engine.current.serialize()
+    },
+    snapshot() {
+      if (!engine.current) throw new Error("文档尚未就绪。")
+      return engine.current.snapshot()
     },
   }), [])
 
@@ -109,6 +113,12 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
     } })
     const serialize = createWordSerializer(() => errors)
     const session: WordCanvasHandle = {
+      snapshot() {
+        if (disposed || !load.isCurrent() || !ready || engine.current !== session || !instance?.activeEditor) {
+          throw new Error("文档尚未就绪。")
+        }
+        return structuredClone(instance.activeEditor.getJSON())
+      },
       async serialize() {
         if (disposed || !load.isCurrent() || !ready || engine.current !== session || !instance?.activeEditor) {
           throw new Error("文档尚未就绪。")
