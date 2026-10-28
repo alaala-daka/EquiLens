@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
-import { readDocumentRevisions, reviewDocumentRevision, saveDocumentRevision } from "@/lib/contract-reviews/client"
+import { readDocumentRevisions, reviewDocumentRevision, saveDocumentRevision, downloadReviewedLetter } from "@/lib/contract-reviews/client"
 import type { DocumentAnalysis, DocumentExtraction } from "@/lib/document-agent/types"
 import type { DocumentRevision, DocumentReviewDecision } from "@/lib/document-agent/revisions"
 import { DocumentSessionError } from "@/lib/documents/client"
@@ -20,9 +20,11 @@ export function DocumentAgentReview({ analysis, taskId, documentTitle, documentV
   const [versions, setVersions] = useState<{ machine: DocumentRevision; revisions: DocumentRevision[] } | null>(null)
   const [selected, setSelected] = useState("machine")
   const [draft, setDraft] = useState<DocumentExtraction | null>(analysis.extraction)
+  const [letterDraft, setLetterDraft] = useState<string[]>(analysis.letter?.paragraphs ?? [])
   const [actor, setActor] = useState(""), [reason, setReason] = useState(""), [note, setNote] = useState("")
   const [decision, setDecision] = useState<DocumentReviewDecision>("通过")
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [status, setStatus] = useState("")
+  const [downloading, setDownloading] = useState(false)
   const pending = useRef<AbortController | null>(null)
   const editable = analysis.task !== "collection-letter"
 
@@ -33,7 +35,7 @@ export function DocumentAgentReview({ analysis, taskId, documentTitle, documentV
       if (controller.signal.aborted) return
       setVersions(value)
       const latest = value.revisions.at(-1) ?? value.machine
-      setSelected(latest.versionId); setDraft(latest.analysis.extraction)
+      setSelected(latest.versionId); setDraft(latest.analysis.extraction); setLetterDraft(latest.analysis.letter?.paragraphs ?? [])
     }).catch(failure => { if (!controller.signal.aborted) { setError(failure instanceof Error ? failure.message : "读取结果版本失败。"); if (failure instanceof DocumentSessionError) onSessionUnavailable?.(failure) } })
     return () => controller.abort()
   }, [taskId, onSessionUnavailable])
@@ -46,7 +48,7 @@ export function DocumentAgentReview({ analysis, taskId, documentTitle, documentV
   const choose = (versionId: string) => {
     const value = all.find(item => item.versionId === versionId)
     if (!value) return
-    setSelected(versionId); setDraft(value.analysis.extraction); setError(""); setStatus("")
+    setSelected(versionId); setDraft(value.analysis.extraction); setLetterDraft(value.analysis.letter?.paragraphs ?? []); setError(""); setStatus("")
   }
   const patchAmount = (index: number, patch: Record<string, unknown>) => setDraft(value => value ? { ...value,
     amounts: value.amounts.map((item, at) => at === index ? { ...item, ...patch } : item) } : value)
@@ -59,9 +61,10 @@ export function DocumentAgentReview({ analysis, taskId, documentTitle, documentV
     if (!reason.trim()) { setError("请填写修改理由。"); return }
     const controller = new AbortController(); pending.current?.abort(); pending.current = controller; setBusy(true); setError(""); setStatus("")
     try {
-      const saved = await saveDocumentRevision(taskId, { baseVersionId: latest.versionId, extraction: draft, changeReason: reason.trim(), createdBy: actor.trim() }, controller.signal)
+      const saved = await saveDocumentRevision(taskId, { baseVersionId: latest.versionId, extraction: draft, changeReason: reason.trim(), createdBy: actor.trim(),
+        ...(analysis.task === "collection-letter" ? { letterParagraphs: letterDraft } : {}) }, controller.signal)
       const value = await readDocumentRevisions(taskId, controller.signal)
-      setVersions(value); setSelected(saved.versionId); setReason(""); setStatus("已保存人工修订版本。")
+      setVersions(value); setSelected(saved.versionId); setDraft(saved.analysis.extraction); setLetterDraft(saved.analysis.letter?.paragraphs ?? []); setReason(""); setStatus("已保存人工修订版本。")
     } catch (failure) { if (!controller.signal.aborted) { setError(failure instanceof Error ? failure.message : "保存修订失败。"); if (failure instanceof DocumentSessionError) onSessionUnavailable?.(failure) } }
     finally { if (!controller.signal.aborted) setBusy(false) }
   }
@@ -75,6 +78,17 @@ export function DocumentAgentReview({ analysis, taskId, documentTitle, documentV
       setVersions(value); setStatus("已记录复核结论。")
     } catch (failure) { if (!controller.signal.aborted) { setError(failure instanceof Error ? failure.message : "提交复核失败。"); if (failure instanceof DocumentSessionError) onSessionUnavailable?.(failure) } }
     finally { if (!controller.signal.aborted) setBusy(false) }
+  }
+  async function download() {
+    if (!taskId || !current || current.review?.decision !== "通过" || busy || downloading) return
+    const controller = new AbortController(); pending.current?.abort(); pending.current = controller; setDownloading(true); setError("")
+    try {
+      const blob = await downloadReviewedLetter(taskId, current.versionId, controller.signal)
+      if (controller.signal.aborted) return
+      const url = URL.createObjectURL(blob), link = document.createElement("a")
+      link.href = url; link.download = "催款函-已复核.docx"; link.click(); URL.revokeObjectURL(url)
+    } catch (failure) { if (!controller.signal.aborted) { setError(failure instanceof Error ? failure.message : "下载失败，请重试。"); if (failure instanceof DocumentSessionError) onSessionUnavailable?.(failure) } }
+    finally { if (!controller.signal.aborted) { setDownloading(false); } }
   }
   function exportCurrent() {
     if (!current) return
@@ -111,13 +125,19 @@ export function DocumentAgentReview({ analysis, taskId, documentTitle, documentV
         <label className="grid gap-2 text-sm">修改理由<Input value={reason} maxLength={500} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
         <Button type="button" variant="outline" disabled={busy} onClick={() => void save()}>保存人工修订版本</Button>
       </>}
-      {!editable && <p className="text-sm text-muted-foreground">催款函正文由固定模板生成，当前只支持复核，不支持直接改写正文。</p>}
+      {!editable && <div className="space-y-2"><p className="text-sm font-medium">催款函正文（可编辑）</p>
+        {letterDraft.map((text, index) => <label className="grid gap-1 text-sm" key={index}>第 {index + 1} 段<textarea className="min-h-16 rounded-md border bg-transparent p-2 text-sm" value={text} maxLength={3000} disabled={busy} onChange={event => setLetterDraft(current => current.map((item, at) => at === index ? event.target.value : item))} /></label>)}
+        <p className="text-xs text-muted-foreground">修改正文只保存为新版本；复核通过后可下载已复核 Word。</p>
+        <label className="grid gap-2 text-sm">修改理由<Input value={reason} maxLength={500} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
+        <Button type="button" variant="outline" disabled={busy} onClick={() => void save()}>保存人工修订版本</Button>
+      </div>}
       <div className="space-y-2 border-t pt-3"><p className="text-sm font-medium">复核当前版本</p>
         <label className="grid gap-2 text-sm">结论<NativeSelect value={decision} disabled={busy} onChange={event => setDecision(event.target.value as DocumentReviewDecision)}>{decisions.map(item => <NativeSelectOption value={item} key={item}>{item}</NativeSelectOption>)}</NativeSelect></label>
         <label className="grid gap-2 text-sm">复核意见<Input value={note} maxLength={1000} disabled={busy} onChange={event => setNote(event.target.value)} /></label>
         <Button type="button" disabled={busy} onClick={() => void review()}>提交复核</Button>
         {current?.review && <p className="text-sm">最近复核：{current.review.decision} · {current.review.reviewer} · {new Date(current.review.createdAt).toLocaleString("zh-CN")}{current.review.note ? "：" + current.review.note : ""}</p>}
       {current && <Button type="button" variant="outline" disabled={busy} onClick={exportCurrent}>{current.review?.decision === "通过" ? "导出已复核版本（Markdown）" : "导出当前版本草稿（Markdown）"}</Button>}
+      {analysis.task === "collection-letter" && current?.review?.decision === "通过" && <Button type="button" variant="outline" disabled={busy || downloading} onClick={() => void download()}>{downloading ? "正在生成" : "下载已复核催款函（Word）"}</Button>}
       </div>
       {status && <p role="status" className="text-sm">{status}</p>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

@@ -11,14 +11,22 @@ export const analysisSha = (analysis: DocumentAnalysis) => createHash("sha256").
  * 人工修订只接受 extraction 的结构化修改；机器整理/审计记录保持不变，
  * 重新校验引文并按新金额重算，避免人工编辑绕过来源校验。
  */
-export function applyHumanExtraction(machine: DocumentAnalysis, extractionInput: unknown, paragraphs: Paragraph[], cutoff: string): DocumentAnalysis {
-  if (machine.task === "collection-letter") throw new ReviewError("REVIEW_INPUT_INVALID")
+export function applyHumanExtraction(machine: DocumentAnalysis, extractionInput: unknown, paragraphs: Paragraph[], cutoff: string, letterParagraphs?: string[]): DocumentAnalysis {
   const extraction = extractionSchema.parse(extractionInput)
   const rejected = validateExtraction(extraction, paragraphs, cutoff)
   if (rejected.length) throw new ReviewError("REVIEW_INPUT_INVALID")
   const analysis = structuredClone(machine)
   analysis.extraction = extraction
   analysis.rejected = []
+  if (machine.task === "collection-letter") {
+    if (!analysis.letter) throw new ReviewError("REVIEW_INPUT_INVALID")
+    if (letterParagraphs) {
+      if (!letterParagraphs.length || letterParagraphs.length > 30 || letterParagraphs.some(text => !text.trim() || text.length > 3000 || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)))
+        throw new ReviewError("REVIEW_INPUT_INVALID")
+      analysis.letter = { ...analysis.letter, paragraphs: letterParagraphs.map(text => text.trim()), auditPassed: false }
+    }
+    return analysis
+  }
   if (machine.task === "payment-reconciliation") {
     const calculated = calculateDocumentAmounts(extraction, cutoff, extraction.coverage === "完整" && !extraction.gaps.length)
     analysis.calculation = calculated.calculation

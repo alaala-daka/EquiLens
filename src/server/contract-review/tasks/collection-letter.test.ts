@@ -8,6 +8,7 @@ import { createLetterDownloadHandler, type ReviewHttpServices } from "./handlers
 import { documentSkill } from "../../document-agent/skills"
 import { materialText, paymentExtraction } from "../../document-agent/test-fixtures"
 import { resolveLetterSources } from "../../document-agent/letter-sources"
+import { parseDocxBytes } from "../../../../tools/contract-review/src/document"
 import type { TaskInput } from "./repository"
 
 const env = { AI_BASE_URL: "https://synthetic.invalid/v1", AI_MODEL: "synthetic", AI_API_KEY: "synthetic-not-network" }
@@ -91,5 +92,21 @@ test("AC-09/22: tampered Word payloads cannot be downloaded or overwrite saved e
     const payload = JSON.parse(String(row.payload)); payload.bytes = Buffer.from("forged").toString("base64")
     await s.database.transaction(c => c.query("UPDATE equilens_review_artifacts SET payload=$1 WHERE task_id=$2 AND stage='letter-docx'", [JSON.stringify(payload), job.id]))
     await assert.rejects(s.repository.letterExport(s.owner, job.id, s.contextId), /校验失败/)
+  } finally { await s.close() }
+})
+
+test("AC-05/11/22: human letter edits save a version and download only after review", async () => {
+  const { s, job } = await setupLetter()
+  try {
+    await runClaimedReview(job, { repository: s.repository, env, fetcher: transport().fetcher })
+    const machine = (await s.repository.get(s.owner, job.id, s.contextId)).result!.documentAnalysis!
+    const paragraphs = [...machine.letter!.paragraphs]
+    paragraphs[3] = paragraphs[3] + "（人工核对：金额与到期日已复核）"
+    const revision = await s.repository.saveDocumentRevision(s.owner, job.id, s.contextId, {
+      baseVersionId: "machine", extraction: machine.extraction, letterParagraphs: paragraphs, changeReason: "补充人工核对说明", createdBy: "复核人甲" })
+    await assert.rejects(s.repository.reviewedLetterExport(s.owner, job.id, s.contextId, revision.versionId), { status: 409 })
+    await s.repository.reviewDocumentRevision(s.owner, job.id, s.contextId, revision.versionId, { decision: "通过", reviewer: "复核人乙", note: "正文核对通过。" })
+    const file = await s.repository.reviewedLetterExport(s.owner, job.id, s.contextId, revision.versionId)
+    assert.ok(parseDocxBytes(file.bytes).some(item => item.text === paragraphs[3]))
   } finally { await s.close() }
 })

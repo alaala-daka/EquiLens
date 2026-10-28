@@ -39,8 +39,8 @@ export function buildCollectionLetter(input: { plan: LetterPlan; title: string; 
   return { templateVersion: "collection-letter-v1", title: "催款函（AI 草稿）", paragraphs, missing: [...new Set(missing)], auditPassed: false }
 }
 const xml = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;")
-export async function renderCollectionLetter(letter: CollectionLetter, signal: AbortSignal) {
-  if (!letter.auditPassed || letter.paragraphs.length > 30 || letter.paragraphs.some(text => text.length > 3000 || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text))) throw new ReviewError("REVIEW_OUTPUT_INVALID")
+export async function renderCollectionLetter(letter: CollectionLetter, signal: AbortSignal, requireAudit = true) {
+  if ((requireAudit && !letter.auditPassed) || letter.paragraphs.length > 30 || letter.paragraphs.some(text => text.length > 3000 || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text))) throw new ReviewError("REVIEW_OUTPUT_INVALID")
   const files = unzipSync(new Uint8Array(await blankDocx().arrayBuffer()))
   const lines = [letter.title, ...letter.paragraphs]
   files["word/document.xml"] = strToU8(strFromU8(files["word/document.xml"]).replace("<w:p/>", lines.map(text => `<w:p><w:r><w:t xml:space="preserve">${xml(text)}</w:t></w:r></w:p>`).join("")))

@@ -166,6 +166,22 @@ export function createDocumentReviewHandler(getServices: Services) {
   }
 }
 
+export function createReviewedLetterDownloadHandler(getServices: Services) {
+  return async function GET(request: NextRequest, context: Context & { params: Promise<{ id: string; revisionId: string }> }) {
+    try {
+      const services = await getServices(), { identity, contextId } = await access(request, services, "read")
+      const params = await context.params
+      const file = await services.repository.reviewedLetterExport(identity.owner, identifier(params.id), contextId, params.revisionId)
+      await access(request, services, "read")
+      return identity.apply(new NextResponse(new Uint8Array(file.bytes), { headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(file.filename),
+        "Cache-Control": "private, no-store", "X-Document-Context": contextId, "X-Content-SHA256": file.sha256,
+      } }))
+    } catch (failure) { return reviewFailure(failure) }
+  }
+}
+
 export function createLetterDownloadHandler(getServices: Services) {
   return async function GET(request: NextRequest, context: Context) {
     try {

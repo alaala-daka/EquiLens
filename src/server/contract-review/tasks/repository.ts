@@ -12,7 +12,7 @@ import { canExportRevision } from "../../../../tools/contract-review/src/revisio
 import { draftHash, revisionHash } from "../../../../tools/contract-review/src/agent/revision"
 import { ReviewError } from "../../../../tools/contract-review/src/errors"
 import type { documentSkill } from "../../document-agent/skills"
-import { letterDraftHash, letterVerificationAllowed } from "../../document-agent/letter"
+import { letterDraftHash, letterVerificationAllowed, renderCollectionLetter } from "../../document-agent/letter"
 import { analysisSha, applyHumanExtraction, type HumanRevisionPayload } from "../../document-agent/revision"
 import type { DocumentAnalysis } from "../../../lib/document-agent/types"
 import type { DocumentReview, DocumentRevision, DocumentReviewDecision } from "../../../lib/document-agent/revisions"
@@ -53,6 +53,7 @@ function view(row: Row, detail = false): ReviewTask {
   return {
     id: String(row.id), documentId: String(row.document_id), revisionId: String(row.revision_id), title: String(row.title),
     kind: input.task ?? "contract-review", asOf: input.asOf, maxKnownTokens: input.maxKnownTokens,
+    sourceTaskId: input.revisionSource?.taskId,
     state: row.state as ReviewTask["state"], stage: String(row.stage), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
     expiresAt: String(row.expires_at), attempt: Number(row.attempt), callsUsed: Number(row.calls_used), maxCalls: Number(row.max_calls),
     progress: parse<ReviewTask["progress"]>(row.progress),
@@ -265,7 +266,7 @@ export class ReviewTaskRepository {
       return { machine: machineRevision, revisions }
     })
   }
-  async saveDocumentRevision(owner: string, id: string, contextId: string, input: { baseVersionId: string; extraction: unknown; changeReason: string; createdBy: string }): Promise<DocumentRevision> {
+  async saveDocumentRevision(owner: string, id: string, contextId: string, input: { baseVersionId: string; extraction: unknown; changeReason: string; createdBy: string; letterParagraphs?: string[] }): Promise<DocumentRevision> {
     return this.database.transaction(async c => {
       const row = await this.owned(c, owner, id, contextId, "review")
       const result = jsonResult(row), machine = result?.documentAnalysis
@@ -276,7 +277,7 @@ export class ReviewTaskRepository {
       const baseVersionId = latest?.versionId ?? "machine"
       if (input.baseVersionId !== baseVersionId) throw new StoreError(409, "结果已有新版本，请重新载入后再修订。")
       let analysis: DocumentAnalysis
-      try { analysis = applyHumanExtraction(machine, input.extraction, snapshot.paragraphs, machine.cutoff) }
+      try { analysis = applyHumanExtraction(machine, input.extraction, snapshot.paragraphs, machine.cutoff, input.letterParagraphs) }
       catch (failure) { if (failure instanceof ReviewError) throw new StoreError(422, failure.message); throw failure }
       const versionNumber = rows.length + 1, versionId = randomUUID(), createdAt = now()
       const payload: HumanRevisionPayload = { versionId, versionNumber, baseVersionId, analysis, changeReason: input.changeReason, createdBy: input.createdBy, createdAt, sha256: "" }
@@ -285,6 +286,27 @@ export class ReviewTaskRepository {
         [id, versionNumber, JSON.stringify(payload), createdAt])
       return { versionId, versionNumber, baseVersionId, isMachine: false, createdAt, createdBy: input.createdBy, changeReason: input.changeReason, sha256: payload.sha256, review: null, analysis }
     })
+  }
+  async reviewedLetterExport(owner: string, id: string, contextId: string, versionId: string) {
+    const value = await this.database.transaction(async c => {
+      const row = await this.owned(c, owner, id, contextId)
+      const result = jsonResult(row), machine = result?.documentAnalysis
+      if (!result || !machine) throw new StoreError(409, "该任务不是文档 Agent 结果。")
+      let analysis = machine
+      if (versionId !== "machine") {
+        const human = (await c.query("SELECT payload FROM equilens_review_artifacts WHERE task_id=$1 AND attempt=0 AND stage='human-revision'", [id])).rows
+          .map(item => parse<HumanRevisionPayload>(item.payload)).find(item => item.versionId === versionId)
+        if (!human) throw new StoreError(404, "找不到该结果版本。")
+        analysis = human.analysis
+      }
+      const reviews = (await c.query("SELECT payload FROM equilens_review_artifacts WHERE task_id=$1 AND attempt=0 AND stage='review' ORDER BY ordinal", [id])).rows
+        .map(item => parse<DocumentReview>(item.payload)).filter(item => item.versionId === versionId)
+      if (reviews.at(-1)?.decision !== "通过") throw new StoreError(409, "请先复核通过该版本，再下载 Word。")
+      if (!analysis.letter) throw new StoreError(409, "该版本没有催款函正文。")
+      return { analysis, title: result.documentTitle }
+    })
+    const bytes = await renderCollectionLetter(value.analysis.letter!, AbortSignal.timeout(60000), false)
+    return { bytes, filename: "催款函-已复核.docx", sha256: createHash("sha256").update(bytes).digest("hex") }
   }
   async reviewDocumentRevision(owner: string, id: string, contextId: string, versionId: string, input: { decision: DocumentReviewDecision; reviewer: string; note: string }): Promise<DocumentReview> {
     return this.database.transaction(async c => {

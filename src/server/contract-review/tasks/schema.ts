@@ -26,6 +26,7 @@ export const documentRevisionSchema = z.object({
   extraction: z.unknown(),
   changeReason: z.string().trim().min(1).max(500),
   createdBy: z.string().trim().min(1).max(100),
+  letterParagraphs: z.array(z.string().trim().min(1).max(3000)).min(1).max(30).optional(),
 }).strict()
 
 export const documentReviewSchema = z.object({

@@ -12,7 +12,7 @@ import { DocumentAgentReport } from "@/components/document-agent-report"
 import { documentTaskLabels, type LetterPlan } from "@/lib/document-agent/types"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { listReviewTasks, readReviewTask, createReviewTask, actOnReviewTask } from "@/lib/contract-reviews/client"
-import { taskDisplayStage, taskDisplayState, type ReviewAvailability, type ReviewTask, type SubmitReview } from "@/lib/contract-reviews/types"
+import { taskDisplayStage, taskDisplayState, taskStateHint, type ReviewAvailability, type ReviewTask, type SubmitReview } from "@/lib/contract-reviews/types"
 import { errorMessage } from "@/lib/documents/types"
 import { DocumentSessionError } from "@/lib/documents/client"
 
@@ -168,8 +168,13 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
     </Collapsible>}
     {task && <div className="flex flex-col gap-4 border-t pt-4">
       <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{taskDisplayState(task)}</Badge><span role="status" className="text-sm">{taskDisplayStage(task)}</span></div>
+      <p className="text-sm">{taskStateHint(task)}</p>
+      {task.sourceTaskId && <p className="text-sm text-muted-foreground">基于审查任务 <span className="font-mono">{task.sourceTaskId.slice(0, 8)}</span> 的主审结果生成。</p>}
       <p className="text-sm text-muted-foreground">{new Date(task.createdAt).toLocaleString("zh-CN")} · 保留至 {new Date(task.expiresAt).toLocaleString("zh-CN")}</p>
-      {task.revisionId !== revisionId && <p role="note" className="text-sm">此报告对应历史保存版本；当前文档的修改未包含在本次审查中。</p>}
+      {task.revisionId !== revisionId && <div role="note" className="space-y-1 rounded-md border bg-muted/40 p-3 text-sm">
+        <p className="font-medium">历史保存版本</p>
+        <p>此结果基于提交时的保存版本，当前文档已有新的保存版本；当前修改未包含在结果中。重新提交任务才会审查新版本。</p>
+      </div>}
       {active && <p className="text-sm">已读 {task.progress.readParagraphCount} / {task.progress.paragraphCount} 段，已提交 {task.progress.submittedRuleCount} 条检查。</p>}
       {task.result?.usage && <p className="text-sm text-muted-foreground">本次 {task.callsUsed} 次调用 · 已记录 {task.result.usage.totalTokens.toLocaleString("zh-CN")} token{task.maxKnownTokens ? ` / 停止阈值 ${task.maxKnownTokens.toLocaleString("zh-CN")}` : ""}</p>}
       {active && task.progress.agentRole === "auditor" && <p className="text-sm">{task.result?.collaboration?.version === "multi-agent-revision-v1" ? "核对修改后合同" : "AI 复查"}：{task.progress.auditedRuleCount ?? 0} / {task.result?.documentAnalysis ? task.progress.submittedRuleCount : task.result?.findings.length ?? task.progress.submittedRuleCount} 条</p>}

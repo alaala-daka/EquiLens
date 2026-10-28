@@ -52,6 +52,25 @@ export function reviewDocumentRevision(id: string, versionId: string, body: { de
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 }
 
+export async function downloadReviewedLetter(id: string, versionId: string, signal?: AbortSignal): Promise<Blob> {
+  signal?.throwIfAborted()
+  const expectedContext = getDocumentContext()
+  const response = await fetch("/api/contract-reviews/" + encodeURIComponent(id) + "/revisions/" + encodeURIComponent(versionId) + "/letter", {
+    headers: { "X-Document-Context": expectedContext }, signal, credentials: "same-origin", cache: "no-store",
+  })
+  signal?.throwIfAborted()
+  if (!response.ok) {
+    const error = await response.json()
+    const sessionFailure = documentSessionFailure(error, response.status)
+    if (sessionFailure) throw sessionFailure
+    throw new Error(error.error || "已复核催款函下载失败，请重试。")
+  }
+  if (expectedContext !== getDocumentContext() || response.headers.get("X-Document-Context") !== expectedContext) throw new DocumentSessionError("会话已变更，请重新读取文档。", 409, "SESSION_CHANGED")
+  const blob = await response.blob()
+  if (response.headers.get("Content-Type") !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || !blob.size) throw new Error("催款函文件响应无效。")
+  return blob
+}
+
 export async function downloadRevisedContract(id: string, signal?: AbortSignal): Promise<Blob> { return downloadTaskWord(id, "revision", signal) }
 export async function downloadCollectionLetter(id: string, signal?: AbortSignal): Promise<Blob> { return downloadTaskWord(id, "letter", signal) }
 async function downloadTaskWord(id: string, kind: "revision" | "letter", signal?: AbortSignal): Promise<Blob> {

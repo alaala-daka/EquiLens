@@ -7,6 +7,7 @@ export type ReviewTask = {
   kind?: "contract-review" | DocumentTaskKind
   asOf?: string
   maxKnownTokens?: number
+  sourceTaskId?: string
   id: string; documentId: string; revisionId: string; title: string; state: ReviewTaskState; stage: string
   createdAt: string; updatedAt: string; expiresAt: string; attempt: number; callsUsed: number; maxCalls: number
   progress: { readParagraphCount: number; paragraphCount: number; submittedRuleCount: number; agentRole?: "router" | "primary" | "reviser" | "auditor"; auditedRuleCount?: number }
@@ -48,4 +49,14 @@ export function taskDisplayState(task: Pick<ReviewTask, "state" | "error">): str
 export function taskDisplayStage(task: Pick<ReviewTask, "stage" | "error">): string {
   if (task.error?.code === "REVIEW_SCENE_UNSUPPORTED" || task.error?.code === "REVIEW_SCENE_UNCERTAIN") return "等待补充材料"
   return taskStageLabel[task.stage] ?? "处理中"
+}
+
+/** success 只表示执行和覆盖完成，不表示合同无风险；partial 表示存在未完成项，不是部分条款有问题。 */
+export function taskStateHint(task: Pick<ReviewTask, "state" | "error">): string {
+  if (task.error?.code === "REVIEW_SCENE_UNSUPPORTED") return "当前没有适配该合同的审查场景，未生成风险结论。"
+  if (task.error?.code === "REVIEW_SCENE_UNCERTAIN") return "场景尚不能确定，材料补充后可重新提交。"
+  if (task.state === "success") return "执行与覆盖完成，不等于合同无风险；结论仍需人工复核。"
+  if (task.state === "partial") return "存在未完成项、预算限制或材料不足，不代表部分条款本身有问题。"
+  if (task.state === "failed") return "执行失败，请查看错误并重新提交。"
+  return "任务尚未结束。"
 }
