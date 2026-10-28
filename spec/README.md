@@ -6,7 +6,7 @@ SQLite 已有本地行为测试；GaussDB 真机及业务流程、其他华为�
 合同审查新增 AI SDK Agent / skill / 工具入口及匿名会话网页/持久化任务，保留固定编排。
 本地主分支整合验证见 [验证记录](../docs/reviews/2026-10-23-contract-review-main-integration.md)。
 真实模型、GaussDB、Linux 容器和法律业务验收单独记录，不计为正式项目授权已实现。
-受控账号/会话/限流和业务迁移已有本地基础及合成 SQLite 测试，见[认证验证记录](../docs/reviews/2026-10-24-auth-local-validation.md)；尚未接入登录页面和项目权限，不计 AC-01 通过。
+A1 已实现受控账号、HTTP 登录/会话/退出、登录页面、服务端身份与有界清理；合成 SQLite 实际接口闭环及本地工程检查见[认证验证记录](../docs/reviews/2026-10-27-a1-auth-validation.md)。默认生产构建、生产冒烟和本地自签 TLS 浏览器交互已通过；有效公网 HTTPS、项目权限和 A2 工作区联验未运行，不计 AC-01、AC-15 或整项 UI 验收通过。
 
 ## 阅读顺序与归属
 
@@ -17,6 +17,11 @@ SQLite 已有本地行为测试；GaussDB 真机及业务流程、其他华为�
 | [工作台界面](02-workbench-ui.md) | 工作台完善 → 编辑器完善 → 业务交互接入的顺序、输入输出、状态、权限与 UI-01—UI-23 |
 | [Word 文档编辑](03-word-editing.md) | DOCX 引擎接入、导入/编辑/保存/导出、不可变版本与往返验证 |
 | [数据库与单体部署](04-database-deployment.md) | SQLite / GaussDB 选择、服务端文档版本、会话隔离与 Zeabur 持久卷 |
+
+A1 认证设计分属既有契约：[产品 §3.2](01-product.md#32-a1认证-http-与身份交接)拥有 HTTP、cookie、
+身份交接、可信来源及 AUTH-01—AUTH-07；[界面 §5.1](02-workbench-ui.md#51-准入条件项目与权限)
+拥有登录/退出交互；[数据库「A1 认证运行生命周期与清理」](04-database-deployment.md#a1-认证运行生命周期与清理)
+拥有初始化、ready 和有界清理。实施及未运行项以上述认证验证记录为准。
 
 先阅读架构，再查阅行为所属的契约。架构替代产品规格中的历史技术选型；业务验收编号保留。
 

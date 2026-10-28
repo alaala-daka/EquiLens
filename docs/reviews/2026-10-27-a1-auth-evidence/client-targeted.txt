@@ -1,0 +1,14 @@
+✔ return targets reject external, encoded and control attacks and preserve queries (0.7361ms)
+✔ login locks synchronously and permits explicit retry after rejection (0.3132ms)
+✔ cancelled leave and failed logout never clear or navigate (0.176ms)
+✔ 401 immediately clears, network errors preserve session; successful logout clears before navigating (0.6512ms)
+✔ client uses same-origin cookies, no-store and safe errors without retry (12.8685ms)
+✔ revocation aborts requests, revokes URLs and prevents stale refill or renewed access (0.8846ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 249.7912

@@ -60,7 +60,7 @@ docker compose up -d --no-build
 ```
 
 HTTPS 反向代理转发至回环端口，云安全组不公开数据库端口。
-当前版本提供 Word 编辑和服务端文件保存，通过浏览器会话隔离，没有账号登录和项目成员权限；不能用于法律业务分析。
+当前源码提供 A1 账号登录和独立的匿名文档会话；项目成员权限尚待独立接入，不能用于正式法律业务分析。线上能力须以实际部署镜像为准。
 SQLite 模式保持一个实例并挂载持久卷；GaussDB 的连接变量见 [.env.example](../.env.example)。
 项目按 AGPL-3.0-only 开源，保留[第三方许可](../THIRD_PARTY_NOTICES.md)，镜像的 `SOURCE_COMMIT` 指向对应源码。
 GaussDB、OBS、MaaS、OCR 的区域、连接、权限、费用和完整项目恢复需在业务实现时验证，
@@ -188,3 +188,76 @@ node scripts/generated/anonymous-retention.mjs replay --journal /data/latest-ret
 
 Windows 合成逻辑测试不能证明 Linux 文件/目录同步与断电恢复；Linux 容器持久化、重启/重放和
 GaussDB 实际版本/模式仍需独立验证。以上匿名恢复不代表业务项目、OBS 全项目恢复已实现。
+
+## 受控账号维护与认证就绪
+
+本节适用于含 A1 的源码版本；不表示当前固定线上镜像已更新。账号维护仅由有部署权限的负责人在私有服务器环境执行，
+不提供 HTTP 入口，也不自动授予项目权限。actor 是操作者声明，不构成独立身份认证。先备份并核对目标库；
+命令会初始化业务 schema。源码依赖 Node.js 24、锁定的 pnpm 和已安装依赖；standalone 镜像未打包此维护入口。
+
+必须显式设置 `DATABASE_PROVIDER=sqlite|gaussdb`。SQLite 必须显式设置绝对 `SQLITE_PATH`，
+相对路径或缺省均失败；GaussDB 使用上文连接变量，实际版本/模式须另行验证。工具从当前目录加载 `.env.local`，
+已有进程环境优先，执行前核对私有配置，不将连接凭据打印到日志。
+
+以下为 PowerShell 7 源码目录操作。将库路径、账号和 actor 改为已批准的目标；示例不含密码字面量。
+创建和重置通过隐藏提示读入，父进程仅把密码写入子进程私有 stdin，不放入历史、环境变量或命令参数。
+在不启用终端录制、调试输出或进程内存采集的受控会话执行：
+
+```powershell
+$env:DATABASE_PROVIDER = 'sqlite'
+$env:SQLITE_PATH = 'C:\EquiLensData\equilens.sqlite'
+$action = 'create' # 重置时改为 reset
+$account = 'controlled-user'
+$actor = 'approved-operator'
+$start = [System.Diagnostics.ProcessStartInfo]::new()
+$start.FileName = (Get-Command node).Source
+$start.UseShellExecute = $false
+$start.RedirectStandardInput = $true
+$start.StandardInputEncoding = [System.Text.UTF8Encoding]::new($false)
+foreach ($item in @((Resolve-Path 'node_modules/tsx/dist/cli.mjs').Path,
+  (Resolve-Path 'scripts/manage-account.mts').Path, $action,
+  '--username', $account, '--actor', $actor)) {
+  $start.ArgumentList.Add($item)
+}
+$secret = Read-Host '账号密码' -AsSecureString
+$address = [IntPtr]::Zero
+$process = $null
+try {
+  $address = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
+  $process = [System.Diagnostics.Process]::Start($start)
+  $process.StandardInput.WriteLine([Runtime.InteropServices.Marshal]::PtrToStringBSTR($address))
+  $process.StandardInput.Close()
+  $process.WaitForExit()
+  if ($process.ExitCode -ne 0) { throw '账号维护失败，请检查安全错误和目标配置。' }
+} finally {
+  if ($address -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($address) }
+  $secret.Dispose()
+  if ($null -ne $process) { $process.Dispose() }
+}
+```
+
+不要改为 `echo` 密码、命令行密码参数、环境变量密码或明文临时文件。私有输入中的密码不 trim，
+仅移除一个结尾换行；必须为 12—128 个 Unicode 码点且 UTF-8 不超过 512 字节。
+缺配置、重复账号、无效输入等均非零退出，成功仅输出完成状态。
+
+不需要密码的操作仍在同一显式数据库配置下执行：
+
+```powershell
+pnpm account:maintain disable --username controlled-user --actor approved-operator
+pnpm account:maintain enable --username controlled-user --actor approved-operator
+```
+
+用独立合成账号验证：登录后保留旧浏览器会话，停用后旧会话访问 session 应为 401；重新启用不能恢复旧会话。
+再登录并执行 reset，旧会话应为 401，旧密码不能登录，新密码能登录。不要把 cookie、密码或散列录入检查记录。
+会话固定 12 小时，不随访问续期。所有账号共用固定部署来源桶，每 15 分钟 30 次，另有每账号 15 分钟 5 次；
+成功失败均计数，重启不清零，可能限制不同用户。不按 IP 限流，也不信任客户端转发头。
+
+`APP_ORIGIN` 必须与浏览器入口严格一致、无末尾斜线。开发使用 `http://127.0.0.1:3000`，
+若改用 localhost 或其他端口须同步修改；生产必须配置公开 HTTPS origin，即使代理内部用 HTTP。
+生产 cookie 为 Secure/HttpOnly/SameSite=Lax，不能通过关闭 Secure 绕过 HTTPS。
+认证 503 须按错误 code 区分：`AUTH_BUSY` 表示密码派生容量已满，稍后由用户显式重试，不自动重试。
+`AUTH_UNAVAILABLE` 表示认证不可用：检查 origin 配置、数据库可达性/权限、迁移及启动日志的安全错误。
+初始化失败保持不可用；修复配置或数据库后显式重启应用（源码服务停止后重新启动；Compose 使用
+`docker compose up -d --force-recreate` 重新注入配置），再用合成账号验证登录、session、退出及旧 cookie 失效。
+`/healthz` 成功只表示进程存活，不证明认证 ready；不要通过删库或清空限流绕过故障。
+真实 HTTPS、Linux 容器及 GaussDB 验证需分别记录，不以本地 SQLite 测试代替。

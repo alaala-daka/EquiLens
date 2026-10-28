@@ -1,0 +1,19 @@
+✔ AUTH-06: config rejects unsafe origins and uses fixed deployment source (1.1859ms)
+Authentication initialization failed
+✔ AUTH-06: repeat start shares initialization; stop during startup cannot publish ready or timer (3.6208ms)
+Authentication cleanup failed
+✔ AUTH-06: failed init retries only on explicit start; cleanup is nonoverlapping and stop waits (1.1244ms)
+Authentication initialization failed
+✔ AUTH-06: cleanup failure preserves readiness and next scheduled tick retries (0.4436ms)
+✔ AUTH-06: server entry import and build instrumentation do not initialize auth (261.2207ms)
+✔ AUTH-06: failed startup leaves public health available without readiness (233.9322ms)
+✔ AUTH-06: scheduler failure leaves startup retryable without a leaked timer (1.9636ms)
+✔ AUTH-07: separately loaded server entry reuses the process lifecycle without initialization (228.7007ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 973.3251

@@ -41,7 +41,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-打开 <http://localhost:3000>。当前启动不需要云服务凭据，也不会发起模型或 OCR 请求。
+打开 <http://127.0.0.1:3000>，与 `.env.local` 的 `APP_ORIGIN` 保持严格一致；使用 localhost 或其他端口时同步调整。当前启动不需要云服务凭据，也不会发起模型或 OCR 请求。
 
 页签、列表和对话框使用官方 shadcn/ui 组件；Word 画布和工具栏使用固定版本的 SuperDoc 1.47.2。
 支持中文段落、基础格式、标题、列表和普通表格文字编辑。单个 DOCX 不超过 20 MiB；
@@ -57,7 +57,7 @@ pnpm dev
 只有保存成功的版本能在刷新后恢复，导入原件不会被编辑覆盖。
 
 服务端使用 HttpOnly 会话 cookie 隔离文档；其他浏览器、设备或隐私窗口有独立列表。
-当前没有账号登录，清除 cookie 会失去该会话的文件访问入口，请下载需要保留的文件。
+账号登录不接管匿名文档；清除匿名 cookie 会失去该会话的文件访问入口，请下载需要保留的文件。
 历史 IndexedDB 文档不会删除或自动上传；可从旧版导出后重新导入。持久卷不替代备份。
 
 匿名资料按[数据库规格](spec/04-database-deployment.md)使用固定保留期限。负责人须先登记用途和天数；
@@ -95,11 +95,13 @@ Agent 累计请求上限为 25 次，可配置 1–25；重试与恢复不重置
 
 ## 数据库配置
 
-本地认证基础已增加受控账号、可撤销会话和持久化登录限流，尚未接入登录页面和项目权限，不计为 AC-01 通过。
+A1 已实现 `/login`、登录/会话/退出 HTTP、可撤销身份、持久化登录限流和有界清理。合成 SQLite 实际接口、默认生产构建、生产冒烟和本地 TLS 浏览器交互已验证；本地自签证书测试不等于有效公网 HTTPS 验收，项目权限和完整 AC-01/AC-15 仍待联验。详见[认证验证记录](docs/reviews/2026-10-27-a1-auth-validation.md)。
 从源码运行的服务器维护入口为 `pnpm account:maintain <create|reset|disable|enable> --username <账号> --actor <运维标识>`；当前未打包此命令到 standalone 镜像。
 创建/重置只从私有标准输入接收 UTF-8 密码（去除一个末尾换行），拒绝在终端明文键入，不支持密码参数；
 使用受保护的输入来源，不将密码写入 shell 历史、Git 或日志。停用/重置撤销已有会话，账号创建不自动获得项目权限。
-命令按当前数据库配置显式初始化业务迁移；先备份目标数据库，勿对生产试运行。仅合成 SQLite 已验证，GaussDB 另行验收。
+维护命令必须显式配置 `DATABASE_PROVIDER=sqlite|gaussdb`；SQLite 必须使用指向目标库的绝对 `SQLITE_PATH`，不接受开发默认路径。命令会初始化业务迁移，先备份目标数据库。
+隐藏输入到私有 stdin 的完整操作、停用/重置检查与认证 503 诊断见[账号维护](docs/deployment.md#受控账号维护与认证就绪)。仅合成 SQLite 已验证，GaussDB 另行验收。
+A1 所有账号共享部署来源额度：每 15 分钟 30 次；另有每规范账号 15 分钟 5 次。不同用户可能互相影响，忽略客户端 IP 和转发头。
 
 默认不需要云端数据库即可启动，SQLite 文件位于 `data/equilens.sqlite`。
 配置示例见 [.env.example](.env.example)，开发时复制为 `.env.local`。
@@ -114,7 +116,7 @@ Agent 累计请求上限为 25 次，可配置 1–25；重试与恢复不重置
 | `DATABASE_PROVIDER=gaussdb` | 使用 GaussDB 集中式，连接失败不回退 |
 | `GAUSSDB_HOST/PORT/DATABASE/USER/PASSWORD` | GaussDB 连接配置，端口默认 `8000` |
 | `GAUSSDB_CA_PATH` | 可选 CA 文件，TLS 始终校验证书 |
-| `APP_ORIGIN` | 远程部署的完整 HTTPS origin，用于写请求校验 |
+| `APP_ORIGIN` | 必填精确 origin，无末尾斜线；开发回环 HTTP，生产 HTTPS，用于认证和写请求校验 |
 
 运行期显式初始化数据库和删除日志，生产构建不连接数据库或启动清理。切换 provider 不会自动迁移已有文档。
 资料期限缺失或非法时新建返回 503；已有有效期限仍可读取、保存和下载，到期后立即拒绝。

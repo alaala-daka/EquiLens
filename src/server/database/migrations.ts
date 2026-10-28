@@ -8,6 +8,9 @@ export const businessMigrations: readonly BusinessMigration[] = [{ id: "0001", s
   "CREATE INDEX equilens_auth_session_account ON equilens_auth_sessions(account_id)",
   "CREATE TABLE equilens_auth_limits (limit_key VARCHAR(64) PRIMARY KEY, window_start BIGINT NOT NULL, attempts INTEGER NOT NULL)",
   "CREATE TABLE equilens_auth_audit (id VARCHAR(36) PRIMARY KEY, account_id VARCHAR(36) NOT NULL, action VARCHAR(16) NOT NULL, actor VARCHAR(128) NOT NULL, created_at BIGINT NOT NULL)",
+] }, { id: "0002", statements: [
+  "CREATE INDEX equilens_auth_session_expiry ON equilens_auth_sessions(expires_at)",
+  "CREATE INDEX equilens_auth_limit_window ON equilens_auth_limits(window_start)",
 ] }]
 
 /** Explicit initialization only; never runs on module import. */

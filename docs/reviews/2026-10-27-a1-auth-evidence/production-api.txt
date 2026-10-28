@@ -1,0 +1,5 @@
+login: method policy/cache/Allow/HEAD PASS
+logout: method policy/cache/Allow/HEAD PASS
+session: method policy/cache/Allow/HEAD PASS
+actual routes: missing Origin403/login200/session200/duplicate401/logout204/revoked401 PASS
+production cookie attributes and fixed12h PASS (synthetic HTTPS origin over actual HTTP; no real HTTPS acceptance)

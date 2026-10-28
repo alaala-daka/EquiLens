@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path"
 import { AuthService } from "../src/server/auth/service"
 import { AuthError } from "../src/server/auth/errors"
 import { connectDatabase } from "../src/server/database/connection"
@@ -25,6 +26,8 @@ try {
   }
   try { process.loadEnvFile(".env.local") }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error }
+  if (!["sqlite", "gaussdb"].includes(process.env.DATABASE_PROVIDER ?? "")) throw new Error("Explicit database provider required")
+  if (process.env.DATABASE_PROVIDER === "sqlite" && (!process.env.SQLITE_PATH || !isAbsolute(process.env.SQLITE_PATH))) throw new Error("Absolute SQLite path required")
   db = await connectDatabase()
   await migrateBusiness(db)
   await new AuthService(db).maintain({ action: action as "create" | "reset" | "disable" | "enable", username, actor, password })
