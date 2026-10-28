@@ -155,7 +155,7 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
       collaboration.phase = "reviewing"
       await publish()
       const ruleCount = bundle.pack.rules.filter(rule => rule.status !== "已停用").length
-      const reserveForAudit = revisionMode ? Math.ceil(ruleCount / REVISION_AUDIT_BATCH_SIZE) + Math.ceil(ruleCount / 6) : Math.ceil(ruleCount / 3) + 1
+      const reserveForAudit = revisionMode ? Math.ceil(ruleCount / REVISION_AUDIT_BATCH_SIZE) + Math.ceil(ruleCount / 6) : Math.ceil(ruleCount / 3) + 2
       const primaryLimit = Math.max(1, maxCalls - reserveForAudit)
       if (callsUsed >= primaryLimit) throw new ReviewError("REVIEW_BUDGET_EXHAUSTED")
       collaboration.primary = await reviewWithAgent({ paragraphs: prepared.paragraphs, complete: prepared.result.input.complete,

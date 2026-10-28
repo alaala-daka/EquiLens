@@ -68,6 +68,38 @@ test("AC-23：主审已用完预算时复核不发送，部分复核失败保留
   assert.equal(primary.status, "success")
 })
 
+test("AC-23：复核批次 length 截断时自动降为逐条，保留已接受结果", async () => {
+  const primary = await baseline()
+  let calls = 0
+  const batches: number[] = []
+  const fetcher: typeof fetch = async (_url, init) => {
+    calls++
+    const body = JSON.parse(String(init?.body))
+    let input: { targetRuleIds: string[] } | undefined
+    for (const message of [...body.messages].reverse()) {
+      try {
+        const value = JSON.parse(String(message.content))
+        if (Array.isArray(value?.targetRuleIds)) { input = value; break }
+      } catch { /* repair instruction is plain text */ }
+    }
+    if (!input) throw new Error("missing audit prompt")
+    batches.push(input.targetRuleIds.length)
+    if (input.targetRuleIds.length > 1) return Response.json({ id: "synthetic-length", object: "chat.completion", created: 1, model: "synthetic",
+      choices: [{ index: 0, finish_reason: "length", message: { role: "assistant", content: null } }],
+      usage: { prompt_tokens: 5, completion_tokens: 0, total_tokens: 5 } })
+    return Response.json({ id: "synthetic-single", object: "chat.completion", created: 1, model: "synthetic",
+      choices: [{ index: 0, finish_reason: "tool_calls", message: { role: "assistant", content: null,
+        tool_calls: [{ id: "single-" + calls, type: "function", function: { name: "submitAudit", arguments: JSON.stringify({ checks: [check(input.targetRuleIds[0])] }) } }] } }],
+      usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 } })
+  }
+  const audit = await auditReview({ primary, pack: testPack(), env, fetcher, maxCalls: 12 })
+  assert.equal(audit.status, "completed")
+  assert.equal(audit.checks.length, primary.findings.length)
+  assert.ok(batches.slice(0, 2).every(size => size === 3))
+  assert.ok(batches.slice(2).every(size => size === 1))
+  assert.ok(calls > 2)
+})
+
 test("AC-23/24：取消、外发预留失败、快照摘要不符不能继续发送", async () => {
   const primary = await baseline()
   const mock = transport()
