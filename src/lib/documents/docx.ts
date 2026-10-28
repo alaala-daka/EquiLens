@@ -103,15 +103,16 @@ function visit(value: unknown, callback: (name: string, value: unknown) => void)
 type OrderedNode = Record<string, unknown>
 
 // preserveOrder 输出中属性在 ":@"，文本在 "#text"；Fallback 子树跳过防文本框 Choice/Fallback 双计。
-function walkOrdered(nodes: unknown[], onElement: (key: string, attrs: Record<string, string>, children: unknown[]) => void) {
+// inMoveFrom 标记 moveFrom 子树内部：Word 合规 moveFrom 内容为 delText 或 w:t，两者均不计入正文。
+function walkOrdered(nodes: unknown[], onElement: (key: string, attrs: Record<string, string>, children: unknown[], inMoveFrom: boolean) => void, inMoveFrom = false) {
   if (!Array.isArray(nodes)) return
   for (const node of nodes as OrderedNode[]) {
     const attrs = (node[":@"] ?? {}) as Record<string, string>
     for (const [key, value] of Object.entries(node)) {
       if (key === ":@" || key === "#text") continue
       const children = Array.isArray(value) ? value : []
-      onElement(key, attrs, children)
-      if (key !== "Fallback") walkOrdered(children, onElement)
+      onElement(key, attrs, children, inMoveFrom)
+      if (key !== "Fallback") walkOrdered(children, onElement, inMoveFrom || key === "moveFrom")
     }
   }
 }
@@ -213,10 +214,10 @@ export function validateDocxBytes(bytes: Uint8Array, expected?: ExportExpectatio
       documentValid = Boolean(parsed.document && Object.hasOwn(parsed.document, "body")) && text.includes(wordNamespace)
     }
     if (/^word\/.*\.xml$/i.test(name)) {
-      walkOrdered(orderedParser.parse(text), (key, attrs, children) => {
+      walkOrdered(orderedParser.parse(text), (key, attrs, children, inMoveFrom) => {
         if (key === "altChunk" || key === "object") throw invalid("不支持外部模板或嵌入内容。")
         countElement(key, attrs, structures)
-        if (name === "word/document.xml" && key === "t") bodyText += textOf(children)
+        if (name === "word/document.xml" && key === "t" && !inMoveFrom) bodyText += textOf(children)
       })
     }
   }

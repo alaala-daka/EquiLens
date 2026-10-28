@@ -124,7 +124,7 @@ test("WD-13: 修订标记放行；插入计入正文、删除与 moveFrom 不计
   const bytes = await fixture(withBody(
     '<w:p><w:ins w:id="1" w:author="张三"><w:r><w:t>新增</w:t></w:r></w:ins>' +
     '<w:del w:id="2" w:author="张三"><w:r><w:delText>删除</w:delText></w:r></w:del>' +
-    '<w:moveFrom w:id="3"><w:r><w:delText>移出</w:delText></w:r></w:moveFrom>' +
+    '<w:moveFrom w:id="3"><w:r><w:t>移出</w:t></w:r></w:moveFrom>' +
     '<w:moveTo w:id="4"><w:r><w:t>移入</w:t></w:r></w:moveTo></w:p>'))
   const inspection = validateDocxBytes(bytes)
   assert.deepEqual(inspection.structures.revisions, { insertions: 1, deletions: 1, moves: 2, formatChanges: 0 })

@@ -283,7 +283,7 @@ const revisionsAll: StructureFixture = {
       sect())
   }),
   expected: {
-    text: "一、合同工期：暂定一百八十日历天。二、质量标准：三、价款结算方式见附件。四、工程范围以附件清单为准。工程范围以附件清单为准。",
+    text: "一、合同工期：暂定一百八十日历天。二、质量标准：三、价款结算方式见附件。四、工程范围以附件清单为准。",
     structures: { ...emptyStructures(), revisions: { insertions: 1, deletions: 1, moves: 2, formatChanges: 1 } },
     word: { bodyContains: ["一、合同工期", "三、价款结算方式见附件"], headerContains: [], revisions: 5 },
   },
