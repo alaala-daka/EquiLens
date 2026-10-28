@@ -1,6 +1,6 @@
 import "server-only"
 import { createHash, randomUUID } from "node:crypto"
-import { readDocxInChild } from "../../../../tools/contract-review/src/document"
+import { coverageComplete, readDocxInChild } from "../../../../tools/contract-review/src/document"
 import { reviewWithAgent } from "../../../../tools/contract-review/src/agent"
 import { ReviewError, safeError } from "../../../../tools/contract-review/src/errors"
 import type { ReviewTask, ReviewResult } from "../../../lib/contract-reviews/types"
@@ -35,10 +35,10 @@ async function execute(job: ClaimedReview) {
       await repository.checkpoint(job, stage, progress, null, elapsed())
       const revision = await repository.readRevision(job.owner, job.input.documentId, job.input.revisionId, job.input.documentContextId)
       if (revision.hash !== job.input.revisionHash) throw new ReviewError("REVIEW_DOCUMENT_INVALID")
-      const paragraphs = await readDocxInChild(revision.bytes, controller.signal)
+      const parsed = await readDocxInChild(revision.bytes, controller.signal)
       controller.signal.throwIfAborted()
-      job.snapshot = { id: randomUUID(), paragraphs, complete: true,
-        textSha256: createHash("sha256").update(paragraphs.map(item => item.text).join("\n")).digest("hex") }
+      job.snapshot = { id: randomUUID(), paragraphs: parsed.paragraphs, complete: coverageComplete(parsed.coverage),
+        textSha256: createHash("sha256").update(parsed.paragraphs.map(item => item.text).join("\n")).digest("hex"), coverage: parsed.coverage }
       await repository.snapshot(job, job.snapshot)
     }
     const snapshot = job.snapshot

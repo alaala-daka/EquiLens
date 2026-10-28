@@ -90,6 +90,9 @@ export type Paragraph = {
   table?: { index: number; row: number; column: number }
 }
 
+// 解析覆盖：分析无法完整呈现的结构按类别计数；四类均为零才视为完整解析。
+export type ParseCoverage = { images: number; revisions: number; textboxes: number; complex: number }
+
 export type MatchedExcerpt = {
   ruleId: string
   paragraphIndex: number

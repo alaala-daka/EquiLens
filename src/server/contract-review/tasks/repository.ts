@@ -3,7 +3,7 @@ import type { Database, Connection, Row } from "../../database/connection"
 import { StoreError } from "../../documents/repository"
 import type { DocumentSessionRepository } from "../../documents/session-repository"
 import type { ReviewTask, ReviewResult, SubmitReview } from "../../../lib/contract-reviews/types"
-import type { LoadedPack, Paragraph, ReviewContext } from "../../../../tools/contract-review/src/types"
+import type { LoadedPack, Paragraph, ParseCoverage, ReviewContext } from "../../../../tools/contract-review/src/types"
 import type { ReviewSkill } from "../../../../tools/contract-review/src/agent/skill"
 
 /** 提交契约只带 scene+region；任务内部存完整上下文，供判定、展示与报告使用。 */
@@ -13,7 +13,7 @@ export type TaskInput = Omit<SubmitReview, "context"> & {
   mode: "debug" | "published"; model: string; baseURL: string; maxPromptChars: number; consentAt: string
   documentContextId: string
 }
-export type ParseSnapshot = { id: string; paragraphs: Paragraph[]; complete: boolean; textSha256: string }
+export type ParseSnapshot = { id: string; paragraphs: Paragraph[]; complete: boolean; textSha256: string; coverage: ParseCoverage }
 export type ClaimedReview = {
   id: string; owner: string; token: string; attempt: number; callsUsed: number; maxCalls: number
   elapsedMs: number; startedAt: string; input: TaskInput; snapshot: ParseSnapshot | null; checkpoint: ReviewResult | null
@@ -25,6 +25,11 @@ const lease = () => new Date(Date.now() + 60000).toISOString()
 const noAccess = () => new StoreError(404, "找不到审查任务或资料已到期。")
 const lost = () => new StoreError(409, "任务执行权已变化，请重新读取状态。")
 const jsonResult = (row: Row): ReviewResult | null => row.result ? parse<ReviewResult>(row.result) : null
+const jsonSnapshot = (row: Row): ParseSnapshot | null => {
+  const saved = row.parse_snapshot ? parse<ParseSnapshot>(row.parse_snapshot) : null
+  // 旧快照没有 coverage 字段：按全零补缺，历史结果保持可读。
+  return saved ? { ...saved, coverage: saved.coverage ?? { images: 0, revisions: 0, textboxes: 0, complex: 0 } } : null
+}
 function view(row: Row, detail = false): ReviewTask {
   return {
     id: String(row.id), documentId: String(row.document_id), revisionId: String(row.revision_id), title: String(row.title),
@@ -161,7 +166,7 @@ export class ReviewTaskRepository {
       const claimed = await c.query("UPDATE equilens_review_tasks SET state='running',stage='parsing',attempt=$1,execution_token=$2,lease_until=$3,attempt_started_at=$4,updated_at=$5,elapsed_ms=$6,error_code=NULL,error_message=NULL WHERE id=$7 AND state=$8 AND attempt=$9 AND (lease_until IS NULL OR lease_until<=$10)", [attempt, token, until, clock, clock, Math.floor(elapsed), String(row.id), String(row.state), Number(row.attempt), clock])
       if (claimed.changes !== 1) { await c.query("UPDATE equilens_review_runner SET token=NULL,lease_until=NULL WHERE token=$1", [token]); return null }
       return { id: String(row.id), owner: String(row.owner), token, attempt, callsUsed: Number(row.calls_used), maxCalls: Number(row.max_calls),
-        elapsedMs: Math.floor(elapsed), startedAt: clock, input, snapshot: row.parse_snapshot ? parse<ParseSnapshot>(row.parse_snapshot) : null, checkpoint: jsonResult(row) }
+        elapsedMs: Math.floor(elapsed), startedAt: clock, input, snapshot: jsonSnapshot(row), checkpoint: jsonResult(row) }
     })
   }
   async heartbeat(job: ClaimedReview, elapsedMs: number) {
