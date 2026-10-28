@@ -1,0 +1,7 @@
+{"attempt":1,"status":401,"code":"INVALID_CREDENTIALS","retry":false}
+{"attempt":2,"status":401,"code":"INVALID_CREDENTIALS","retry":false}
+{"attempt":3,"status":401,"code":"INVALID_CREDENTIALS","retry":false}
+{"attempt":4,"status":401,"code":"INVALID_CREDENTIALS","retry":false}
+{"attempt":5,"status":401,"code":"INVALID_CREDENTIALS","retry":false}
+{"attempt":6,"status":429,"code":"LOGIN_RATE_LIMITED","retry":true}
+{"attempt":7,"status":429,"code":"LOGIN_RATE_LIMITED","retry":true}

@@ -16,6 +16,13 @@ const eslintConfig = defineConfig([
     ".superpowers/**",
     ".worktrees/**",
   ]),
+  {
+    files: ["**/*.cjs"],
+    rules: {
+      // Evidence harnesses are executed by Node directly, not bundled.
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

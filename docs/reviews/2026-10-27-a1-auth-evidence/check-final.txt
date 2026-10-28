@@ -1,0 +1,5 @@
+$ pnpm lint && pnpm typecheck
+$ eslint . --max-warnings 0
+$ next typegen && tsc --noEmit
+Generating route types...
+✓ Types generated successfully

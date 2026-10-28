@@ -1,0 +1,2 @@
+intercepted network failure:1request over1s, no automatic retry, password empty PASS
+real browser valid relative returnTo accepted, password empty after success, narrow screenshot PASS

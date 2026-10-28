@@ -1,0 +1,63 @@
+(node:76476) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ AUTH-05/AC-01: cookie identity and internal reference are rechecked before business access (798.7774ms)
+✔ AUTH-05: absent, malformed and substituted browser identity never replace cookie (0.7541ms)
+✔ AUTH-05: database, readiness and configuration failures stay unavailable (0.6931ms)
+(node:83080) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ AUTH-06: cleanup uses fixed cutoff and bounded batches preserving valid rows, accounts and audit (61.0073ms)
+✔ AUTH-06: conditional deletion preserves a refreshed window and transaction failure rolls back (2.5188ms)
+✔ AUTH-01/02 rejects origin, type and structure before services (23.4074ms)
+✔ AUTH-02 bounds streamed bytes and cancels oversized input (0.9852ms)
+✔ AUTH-02/03 cookie, fixed source and safe session view (4.066ms)
+✔ AUTH-03 rejects duplicate cookies and identity query injection (0.4707ms)
+✔ AUTH-04 safe errors, retry seconds, and logout failure preserves cookie (0.9122ms)
+✔ AUTH-01 config fails closed and dev cookie is isolated (0.5428ms)
+✔ AUTH-02 every public error uses fixed safe messages and never issues token (1.1069ms)
+✔ AUTH-01 ready failure applies even without session cookie (0.211ms)
+✔ AUTH-03 production ignores development cookie; HTTP development writes separate cookie (1.2196ms)
+(node:12196) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ AC-01 / AUTH-03: private maintenance selects an explicit database and revokes old sessions (4520.3078ms)
+✔ unsupported methods and OPTIONS are private and never invoke authentication (19.8058ms)
+✔ AC-01: passwords retain spaces, use random salts and reject corrupt encodings (1464.6317ms)
+✔ AUTH-06: config rejects unsafe origins and uses fixed deployment source (1.7446ms)
+Authentication initialization failed
+✔ AUTH-06: repeat start shares initialization; stop during startup cannot publish ready or timer (4.9251ms)
+Authentication cleanup failed
+✔ AUTH-06: failed init retries only on explicit start; cleanup is nonoverlapping and stop waits (1.866ms)
+Authentication initialization failed
+✔ AUTH-06: cleanup failure preserves readiness and next scheduled tick retries (0.5744ms)
+✔ AUTH-06: server entry import and build instrumentation do not initialize auth (288.5342ms)
+✔ AUTH-06: failed startup leaves public health available without readiness (292.2401ms)
+✔ AUTH-06: scheduler failure leaves startup retryable without a leaked timer (1.8259ms)
+(node:1124) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ AC-01: normalized controlled account, duplicate rejection and safe principal (801.7014ms)
+✔ AC-01: reset/disable revoke every session; enabling does not restore tokens (1436.8284ms)
+✔ AC-01: fixed session expiry and unknown account has the same credential error (914.4207ms)
+✔ AC-01/23: concurrent attempts and a new service cannot bypass persistent account quota (1358.5293ms)
+✔ AC-01/12: sessions and attempt counts survive closing and reopening SQLite (477.2652ms)
+✔ AC-01: source quota applies across accounts without expensive work after exhaustion (1.6389ms)
+✔ AC-01: credential changes during verification cannot mint a session (445.7202ms)
+✔ AC-01: strict configured write origin rejects cross-site, missing or credential URLs (0.3652ms)
+✔ AUTH-04: invalid accounts and account rejection retain source reservations (1119.05ms)
+✔ AUTH-04: over-bound strings reserve source before safe input rejection (2.5617ms)
+✔ AUTH-02/05: rotation revokes only previous session and references never revive (1122.686ms)
+✔ AUTH-04: unique-insert contention retries whole transactions once and preserves database failures (1.9963ms)
+✔ AUTH-04: window replacement contention rereads and retry-after rounds up (2.9424ms)
+✔ AUTH-02/03: failed rotation leaves old session and reset during verification blocks issuance (902.905ms)
+✔ AUTH-04: simultaneous source reservations admit exactly thirty attempts (2.569ms)
+(node:16892) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ DB-01: business migrations repeat safely without changing anonymous schema (7.5158ms)
+✔ DB-01: failed migration rolls back schema and ledger together (2.1231ms)
+✔ DB-01: original 0001 checksum and upgrade history remain immutable (2.1081ms)
+ℹ tests 42
+ℹ suites 0
+ℹ pass 42
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8973.9316

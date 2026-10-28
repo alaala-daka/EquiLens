@@ -1,0 +1,2 @@
+$ node scripts/smoke.mjs "http://127.0.0.1:3187"
+Smoke checks passed: health, page, stylesheet, public asset.

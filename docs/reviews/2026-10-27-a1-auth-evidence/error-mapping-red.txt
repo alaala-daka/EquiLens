@@ -1,0 +1,7 @@
+{"attempt":1,"status":503,"code":"AUTH_UNAVAILABLE","retry":false}
+{"attempt":2,"status":503,"code":"AUTH_UNAVAILABLE","retry":false}
+{"attempt":3,"status":503,"code":"AUTH_UNAVAILABLE","retry":false}
+{"attempt":4,"status":503,"code":"AUTH_UNAVAILABLE","retry":false}
+{"attempt":5,"status":503,"code":"AUTH_UNAVAILABLE","retry":false}
+{"attempt":6,"status":503,"code":"AUTH_UNAVAILABLE","retry":false}
+{"attempt":7,"status":503,"code":"AUTH_UNAVAILABLE","retry":false}

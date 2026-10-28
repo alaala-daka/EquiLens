@@ -1,0 +1,3 @@
+Smoke checks passed: health, page, stylesheet, public asset.
+PASS: production bootstrap/login/session roles, forged role ignored, CLI grant/revoke/disable/enable/reset, old sessions revoked, persisted marker across two restarts, changed configuration ignored, production page/static smoke.
+Scope: local HTTP API transport with explicit synthetic HTTPS Origin; not public HTTPS or browser-cookie acceptance.

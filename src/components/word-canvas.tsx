@@ -28,7 +28,7 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
   const toolbar = useRef<HTMLDivElement>(null)
   const engine = useRef<WordCanvasHandle | null>(null)
   const zoomEngine = useRef<SuperDoc | null>(null)
-  const [fitWidth, setFitWidth] = useState(false)
+  const [fitWidth, setFitWidth] = useState(true)
   const notifyState = useEffectEvent((state: EngineState, message?: string) => {
     onStateChange(state, message)
   })
@@ -220,7 +220,7 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
         role: "editor",
         telemetry: { enabled: false },
         proofing: { enabled: false },
-        zoom: { initial: 100, mode: "manual", fitWidth: { min: 10, max: 200, padding: 64 } },
+        zoom: { initial: 100, mode: "fit-width", fitWidth: { min: 10, max: 200, padding: 64 } },
         uiDisplayFallbackFont: 'Arial, "Microsoft YaHei", sans-serif',
         modules: {
           comments: false,
