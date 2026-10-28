@@ -48,7 +48,8 @@ test("ADMIN-01: upgrading legacy accounts retains member default and immutable m
     const before = (await db.transaction(c => c.query("SELECT * FROM equilens_business_migrations"))).rows
     await migrateBusiness(db)
     assert.equal((await db.transaction(c => c.query("SELECT role FROM equilens_auth_accounts"))).rows[0].role, "member")
-    assert.deepEqual((await db.transaction(c => c.query("SELECT * FROM equilens_business_migrations WHERE id<>'0003'"))).rows, before)
+    const after = (await db.transaction(c => c.query("SELECT * FROM equilens_business_migrations"))).rows
+    assert.deepEqual(after.filter(row => before.some(previous => previous.id === row.id)), before)
   } finally { await db.close() }
 })
 
