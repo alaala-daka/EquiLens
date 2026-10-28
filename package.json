@@ -18,6 +18,10 @@
     "review:contract:agent": "node scripts/build-docx-validator.mjs && tsx tools/contract-review/src/cli.ts --agent",
     "ai:smoke": "tsx scripts/check-model.mts",
     "account:maintain": "tsx scripts/manage-account.mts",
+    "fixtures:structures": "tsx scripts/docx-structure-fixtures.mts",
+    "roundtrip:engine": "tsx scripts/roundtrip/engine-roundtrip.mts",
+    "roundtrip:word": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/roundtrip/verify-word.ps1",
+    "roundtrip": "pnpm fixtures:structures && pnpm roundtrip:engine && pnpm roundtrip:word",
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
