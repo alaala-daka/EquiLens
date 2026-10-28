@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { BookOpenIcon, FileTextIcon, PlusIcon, ScaleIcon, UploadIcon, LoaderCircleIcon } from "lucide-react"
 
+import { AccountEntry } from "@/components/auth/account-entry"
 import { DocumentEditor } from "@/components/document-editor"
 import { ContractReviewHistory } from "@/components/contract-review-history"
 import { DocumentList } from "@/components/document-list"
@@ -291,6 +292,7 @@ export function Workbench() {
           <ScaleIcon className="size-5" />
           衡鉴 <span className="font-normal text-muted-foreground">EquiLens</span>
         </div>
+        <AccountEntry />
       </header>
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col p-6">
         <DocumentSessionDialog request={confirmation} onDecision={decide} />
