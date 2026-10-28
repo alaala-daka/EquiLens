@@ -123,6 +123,21 @@ HTML、文本、编辑器 JSON 可以是派生数据，但不替代原件和保�
 未来业务项目授权与 OBS 接入通过存储接口扩展，不提供公开文件 URL。
 云端写入仍须重新核对成员权限、基础版本与内容摘要，不信任浏览器声明的授权。
 
+### 4.1 项目文档与私有对象
+
+项目模式消费 A2 EditorAccess，不新增编辑器控制器；匿名模式保留现有契约。
+/api/projects/[id]/documents GET 列表、POST 从已提交 DOCX 材料版本创建；单项 GET 元数据、
+基础版本与可编辑性；versions/[versionId]/content GET 字节；preflight POST 授权预检；
+save POST 携带 baseVersionId/operationId 和 DOCX 字节；copy POST 冲突另存；
+download?versionId= GET 所选保存版本。所有入口 Node runtime、private no-store，写入同源校验。
+每次重验账号/项目角色及资源归属。材料创建引用原对象，不复制字节，首次保存产生项目文档对象。
+键为 projects/<projectId>/documents/<documentId>/versions/<versionId>/<sha256>，与材料、导出分型，
+拒绝路径穿越、绝对路径、控制字符、未知类型，不提供公开 URL。
+保存短事务绑定当前指针和不可变版本；同操作同输入返回同版本，不同输入或基础版本过期 409 CONFLICT。
+复制保留源文档/基础版本关联；下载读取所选版本同一字节并核对摘要。
+只读/撤权不挂可编辑引擎，拒绝预检/写入，不能借本地导出绕权。切项目先处理未保存内容，
+失败留原项目；迟到响应核对项目/文档/代次。验收覆盖保存重开字节、冲突另存、撤权和匿名回归。
+
 ## 5. 组件与生命周期
 
 按实际实现建立以下边界，不预建通用编辑平台：工作区组件、浏览器 Word 引擎适配器、文档存储接口、DOCX 校验模块。
