@@ -6,11 +6,12 @@ import "superdoc/style.css"
 import { Button } from "@/components/ui/button"
 import { createEngineLoad } from "@/lib/documents/engine-lifecycle"
 import type { EngineState } from "@/lib/documents/editor-session"
-import { createWordSerializer, editorText, WordExportTimeout } from "@/lib/documents/serialize"
+import { createWordSerializer, editorText, editorParagraphs, WordExportTimeout } from "@/lib/documents/serialize"
+import { docxFromParagraphs } from "@/lib/documents/docx"
 import { editorFocusShortcut } from "@/lib/documents/editor-keyboard"
 import { validateDocx } from "@/lib/documents/validate"
 
-export type WordCanvasHandle = { serialize: () => Promise<Blob> }
+export type WordCanvasHandle = { serialize: () => Promise<Blob>; cleanDocx: () => Promise<Blob>; locate: (paragraphIndex: number, quote: string) => Promise<boolean> }
 
 export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChange, keyboardHelpId, keyboardBlocked, controlsDisabled, onFocusShortcut, ref }: {
   initialBlob: Blob
@@ -42,6 +43,14 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
     async serialize() {
       if (!engine.current) throw new Error("文档尚未就绪。")
       return engine.current.serialize()
+    },
+    async cleanDocx() {
+      if (!engine.current) throw new Error("文档尚未就绪。")
+      return engine.current.cleanDocx()
+    },
+    async locate(paragraphIndex, quote) {
+      if (!engine.current) throw new Error("文档尚未就绪。")
+      return engine.current.locate(paragraphIndex, quote)
     },
   }), [])
 
@@ -145,6 +154,58 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
           if (failure instanceof WordExportTimeout && current()) fail(failure.message)
           throw failure
         }
+      },
+      async cleanDocx() {
+        if (disposed || !load.isCurrent() || !ready || engine.current !== session || !instance?.activeEditor) {
+          throw new Error("文档尚未就绪。")
+        }
+        return docxFromParagraphs(editorParagraphs(instance.activeEditor.getJSON()))
+      },
+      async locate(_paragraphIndex, quote) {
+        if (disposed || !load.isCurrent() || !ready || engine.current !== session || !instance?.activeEditor) return false
+        const editor = instance.activeEditor
+        let hit: { from: number; to: number } | null = null
+        editor.state.doc.descendants((node, position) => {
+          if (hit || !node.isText || !node.text) return
+          const offset = node.text.indexOf(quote)
+          if (offset >= 0) hit = { from: position + offset, to: position + offset + quote.length }
+        })
+        if (!hit) return false
+        const found = hit as { from: number; to: number }
+        const commands = (editor as unknown as { commands?: { setTextSelection?: (value: { from: number; to: number }) => void } }).commands
+        if (!commands?.setTextSelection) return false
+        commands.setTextSelection(found)
+        const view = editor.view
+        if (!view) return false
+        const position = view.domAtPos(found.from)
+        const raw = position.node.nodeType === Node.TEXT_NODE ? position.node.parentElement : position.node
+        const block = raw instanceof HTMLElement ? raw.closest("p, li, td, th") as HTMLElement | null : null
+        if (!block) return false
+        view.focus()
+        const walker = document.createTreeWalker(view.dom, NodeFilter.SHOW_TEXT)
+        let text: Text | null = null
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          if (node.nodeType === Node.TEXT_NODE && (node as Text).data.includes(quote)) { text = node as Text; break }
+        }
+        if (text) {
+          const start = text.data.indexOf(quote)
+          const range = document.createRange()
+          range.setStart(text, start); range.setEnd(text, start + quote.length)
+          const selection = window.getSelection()
+          selection?.removeAllRanges(); selection?.addRange(range)
+        }
+        const previous = { outline: block.style.outline, offset: block.style.outlineOffset, background: block.style.backgroundColor }
+        block.style.outline = "2px solid currentColor"
+        block.style.outlineOffset = "3px"
+        block.style.backgroundColor = "rgba(250, 204, 21, 0.25)"
+        block.scrollIntoView({ block: "center", behavior: "smooth" })
+        setTimeout(() => {
+          block.style.outline = previous.outline
+          block.style.outlineOffset = previous.offset
+          block.style.backgroundColor = previous.background
+        }, 4000)
+        view.dispatch(editor.state.tr.scrollIntoView())
+        return true
       },
     }
     engine.current = session

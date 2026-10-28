@@ -70,3 +70,23 @@ test("MG-03: usage is optional and malformed metadata is not trusted", async () 
   assert.equal(result.model, config.model)
   assert.equal(result.usage, null)
 })
+
+test("MG-05: missing usage succeeds as unknown usage, while each incomplete reply has an explicit failure code", async () => {
+  const complete = valid() as Record<string, unknown>
+  delete complete.usage
+  const result = await askModel("合成连通测试", config, async () => Response.json(complete))
+  assert.equal(result.text, "连接成功")
+  assert.equal(result.usage, null)
+  for (const [finish, content, refusal, code] of [
+    ["length", "部分合成回答", null, "AI_OUTPUT_INCOMPLETE"],
+    ["stop", "", null, "AI_RESPONSE_INVALID"],
+    ["stop", "拒绝合成回答", "synthetic refusal", "AI_RESPONSE_INVALID"],
+  ]) {
+    let requests = 0
+    await assert.rejects(askModel("合成连通测试", config, async () => {
+      requests++
+      return Response.json({ choices: [{ finish_reason: finish, message: { content, refusal } }] })
+    }), { code })
+    assert.equal(requests, 1)
+  }
+})

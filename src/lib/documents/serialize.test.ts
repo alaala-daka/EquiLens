@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { createWordSerializer, editorText, serializeWord, WordExportTimeout } from "./serialize"
+import { createWordSerializer, editorParagraphs, editorText, serializeWord, WordExportTimeout } from "./serialize"
 
 test("WD-06/08: an engine exception must reject fallback original bytes", async () => {
   let errors = 0
@@ -62,4 +62,16 @@ test("WD-08: edit snapshot text follows nested paragraphs and table cells", () =
     { type: "table", content: [{ type: "tableRow", content: [{ type: "tableCell", content: [{ type: "paragraph", content: [{ type: "text", text: "四十五日" }] }] }] }] },
     { type: "paragraph", content: [{ type: "hardBreak" }, { type: "text", text: "第二页" }] },
   ] }), "合同 & 001四十五日第二页")
+})
+
+test("clean copy extraction preserves top-level paragraph boundaries", () => {
+  const json = { type: "doc", content: [
+    { type: "paragraph", content: [{ type: "text", text: "第一段" }] },
+    { type: "paragraph", content: [{ type: "text", text: "含 " }, { type: "text", text: "& < >" }] },
+    { type: "paragraph" },
+    { type: "heading", content: [{ type: "text", text: "标题" }] },
+  ] }
+  assert.deepEqual(editorParagraphs(json), ["第一段", "含 & < >", "", "标题"])
+  assert.deepEqual(editorParagraphs(null), [])
+  assert.deepEqual(editorParagraphs({ type: "doc" }), [])
 })

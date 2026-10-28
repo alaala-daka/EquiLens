@@ -1,0 +1,80 @@
+[
+  {
+    "ruleId": "SS-001",
+    "category": "计量结算",
+    "title": "制作运输吊装范围",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "steel-structure-sub-2026",
+      "role": "专业分包人"
+    },
+    "mandatory": true,
+    "trigger": {
+      "keywords": [
+        "制作",
+        "运输",
+        "吊装",
+        "吨位"
+      ]
+    },
+    "requirement": "核对钢构件制作、运输、吊装范围及重量/工程量计量口径、损耗和费用边界，不能把采购量直接视为安装结算量。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "CHECK-SS-DRAFT"
+      }
+    ]
+  },
+  {
+    "ruleId": "SS-002",
+    "category": "变更签证",
+    "title": "材料价格与变更",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "steel-structure-sub-2026",
+      "role": "专业分包人"
+    },
+    "mandatory": true,
+    "trigger": {
+      "keywords": [
+        "钢材",
+        "调价",
+        "变更",
+        "规格"
+      ]
+    },
+    "requirement": "核对钢材规格变更、价格调整条件及确认程序，不自行假设市场价格、调价比例或适用法律后果。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "CHECK-SS-DRAFT"
+      }
+    ]
+  },
+  {
+    "ruleId": "SS-003",
+    "category": "违约责任",
+    "title": "连接检测与责任界面",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "steel-structure-sub-2026",
+      "role": "专业分包人"
+    },
+    "mandatory": true,
+    "trigger": {
+      "keywords": [
+        "焊接",
+        "螺栓",
+        "检测",
+        "责任"
+      ]
+    },
+    "requirement": "核对焊接或连接检测的约定主体、费用、整改责任和交接记录，缺少证据不能认定质量合格或直接归责专业分包人。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "CHECK-SS-DRAFT"
+      }
+    ]
+  }
+]

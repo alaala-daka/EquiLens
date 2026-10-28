@@ -1,0 +1,80 @@
+[
+  {
+    "ruleId": "DEC-001",
+    "category": "变更签证",
+    "title": "材料与样板确认",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "decoration-sub-2026",
+      "role": "专业分包人"
+    },
+    "mandatory": true,
+    "trigger": {
+      "keywords": [
+        "材料",
+        "品牌",
+        "样板",
+        "替代"
+      ]
+    },
+    "requirement": "核对材料品牌、规格、样板确认人和替代材料审批、价差承担是否明确；缺少约定时提示补充，不将企业偏好认定为违法。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "CHECK-DEC-DRAFT"
+      }
+    ]
+  },
+  {
+    "ruleId": "DEC-002",
+    "category": "计量结算",
+    "title": "计量与施工界面",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "decoration-sub-2026",
+      "role": "专业分包人"
+    },
+    "mandatory": true,
+    "trigger": {
+      "keywords": [
+        "面积",
+        "计量",
+        "界面",
+        "基层"
+      ]
+    },
+    "requirement": "核对饰面或面积计量口径、基层交接、工作界面与成品保护责任，原文冲突分别引用，不推定重复计量。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "CHECK-DEC-DRAFT"
+      }
+    ]
+  },
+  {
+    "ruleId": "DEC-003",
+    "category": "违约责任",
+    "title": "验收及返工责任",
+    "status": "待核对",
+    "appliesTo": {
+      "scene": "decoration-sub-2026",
+      "role": "专业分包人"
+    },
+    "mandatory": true,
+    "trigger": {
+      "keywords": [
+        "验收",
+        "返工",
+        "色差",
+        "损坏"
+      ]
+    },
+    "requirement": "核对样板与验收约定是否一致、返工原因和费用责任及成品损坏归属，不能凭未明确的标准判断验收不合格。",
+    "severity": "一般关注",
+    "basis": [
+      {
+        "sourceId": "CHECK-DEC-DRAFT"
+      }
+    ]
+  }
+]

@@ -1,22 +1,38 @@
 import { createHash } from "node:crypto"
-import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
 import { z } from "zod"
 import { ReviewError } from "../errors"
+import { skillIds, revisionSkillIds } from "../scenes"
+import { ContentHashCache, readResourceText, resourceContentHash, type ResourceSnapshot, type ResourceTextReader } from "../resource-cache"
 
 const metadata = z.object({
-  id: z.literal("contract-review"), name: z.string().min(1).max(100),
+  id: z.enum([...skillIds, ...revisionSkillIds]), name: z.string().min(1).max(100),
   version: z.string().min(1).max(100), description: z.string().min(1).max(1000),
 }).strict()
 export type ReviewSkill = z.infer<typeof metadata> & { instructions: string; sha256: string }
+const skillCache = new ContentHashCache<ReviewSkill>(32)
+export type SkillLoadOptions = { readText?: ResourceTextReader; cache?: ContentHashCache<ReviewSkill> }
 
 /** 仅允许部署者指定技能根目录。模型只传固定 ID，不参与文件路径解析。 */
-export async function loadReviewSkill(root = resolve(process.cwd(), "tools/contract-review/skills")): Promise<ReviewSkill> {
+export async function readReviewSkillSnapshot(root: string, id: string, options: SkillLoadOptions = {}): Promise<ResourceSnapshot<ReviewSkill>> {
   try {
-    const directory = resolve(root, "contract-review")
-    const info = metadata.parse(JSON.parse(await readFile(resolve(directory, "skill.json"), "utf8")))
-    const instructions = await readFile(resolve(directory, "SKILL.md"), "utf8")
-    if (!instructions.trim() || instructions.length > 16000) throw new Error()
-    return { ...info, instructions, sha256: createHash("sha256").update(JSON.stringify(info) + "\n" + instructions).digest("hex") }
+    if (!([...skillIds, ...revisionSkillIds] as readonly string[]).includes(id)) throw new Error()
+    const directory = resolve(root, id)
+    const readText = options.readText ?? readResourceText
+    const [infoText, instructions] = await Promise.all([readText(resolve(directory, "skill.json")), readText(resolve(directory, "SKILL.md"))])
+    const sha256 = resourceContentHash({ kind: "review-skill-v1", id, infoText, instructions })
+    return { sha256, load: () => {
+      try {
+        return (options.cache ?? skillCache).getOrCreate(sha256, () => {
+          const info = metadata.parse(JSON.parse(infoText))
+          if (info.id !== id || !instructions.trim() || instructions.length > 16000) throw new Error()
+          return { ...info, instructions, sha256: createHash("sha256").update(JSON.stringify(info) + "\n" + instructions).digest("hex") }
+        })
+      } catch { throw new ReviewError("REVIEW_SKILL_INVALID") }
+    } }
   } catch { throw new ReviewError("REVIEW_SKILL_INVALID") }
+}
+
+export async function loadReviewSkill(root = resolve(process.cwd(), "tools/contract-review/skills"), id = "contract-review", options: SkillLoadOptions = {}): Promise<ReviewSkill> {
+  return (await readReviewSkillSnapshot(root, id, options)).load()
 }

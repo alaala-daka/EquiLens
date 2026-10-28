@@ -7,6 +7,7 @@ export class ModelError extends Error {
 
 export type ModelConfig = { endpoint: string; apiKey: string; model: string }
 export type ModelReply = { text: string; model: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } | null }
+export type ModelResponseMetadata = Pick<ModelReply, "model" | "usage"> & { finishReason: string | null }
 
 // Pure configuration/transport functions: only the server entrypoint reads process.env.
 export function modelConfig(env: Record<string, string | undefined>): ModelConfig {
@@ -30,7 +31,7 @@ function networkError(failure: unknown): ModelError {
     : new ModelError("AI_NETWORK_ERROR", "无法连接模型服务，请检查网络后重试。")
 }
 
-export async function askModel(prompt: string, config: ModelConfig, fetcher: typeof fetch = fetch): Promise<ModelReply> {
+export async function askModel(prompt: string, config: ModelConfig, fetcher: typeof fetch = fetch, onResponse?: (metadata: ModelResponseMetadata) => void): Promise<ModelReply> {
   if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000) throw new ModelError("AI_INPUT_INVALID", "测试消息须为非空文字，且不超过 20,000 字符。")
   let response: Response
   try {
@@ -72,15 +73,21 @@ export async function askModel(prompt: string, config: ModelConfig, fetcher: typ
   try { value = JSON.parse(Buffer.concat(chunks).toString("utf8")) }
   catch { throw new ModelError("AI_RESPONSE_INVALID", "模型响应不是有效的 JSON。") }
   const choice = value?.choices?.[0]
+  const usage = value?.usage
+  const validUsage = usage && [usage.prompt_tokens, usage.completion_tokens, usage.total_tokens].every(count => Number.isSafeInteger(count) && count >= 0)
+  const metadata: ModelResponseMetadata = {
+    model: typeof value?.model === "string" && /^[\w./:-]{1,100}$/.test(value.model) ? value.model : config.model,
+    usage: validUsage ? { inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens, totalTokens: usage.total_tokens } : null,
+    finishReason: typeof choice?.finish_reason === "string" && /^[a-z_-]{1,32}$/.test(choice.finish_reason) ? choice.finish_reason : null,
+  }
+  onResponse?.(metadata)
   if (!Array.isArray(value?.choices) || value.choices.length !== 1 || !choice?.message) throw new ModelError("AI_RESPONSE_INVALID", "模型响应缺少有效回答。")
   const text = choice.message.content
   if (choice.finish_reason !== "stop") throw new ModelError("AI_OUTPUT_INCOMPLETE", "模型未正常完成回答，可能被截断或拒绝。")
   if (typeof text !== "string" || !text.trim() || text.length > 64000 || choice.message.refusal || (choice.message.tool_calls != null && (!Array.isArray(choice.message.tool_calls) || choice.message.tool_calls.length))) throw new ModelError("AI_RESPONSE_INVALID", "模型未返回可用的纯文本回答。")
-  const usage = value.usage
-  const validUsage = usage && [usage.prompt_tokens, usage.completion_tokens, usage.total_tokens].every(count => Number.isSafeInteger(count) && count >= 0)
   return {
     text: text.trim(),
-    model: typeof value.model === "string" && /^[\w./:-]{1,100}$/.test(value.model) ? value.model : config.model,
-    usage: validUsage ? { inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens, totalTokens: usage.total_tokens } : null,
+    model: metadata.model,
+    usage: metadata.usage,
   }
 }

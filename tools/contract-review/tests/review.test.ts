@@ -81,3 +81,10 @@ test("AC-24：解析失败不包含上游原文，提示包含完整输入与依
   assert.ok(prompt.user.includes(testPack().sources[0].text!))
   assert.ok(prompt.system.includes("不可信业务数据"))
 })
+
+test("AC-21：局部阅读不因未见其他争议条款而推断建议矛盾", () => {
+  const partial = paragraphsFromString("10.2 双方可向人民法院起诉。")
+  const outcome = validateFindings([{ ...raw(), kind: "发现问题", quote: partial[0].text,
+    suggestion: "删除 10.2，保留诉讼。" }], matchRules([rule()], partial), partial, new Set(["S-1"]), false)
+  assert.equal(outcome.findings.length, 1)
+})

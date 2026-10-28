@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises"
 import { isAbsolute, relative, resolve } from "node:path"
 
 import {
@@ -15,6 +14,10 @@ import {
   type SourceType,
 } from "./types"
 import { isSceneId } from "./scenes"
+import { ContentHashCache, readResourceText, resourceContentHash, type ResourceSnapshot, type ResourceTextReader } from "./resource-cache"
+
+const packCache = new ContentHashCache<LoadedPack>(16)
+export type PackLoadOptions = { readText?: ResourceTextReader; cache?: ContentHashCache<LoadedPack> }
 
 const one = <T>(values: T[], value: unknown, field: string): T => {
   if (!values.includes(value as T)) throw new Error(`${field} 取值无效：${String(value)}`)
@@ -102,13 +105,7 @@ function parseRule(value: unknown, origin: string): RuleEntry {
   }
 }
 
-async function readJson(path: string): Promise<unknown> {
-  let raw: string
-  try {
-    raw = await readFile(path, "utf8")
-  } catch {
-    throw new Error(`读取规则文件失败：${path}`)
-  }
+function parseJson(raw: string, path: string): unknown {
   try {
     return JSON.parse(raw)
   } catch {
@@ -116,9 +113,15 @@ async function readJson(path: string): Promise<unknown> {
   }
 }
 
-// 读取规则包。规则与来源都按发布状态过滤，只有"已发布"的条目进入审查。
-export async function loadRulePack(directory: string): Promise<LoadedPack> {
-  const manifestValue = await readJson(resolve(directory, "pack.json"))
+/** Read each file once, then parse only that pinned content; a cache miss never triggers a second disk read. */
+export async function readRulePackSnapshot(directory: string, options: PackLoadOptions = {}): Promise<ResourceSnapshot<LoadedPack>> {
+  const reader = options.readText ?? readResourceText
+  const readText = async (path: string) => {
+    try { return await reader(path) }
+    catch { throw new Error(`读取规则文件失败：${path}`) }
+  }
+  const manifestText = await readText(resolve(directory, "pack.json"))
+  const manifestValue = parseJson(manifestText, "pack.json")
   if (!manifestValue || typeof manifestValue !== "object" || Array.isArray(manifestValue)) throw new Error("pack.json 必须是对象。")
   const raw = manifestValue as Record<string, unknown>
   const fileList = (value: unknown, field: string): string[] => {
@@ -135,7 +138,6 @@ export async function loadRulePack(directory: string): Promise<LoadedPack> {
     ruleFiles: fileList(raw.ruleFiles, "ruleFiles"),
     sourceFiles: fileList(raw.sourceFiles, "sourceFiles"),
   }
-  const warnings: string[] = []
   if (manifest.status === "已发布" && (!manifest.reviewer?.trim() || !manifest.reviewedAt?.trim())) throw new Error("已发布规则包缺少核对人或核对时间。")
   const packFile = (file: string): string => {
     const path = resolve(directory, file)
@@ -143,15 +145,24 @@ export async function loadRulePack(directory: string): Promise<LoadedPack> {
     if (isAbsolute(file) || inside === ".." || inside.startsWith("..\\") || inside.startsWith("../") || isAbsolute(inside)) throw new Error("规则文件必须位于规则包目录内。")
     return path
   }
+  const files = [...new Set([...manifest.ruleFiles, ...manifest.sourceFiles])]
+  const contents = await Promise.all(files.map(async file => [file, await readText(packFile(file))] as const))
+  const sha256 = resourceContentHash({ kind: "rule-pack-v1", manifestText, contents })
+  const saved = new Map(contents)
+  return { sha256, load: () => (options.cache ?? packCache).getOrCreate(sha256, () => parsePackContents(manifest, saved)) }
+}
+
+function parsePackContents(manifest: RulePackManifest, contents: ReadonlyMap<string, string>): LoadedPack {
+  const warnings: string[] = []
   const rules: RuleEntry[] = []
   for (const file of manifest.ruleFiles) {
-    const value = await readJson(packFile(file))
+    const value = parseJson(contents.get(file)!, file)
     if (!Array.isArray(value)) throw new Error(`${file} 必须是规则数组。`)
     value.forEach((item, index) => rules.push(parseRule(item, `${file}[${index}]`)))
   }
   const sources: SourceEntry[] = []
   for (const file of manifest.sourceFiles) {
-    const value = await readJson(packFile(file))
+    const value = parseJson(contents.get(file)!, file)
     if (!Array.isArray(value)) throw new Error(`${file} 必须是来源数组。`)
     value.forEach((item, index) => sources.push(parseSource(item, `${file}[${index}]`)))
   }
@@ -179,6 +190,11 @@ export async function loadRulePack(directory: string): Promise<LoadedPack> {
   }
   if (manifest.status !== "已发布") warnings.push(`规则包状态为${manifest.status}，仅用于验证流程，不构成已核对结论。`)
   return { manifest, rules, sources, warnings }
+}
+
+// 发布过滤仍由 publishedRules / publishedSources 和调用方执行，缓存不赋予发布资格。
+export async function loadRulePack(directory: string, options: PackLoadOptions = {}): Promise<LoadedPack> {
+  return (await readRulePackSnapshot(directory, options)).load()
 }
 
 // 只有"已发布"的规则与来源可以进入正式结论；未发布条目在报告中单列。

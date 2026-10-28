@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate"
-import { blankDocx, prepareDocxBytes, validateDocxBytes } from "./docx"
+import { blankDocx, docxFromParagraphs, prepareDocxBytes, validateDocxBytes } from "./docx"
 import { downloadName } from "./types"
 
 async function fixture(change?: (files: Record<string, Uint8Array>) => void) {
@@ -12,6 +12,13 @@ async function fixture(change?: (files: Record<string, Uint8Array>) => void) {
 
 test("WD-01: blank DOCX has a valid package and main part", async () => {
   validateDocxBytes(new Uint8Array(await blankDocx().arrayBuffer()))
+})
+
+test("WD-09/UI: clean copy rebuilds validated paragraphs and escapes XML", async () => {
+  const bytes = new Uint8Array(await (await docxFromParagraphs(["第一段 & < >", "", "第二段"])).arrayBuffer())
+  assert.equal(validateDocxBytes(bytes), "第一段 & < >第二段")
+  const empty = new Uint8Array(await (await docxFromParagraphs([""])).arrayBuffer())
+  assert.equal(validateDocxBytes(empty), "")
 })
 
 test("WD-01/05: editor preparation adds optional parts without changing main text", async () => {

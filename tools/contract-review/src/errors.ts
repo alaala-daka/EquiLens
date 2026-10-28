@@ -1,11 +1,16 @@
 const messages: Record<string, string> = {
+  REVIEW_REVISION_INCOMPLETE: "合同修订尚未完成，原审查结果已保留。",
+  REVIEW_REVISION_UNSAFE: "修改后的合同仍有待处理问题，暂不能导出修订稿。",
+  REVIEW_REVISION_EXPORT_FAILED: "修订稿 Word 校验或保存失败，未生成可下载文件。",
   REVIEW_INPUT_INVALID: "合同文字、段落编号或调用参数无效。",
+  REVIEW_INPUT_EMPTY: "文档正文为空，无法开始合同审查；请先录入或导入合同内容。",
   REVIEW_INPUT_TOO_LARGE: "合同或提示内容超过本次输入预算，请减少材料或调整已验证的配置。",
   REVIEW_RULES_UNAVAILABLE: "没有可用的已发布规则包；当前内置资料仅供显式开启调试模式联调。",
   REVIEW_CONTEXT_UNMATCHED: "已发布的规则与当前审查条件（立场、项目类型、地域）不一致，没有可执行的检查项；请核对所选条件。",
   REVIEW_RULES_UNMATCHED: "已发布的规则未命中本合同任何内容，没有可执行的检查项；请确认合同类型与规则包是否匹配。",
   REVIEW_RULE_PACK_INVALID: "规则包读取或格式校验失败，请由维护者检查规则文件。",
   REVIEW_BUDGET_EXHAUSTED: "本次审查已达到模型调用次数上限。",
+  REVIEW_TOKEN_BUDGET_EXHAUSTED: "本次任务已达到累计 token 停止阈值，已有结果保留。",
   REVIEW_BUDGET_UNVERIFIED: "正式审查的提示预算尚未验证并配置；请使用调试模式联调。",
   REVIEW_TIMEOUT: "本次审查已达到执行时限。",
   REVIEW_CANCELLED: "本次审查已取消。",
@@ -14,6 +19,13 @@ const messages: Record<string, string> = {
   REVIEW_MODEL_FAILED: "模型调用失败，本批结果未完成。",
   REVIEW_SKILL_INVALID: "合同审查技能读取或格式无效。",
   REVIEW_SKILL_REQUIRED: "请先加载适用的合同审查技能。",
+  REVIEW_SCENE_INVALID: "场景选择、原文证据或适用条件未通过校验，请重新核对。",
+  REVIEW_SCENE_REQUIRED: "请先读取合同并完成场景识别。",
+  REVIEW_SCENE_UNSUPPORTED: "当前没有适配该合同的审查场景，请核对合同类型。",
+  REVIEW_SCENE_UNCERTAIN: "场景尚不能确定，请补充或核对材料后重新审查。",
+  REVIEW_SCENE_UNRESOLVED: "本次未完成场景识别，尚未开始合同审查。",
+  REVIEW_AUDIT_INCOMPLETE: "独立复核尚未完成；主审及已有复核意见已保留。",
+  REVIEW_PRIMARY_INCOMPLETE: "主审尚未形成有效结论，独立复核未开始。",
   REVIEW_SOURCE_UNAVAILABLE: "请求的依据不属于本次可用来源。",
   REVIEW_PROGRESS_FAILED: "任务进度保存失败，本次审查已停止。",
   REVIEW_DOCUMENT_INVALID: "文件无效或包含暂不支持的结构；请改用基础 DOCX 或 UTF-8 TXT。",
@@ -28,7 +40,15 @@ const messages: Record<string, string> = {
   AI_UPSTREAM_ERROR: "模型服务暂时不可用。",
   AI_REQUEST_REJECTED: "模型服务拒绝请求，请检查模型、参数或账户余额。",
   AI_RESPONSE_INVALID: "模型响应无效。",
-  AI_OUTPUT_INCOMPLETE: "模型回答被截断、拒绝或未正常结束。",
+  AI_OUTPUT_TRUNCATED: "模型输出达到长度上限，本批结果未采用；已提交结论保留，可在剩余预算内继续审查。",
+  AI_OUTPUT_REFUSED: "模型服务拒绝生成或触发内容过滤，本批未完成；请核对材料与服务限制。",
+  AI_OUTPUT_INCOMPLETE: "模型未按预期结束，本批结果未采用；请查看任务记录。",
+}
+
+export function incompleteOutput(finishReason: unknown, refusal?: unknown): ReviewError {
+  if (refusal || finishReason === "content_filter") return new ReviewError("AI_OUTPUT_REFUSED")
+  if (finishReason === "length") return new ReviewError("AI_OUTPUT_TRUNCATED")
+  return new ReviewError("AI_OUTPUT_INCOMPLETE")
 }
 
 export class ReviewError extends Error {

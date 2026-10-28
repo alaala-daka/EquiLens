@@ -1,0 +1,8 @@
+{
+  "scope": "预先固定的合成场景识别检查，不评价法律审查准确率",
+  "cases": [
+    { "file": "scene-mep-contract.txt", "expectedStatus": "matched", "expectedSceneId": "mep-sub-2026" },
+    { "file": "scene-unsupported.txt", "expectedStatus": "unsupported", "expectedSceneId": null },
+    { "file": "scene-uncertain.txt", "expectedStatus": "needs-confirmation", "expectedSceneId": null }
+  ]
+}
