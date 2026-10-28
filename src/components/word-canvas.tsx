@@ -6,11 +6,12 @@ import "superdoc/style.css"
 import { Button } from "@/components/ui/button"
 import { createEngineLoad } from "@/lib/documents/engine-lifecycle"
 import type { EngineState } from "@/lib/documents/editor-session"
-import { createWordSerializer, editorText, WordExportTimeout } from "@/lib/documents/serialize"
+import { createWordSerializer, editorText, editorParagraphs, WordExportTimeout } from "@/lib/documents/serialize"
+import { docxFromParagraphs } from "@/lib/documents/docx"
 import { editorFocusShortcut } from "@/lib/documents/editor-keyboard"
 import { validateDocx } from "@/lib/documents/validate"
 
-export type WordCanvasHandle = { serialize: () => Promise<Blob> }
+export type WordCanvasHandle = { serialize: () => Promise<Blob>; cleanDocx: () => Promise<Blob> }
 
 export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChange, keyboardHelpId, keyboardBlocked, controlsDisabled, onFocusShortcut, ref }: {
   initialBlob: Blob
@@ -42,6 +43,10 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
     async serialize() {
       if (!engine.current) throw new Error("文档尚未就绪。")
       return engine.current.serialize()
+    },
+    async cleanDocx() {
+      if (!engine.current) throw new Error("文档尚未就绪。")
+      return engine.current.cleanDocx()
     },
   }), [])
 
@@ -145,6 +150,12 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
           if (failure instanceof WordExportTimeout && current()) fail(failure.message)
           throw failure
         }
+      },
+      async cleanDocx() {
+        if (disposed || !load.isCurrent() || !ready || engine.current !== session || !instance?.activeEditor) {
+          throw new Error("文档尚未就绪。")
+        }
+        return docxFromParagraphs(editorParagraphs(instance.activeEditor.getJSON()))
       },
     }
     engine.current = session

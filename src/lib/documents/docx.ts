@@ -23,6 +23,24 @@ export function blankDocx(): Blob {
   return new Blob([prepareDocxBytes(zipSync(files)) as Uint8Array<ArrayBuffer>], { type: DOCX_TYPE })
 }
 
+/**
+ * 仅保留正文的显式降级：不复制图片、页眉页脚、域、修订、文本框或合并单元格。
+ * 调用方必须先向用户说明格式会丢失；不能用于静默覆盖原文档。
+ */
+export async function docxFromParagraphs(paragraphs: readonly string[]): Promise<Blob> {
+  if (paragraphs.length > 10000) throw new Error("正文段落过多，无法仅保留正文另存。")
+  const clean = paragraphs.map(text => text.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, ""))
+  if (clean.join("").length > 1_000_000) throw new Error("正文过长，无法仅保留正文另存。")
+  const xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+  const escape = (text: string) => text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+  const body = clean.map(text => text ? `<w:p><w:r><w:t xml:space="preserve">${escape(text)}</w:t></w:r></w:p>` : "<w:p/>").join("")
+  const files = unzipSync(new Uint8Array(await blankDocx().arrayBuffer()))
+  files["word/document.xml"] = strToU8(`${xml}<w:document xmlns:w="${wordNamespace}"><w:body>${body || "<w:p/>"}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`)
+  const prepared = prepareDocxBytes(zipSync(files))
+  validateDocxBytes(prepared, clean.join(""))
+  return new Blob([prepared as Uint8Array<ArrayBuffer>], { type: DOCX_TYPE })
+}
+
 // Engine working copy only: valid minimal OOXML can omit styles and document rels.
 // Originals and previously saved bytes are never replaced by this preparation.
 export function prepareDocxBytes(bytes: Uint8Array) {

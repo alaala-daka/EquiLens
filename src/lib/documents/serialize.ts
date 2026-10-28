@@ -37,3 +37,14 @@ export function editorText(value: unknown): string {
   if (node.type === "text") return node.text ?? ""
   return node.content?.map(editorText).join("") ?? ""
 }
+
+/** 按顶层块保留段落边界，供“仅保留正文另存”重建 DOCX。 */
+export function editorParagraphs(value: unknown): string[] {
+  if (!value || typeof value !== "object") return []
+  const root = value as { content?: unknown[] }
+  if (!Array.isArray(root.content)) return []
+  return root.content.map(block => {
+    const text = editorText(block)
+    return text.replace(/\r\n?/g, "\n").replace(/\n+$/g, "")
+  })
+}
