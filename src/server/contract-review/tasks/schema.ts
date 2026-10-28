@@ -1,12 +1,13 @@
 import { z } from "zod"
 import { daySchema, letterPlanSchema } from "../../document-agent/schema"
 import { sceneIds } from "../../../../tools/contract-review/src/scenes"
+import { normalizeRegion } from "../../../lib/contract-reviews/regions"
 
 export const submitReviewSchema = z.object({
   documentId: z.uuid(), revisionId: z.uuid(),
   task: z.enum(["contract-review", "payment-reconciliation", "evidence-organization", "collection-letter"]).optional(), asOf: daySchema.optional(),
   letterPlan: letterPlanSchema.optional(), paymentTaskId: z.uuid().optional(), evidenceTaskId: z.uuid().optional(),
-  context: z.object({ scene: z.enum(["auto", ...sceneIds]), role: z.literal("专业分包人"), region: z.string().trim().max(100) }).strict(),
+  context: z.object({ scene: z.enum(["auto", ...sceneIds]), role: z.literal("专业分包人"), region: z.string().trim().max(100).transform(normalizeRegion) }).strict(),
   sceneSource: z.literal("user").optional(), sceneSourceTaskId: z.uuid().optional(), sceneReason: z.string().trim().min(1).max(500).optional(),
   externalProcessingConsent: z.literal(true), unreviewedMaterialsConsent: z.boolean(), configurationId: z.string().length(64),
   generateRevision: z.boolean().optional(),

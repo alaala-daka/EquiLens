@@ -291,7 +291,6 @@ export function Workbench() {
           <ScaleIcon className="size-5" />
           衡鉴 <span className="font-normal text-muted-foreground">EquiLens</span>
         </div>
-        <Button variant="link" asChild><a href="/source" target="_blank" rel="noreferrer">源代码</a></Button>
       </header>
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col p-6">
         <DocumentSessionDialog request={confirmation} onDecision={decide} />

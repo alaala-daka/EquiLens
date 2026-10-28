@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { useState } from "react"
+import { createContext, useContext, useState } from "react"
 import type { ReviewResult } from "@/lib/contract-reviews/types"
 import { createRevisionTask } from "@/lib/contract-reviews/client"
 import { CATEGORY_LABELS, compactText, getReportView } from "../../tools/contract-review/src/presentation"
@@ -27,23 +27,42 @@ function ExportReport({ result }: { result: ReviewResult }) {
 }
 
 type Finding = ReviewResult["findings"][number]
+export type CitationLocator = (paragraphIndex: number, quote: string) => Promise<boolean>
+export const CitationLocatorContext = createContext<CitationLocator | null>(null)
 function Citation({ result, index, quote }: { result: ReviewResult; index: number; quote: string }) {
+  const locate = useContext(CitationLocatorContext)
+  const [open, setOpen] = useState(false)
+  const [locateError, setLocateError] = useState("")
   const paragraph = result.paragraphs.find(item => item.index === index)
   const offset = paragraph?.text.indexOf(quote) ?? -1
-  return <AlertDialog>
+  return <AlertDialog open={open} onOpenChange={setOpen}>
     <AlertDialogTrigger asChild><Button type="button" variant="link" className="h-auto px-0">查看第 {index + 1} 段原文</Button></AlertDialogTrigger>
     <AlertDialogContent className="max-h-svh overflow-y-auto">
       <AlertDialogHeader>
         <AlertDialogTitle>引用原文 · 第 {index + 1} 段</AlertDialogTitle>
-        <AlertDialogDescription>保存版本：{result.input.documentVersionId ?? "未标注"}。解析快照：{result.input.parseSnapshotId ?? "未标注"}。</AlertDialogDescription>
+        <AlertDialogDescription>来自本次保存版本的解析原文。</AlertDialogDescription>
       </AlertDialogHeader>
       {paragraph?.table && <p className="text-sm text-muted-foreground">表 {paragraph.table.index}，第 {paragraph.table.row} 行，第 {paragraph.table.column} 列</p>}
       {paragraph && offset >= 0 ? <blockquote className="whitespace-pre-wrap break-words border-l-2 pl-4 text-sm">
         {paragraph.text.slice(0, offset)}<mark>{paragraph.text.slice(offset, offset + quote.length)}</mark>{paragraph.text.slice(offset + quote.length)}
       </blockquote> : <p role="alert" className="text-sm text-destructive">引文与保存的解析快照不匹配。</p>}
-      <AlertDialogFooter><AlertDialogCancel>关闭</AlertDialogCancel></AlertDialogFooter>
+      {locateError && <p role="alert" className="text-sm text-destructive">{locateError}</p>}
+      <AlertDialogFooter>
+        {locate && <Button type="button" variant="outline" onClick={async () => {
+          setLocateError("")
+          if (await locate(index, quote)) setOpen(false)
+          else setLocateError("当前正文已变化，无法定位到该引文。")
+        }}>在正文中定位</Button>}
+        <AlertDialogCancel>关闭</AlertDialogCancel>
+      </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
+}
+function severityOrder(severity: Finding["severity"]): number {
+  return severity === "重大关注" ? 0 : severity === "一般关注" ? 1 : 2
+}
+function SeverityBadge({ severity }: { severity: Finding["severity"] }) {
+  return <Badge variant={severity === "重大关注" ? "destructive" : severity === "一般关注" ? "default" : "secondary"}>{severity.replace("关注", "")}</Badge>
 }
 function FindingDetail({ finding, result, revision, revisionAudit }: { finding: Finding; result: ReviewResult; revision?: NonNullable<ReviewResult["collaboration"]>["revision"]; revisionAudit?: NonNullable<ReviewResult["collaboration"]>["revisionAudit"] }) {
   const citations = finding.citations ?? (finding.quote ? [{ paragraphIndex: finding.paragraphIndex, quote: finding.quote }] : [])
@@ -53,15 +72,15 @@ function FindingDetail({ finding, result, revision, revisionAudit }: { finding: 
   const edits = revision?.edits.filter(item => item.ruleIds.includes(finding.ruleId)) ?? []
   const confirmations = getReportView(result).confirmations.filter(item => item.ruleIds.includes(finding.ruleId)).map(item => item.text)
   return <article className="flex flex-col gap-3">
+    <div className="flex flex-wrap items-center gap-2"><SeverityBadge severity={finding.severity} />{audit?.outcome === "需人工核对" && <Badge variant="outline">复查有疑点</Badge>}{finding.kind === "待核实" && <Badge variant="outline">待核实</Badge>}</div>
     <p className="break-words text-sm font-medium">{compactText(finding.risk, 80)}</p>
     {finding.impact && <p className="break-words text-sm">风险影响：{finding.impact}</p>}
     <p className="break-words text-sm">修改建议：{finding.suggestion}</p>
     {decision && <p className="text-sm">修订状态：{revisionCheck?.outcome === "存在问题" ? "核对发现问题" : revisionCheck?.outcome === "需确认" || decision.action === "pending" ? "需要确认" : revisionCheck?.outcome === "已处理" ? "已核对，待人工审核" : decision.action === "changed" ? "已生成建议，待核对" : "保留原文"}</p>}
-    {audit?.outcome === "需人工核对" && <p className="text-sm">AI 复查对此项有疑问，请展开核对。</p>}
     <Collapsible className="flex flex-col gap-2">
       <CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm" className="w-fit">展开原文、解释与依据<span className="sr-only">：{finding.category} · {finding.ruleId}</span></Button></CollapsibleTrigger>
       <CollapsibleContent className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{finding.severity}</Badge><span className="text-xs text-muted-foreground">{finding.ruleId} · {finding.reviewStatus}</span></div>
+        <div className="flex flex-wrap items-center gap-2"><span className="text-xs text-muted-foreground">{finding.ruleId} · {finding.reviewStatus}</span></div>
         <p className="whitespace-pre-wrap break-words text-sm">具体问题：{finding.risk}</p>
         {finding.quote && <blockquote className="whitespace-pre-wrap break-words border-l-2 pl-4 text-sm">{finding.quote}</blockquote>}
         {finding.kind === "缺失条款" && !finding.quote && <p className="text-sm">已读取的合同内容中未找到对应条款。</p>}
@@ -164,7 +183,7 @@ function RevisionPlanner({ result, taskId, onSessionUnavailable, onCreated }: { 
       </li>)}</ul>
       <Button type="button" disabled={submitting || !selected.length} onClick={() => void submit()}>
         {submitting ? "正在创建修订任务" : `生成修订建议稿（已选 ${selected.length} 项）`}</Button>
-      <p className="text-xs text-muted-foreground">只处理所选问题的修订与核对，调用和 token 少于整份修订。</p>
+      <p className="text-xs text-muted-foreground">只处理所选问题的修订与核对，处理时间和调用次数少于整份修订。</p>
     </>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
   </section>
@@ -189,19 +208,30 @@ function CompletedReviewReport({ result, revision, revisionAudit }: { result: Re
   const view = getReportView(result)
   const candidate = result.sceneCandidates?.find(item => item.id === result.sceneSelection?.sceneId)
   const clear = view.noIssueFindings
+  const groups = [...view.groups].sort((a, b) => severityOrder(a.findings[0].severity) - severityOrder(b.findings[0].severity))
+  const severityCounts = { 重大: 0, 一般: 0, 提示: 0 }
+  for (const finding of groups.flatMap(group => group.findings)) {
+    if (finding.severity === "重大关注") severityCounts.重大++
+    else if (finding.severity === "一般关注") severityCounts.一般++
+    else severityCounts.提示++
+  }
   return <div className="flex flex-col gap-6">
     <header className="space-y-2">
       <h3 className="text-base font-semibold">合同审查报告</h3>
       <p className="text-sm text-muted-foreground">{candidate?.label ?? result.input.context.projectType ?? "合同审查"} · 审查立场：{result.input.context.role ?? "未确认"}</p>
       <p className="text-sm font-medium">{view.summary}</p>
+      <p className="text-sm">重大 {severityCounts.重大} 项 · 一般 {severityCounts.一般} 项 · 提示 {severityCounts.提示} 项</p>
       <p className="text-sm">{view.outcomeNotice}</p>
-      {view.incomplete && !view.unfinished.length && !view.auditNotice && <p className="text-sm">审查尚未完成，请查看检查进度。</p>}
-      {view.auditNotice && <p role="status" className="text-sm">{view.auditNotice}</p>}
       {view.scopeNotes.map(note => <p role="note" className="text-sm" key={note}>{note}</p>)}
     </header>
-    {view.groups.length > 0 && <section className="flex flex-col gap-4"><h3 className="text-sm font-semibold">优先处理的问题</h3>
-      <p className="text-xs text-muted-foreground">以下展示各类优先项，展开可查看其余问题。</p>
-      {view.groups.map((group, index) => <section key={group.category} className="flex flex-col gap-3">
+    {(view.incomplete || view.auditNotice) && <div role="status" className="space-y-1 rounded-md border bg-muted/40 p-3 text-sm">
+      <p className="font-medium">{view.incomplete ? "阶段性结果" : "审查说明"}</p>
+      {view.incomplete && <p>审查尚未全部完成，以下问题可能继续变化。</p>}
+      {view.auditNotice && <p>{view.auditNotice}</p>}
+    </div>}
+    {groups.length > 0 && <section className="flex flex-col gap-4"><h3 className="text-sm font-semibold">审查发现</h3>
+      <p className="text-xs text-muted-foreground">按风险从高到低展示；展开后可查看同类的其余问题。</p>
+      {groups.map((group, index) => <section key={group.category} className="flex flex-col gap-3">
         <h4 className="text-sm font-semibold">{index + 1}. {CATEGORY_LABELS[group.category]}</h4>
         <FindingDetail finding={group.findings[0]} result={result} revision={revision} revisionAudit={revisionAudit} />
         {group.findings.length > 1 && <Collapsible>
@@ -210,16 +240,12 @@ function CompletedReviewReport({ result, revision, revisionAudit }: { result: Re
         </Collapsible>}
       </section>)}
     </section>}
-    {result.findings.some(item => item.kind === "待核实" && view.confirmations.some(note => note.ruleIds.includes(item.ruleId))) && <section className="space-y-3"><h3 className="text-sm font-semibold">需要进一步确认</h3>
-      {result.findings.filter(item => item.kind === "待核实" && view.confirmations.some(note => note.ruleIds.includes(item.ruleId))).map(item => <FindingDetail key={item.ruleId} finding={item} result={result} revision={revision} revisionAudit={revisionAudit} />)}
-    </section>}
     <section className="flex flex-col gap-3"><h3 className="text-sm font-semibold">{view.incomplete ? "尚未完成的检查" : "检查记录"}</h3>
       {view.unfinishedGroups.map(item => <p className="text-sm" key={item.label}>{item.label}：还有 {item.count} 项检查未形成有效结论。</p>)}
-      {view.auditNotice && <p className="text-sm">{view.auditNotice}</p>}
       {result.errors.filter(item => !["REVIEW_AUDIT_INCOMPLETE", "REVIEW_PRIMARY_INCOMPLETE"].includes(item.code)).map((item, index) => <p role="alert" key={index} className="text-sm text-destructive">{item.message}</p>)}
       <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm">展开检查进度与停止原因</Button></CollapsibleTrigger>
         <CollapsibleContent className="space-y-4 pt-3">
-          <p className="break-words text-xs text-muted-foreground">报告：{result.reviewId} · 保存版本：{result.input.documentVersionId ?? "未标注"} · 解析快照：{result.input.parseSnapshotId ?? "未标注"}</p>
+          <p className="break-words text-xs text-muted-foreground">本报告基于提交时的保存版本生成。</p>
           <SceneIdentification result={result} />
           {result.agent && <p className="text-sm">已读正文 {result.agent.readParagraphIndexes.length} / {result.paragraphs.length} 段</p>}
           <IndependentAudit result={result} />

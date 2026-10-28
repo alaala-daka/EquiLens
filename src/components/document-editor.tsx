@@ -51,6 +51,10 @@ function createEditorBridge() {
       if (!canvas) throw new Error("文档尚未就绪。")
       return canvas.cleanDocx()
     },
+    async locate(paragraphIndex: number, quote: string) {
+      if (!canvas) return false
+      return canvas.locate(paragraphIndex, quote)
+    },
     onSaved(saved: OpenDocument) { callbacks?.onSaved(saved) },
     onBack() { callbacks?.onBack() },
     onCopy(saved: OpenDocument) { callbacks?.onCopy(saved) },
@@ -171,6 +175,7 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
     return result
   }, [bridge, session])
 
+  const locateCitation = useCallback(async (paragraphIndex: number, quote: string) => bridge.locate(paragraphIndex, quote), [bridge])
   const executeLeave = async (target: LeaveTarget) => {
     if (session.getSnapshot().phase !== "idle") return
     if (target === "list") bridge.onBack()
@@ -249,7 +254,6 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
         <Input ref={titleInput} aria-label="文档标题" className="min-w-0 flex-1 basis-full md:basis-auto md:max-w-sm" value={title} disabled={busy} inert={busy} onChange={event => session.editTitle(event.target.value)} placeholder="未命名文档" />
         <Badge variant="outline" role="status" aria-live="polite">{status}</Badge>
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
-          <Button variant="link" asChild><a href="/source" target="_blank" rel="noreferrer">源代码</a></Button>
           <Button variant="outline" disabled={!ready || busy || !dirty || conflict} onClick={() => void run("save")}><SaveIcon />保存</Button>
           <Button variant="outline" disabled={!ready || busy || conflict} onClick={() => void run("export")}><DownloadIcon />导出 Word</Button>
         </div>
@@ -285,7 +289,7 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
               <Tabs value={agentTab} onValueChange={setAgentTab} className="flex-1">
                 <TabsList className="mx-4 mt-3"><TabsTrigger value="review">业务处理</TabsTrigger><TabsTrigger value="notes">备注</TabsTrigger></TabsList>
                 <TabsContent value="review" forceMount hidden={agentTab !== "review"}>
-                  <ContractReviewPanel key={state.saved.document.id + ":" + state.saved.revision.id} documentId={state.saved.document.id} revisionId={state.saved.revision.id} dirty={dirty} busy={busy || !ready || conflict} initialTaskId={initialReviewTaskId} onSessionUnavailable={onSessionUnavailable} />
+                  <ContractReviewPanel key={state.saved.document.id + ":" + state.saved.revision.id} documentId={state.saved.document.id} revisionId={state.saved.revision.id} dirty={dirty} busy={busy || !ready || conflict} initialTaskId={initialReviewTaskId} onSessionUnavailable={onSessionUnavailable} onLocateCitation={locateCitation} />
                 </TabsContent>
                 <TabsContent value="notes" forceMount hidden={agentTab !== "notes"} className="p-4" inert={busy}><InputGroup>
                   <InputGroupTextarea ref={agentInput} aria-label="文档备注" placeholder="输入备注…" value={prompt} disabled={busy} onChange={event => session.editPrompt(event.target.value)} />
