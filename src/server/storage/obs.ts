@@ -43,11 +43,24 @@ export function assertObjectKey(key: string): void {
     throw new ObjectStoreError("INVALID_KEY", "对象标识无效。")
   }
   const parts = key.split("/")
-  if (parts.length !== 7 || parts[0] !== "projects" || parts[2] !== "materials" || parts[4] !== "versions") {
+  if (parts.length === 5 && parts[0] === "projects" && parts[2] === "exports" && idPattern.test(parts[1]) && idPattern.test(parts[3]) && sha256Pattern.test(parts[4])) return
+  if (parts.length !== 7 || parts[0] !== "projects" || !["materials", "documents"].includes(parts[2]) || parts[4] !== "versions") {
     throw new ObjectStoreError("INVALID_KEY", "对象标识无效。")
   }
   for (const part of [parts[1], parts[3], parts[5]]) if (!idPattern.test(part)) throw new ObjectStoreError("INVALID_KEY", "对象标识无效。")
   if (!sha256Pattern.test(parts[6])) throw new ObjectStoreError("INVALID_KEY", "对象标识无效。")
+}
+
+export function documentObjectKey(input: { projectId: string; documentId: string; versionId: string; sha256: string }): string {
+  const key = `projects/${input.projectId}/documents/${input.documentId}/versions/${input.versionId}/${input.sha256}`
+  assertObjectKey(key)
+  return key
+}
+
+export function exportObjectKey(input: { projectId: string; exportId: string; sha256: string }): string {
+  const key = `projects/${input.projectId}/exports/${input.exportId}/${input.sha256}`
+  assertObjectKey(key)
+  return key
 }
 
 function digest(bytes: Uint8Array): string {

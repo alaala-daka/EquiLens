@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { Connection, Database, Row } from "../database/connection"
 import { BusinessError } from "../projects/errors"
+import { UploadIntents } from "./upload-intents"
 import type {
   CoverageStatus, MaterialFormat, MaterialRecord, MaterialSourceKind, MaterialSummary, MaterialVersionRecord,
   ParseCoverage, ParseSnapshotRecord, SourceFragmentRecord,
@@ -121,6 +122,13 @@ export class MaterialRepository {
 
   private timestamp() {
     return this.now().toISOString()
+  }
+
+  uploadIntents(): UploadIntents { return new UploadIntents(this.database, this.now) }
+
+  async objectReferenced(objectKey: string): Promise<boolean> {
+    const result = await this.database.transaction(c => c.query("SELECT id FROM equilens_material_versions WHERE object_key=$1 LIMIT 1", [objectKey]))
+    return result.rows.length > 0
   }
 
   newId(): string {

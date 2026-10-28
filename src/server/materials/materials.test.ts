@@ -13,7 +13,7 @@ import { applyProjectSchema } from "../projects/schema"
 import { ProjectService } from "../projects/service"
 import { createFaultyObjectStore, createSyntheticObjectStore, type PrivateObjectStore, type SyntheticObjectStore } from "../storage/obs"
 import { MaterialRepository } from "./repository"
-import { applyMaterialSchema } from "./schema"
+import { applyMaterialSchema, uploadIntentStatements } from "./schema"
 import { MaterialService } from "./service"
 
 const site = "https://equilens.test"
@@ -79,6 +79,7 @@ async function setup(store: PrivateObjectStore = createSyntheticObjectStore()) {
   await migrateBusiness(database)
   await applyProjectSchema(database)
   await applyMaterialSchema(database)
+  await database.transaction(async c => { for (const sql of uploadIntentStatements) await c.query(sql) })
   const clock = new Date("2026-10-28T00:00:00Z")
   const auth = new AuthService(database, () => clock.getTime())
   const access = createAccountAccess({ services: () => auth, config })
