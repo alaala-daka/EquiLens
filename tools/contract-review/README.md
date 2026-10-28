@@ -56,7 +56,7 @@ const result = await reviewTextWithAgent({
   parseSnapshotId: "由调用方提供的真实解析快照ID",
   context: sceneContext(defaultSceneId, "上海"),
   mode: "debug",
-  complete: true,
+  complete: coverageComplete(parsed.coverage), // 由解析覆盖派生（coverageComplete：关键嵌图、修订标记、文本框、复杂结构全零才为 true）
 })
 ```
 
@@ -112,7 +112,7 @@ standalone 打包同时复制 skills/ 与 rules/。依赖锁定为 ai@7.0.148、
       documentTitle: "合成联调合同",
       context: sceneContext(defaultSceneId, "上海"),
       mode: "debug",
-      complete: true,
+      complete: coverageComplete(parsed.coverage), // 由解析覆盖派生（coverageComplete：关键嵌图、修订标记、文本框、复杂结构全零才为 true）
     })
 
 这是一次真实模型调用，会发送所给合同文字并产生费用。不要在浏览器组件导入或调用。
@@ -129,7 +129,7 @@ Next.js 自动读取本机 .env.local；字段见根目录 .env.example。
 | documentTitle | 可选，显示标题 |
 | context | 调用方已明确确认的场景标识（scene）、立场、项目类型、地域；scene 是规则判定依据，缺失时会排除带适用场景的规则，不能从甲乙方或文字猜测 |
 | documentVersionId / parseSnapshotId | 可选，集成时传入实际已保存版本与快照 ID |
-| complete | 输入解析是否完整，默认 true；后端必须根据实际解析状态填写 |
+| complete | 输入解析是否完整，由解析覆盖派生（coverageComplete：关键嵌图、修订标记、文本框、复杂结构全零才为 true）；后端必须根据实际解析状态填写 |
 | mode | published 或 debug，默认 published；由可信后端固定，不能直接使用客户端传入的开关 |
 
 纯编排函数 reviewContract 支持 documentText 或 paragraphs 二选一。

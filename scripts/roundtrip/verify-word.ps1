@@ -29,20 +29,9 @@ try {
   exit 1
 }
 
-function Get-Stories($doc) {
-  $text = @{}
-  foreach ($story in $doc.StoryRanges) {
-    $kind = [string]$story.StoryType
-    $value = $story.Text
-    if ($text.ContainsKey($kind)) { $text[$kind] += $value } else { $text[$kind] = $value }
-  }
-  return $text
-}
-
 function Test-Expect($path, $expect) {
   $doc = $word.Documents.Open($path, $false, $true)  # ReadOnly
   try {
-    $stories = Get-Stories $doc
     $body = [string]$doc.Content.Text
     $headers = @()
     foreach ($section in $doc.Sections) {
