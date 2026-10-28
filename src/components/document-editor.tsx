@@ -258,7 +258,7 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
               <header className="flex shrink-0 items-center justify-between border-b px-4 py-3"><h2 className="flex items-center gap-2 text-sm font-medium"><BotIcon className="size-4" />Agent</h2></header>
               <div className="flex min-w-0 shrink-0 items-start gap-2 border-b px-4 py-3 text-xs text-muted-foreground"><FileTextIcon className="size-3.5 shrink-0" /><span className="min-w-0 whitespace-normal break-all">{documentTitle(title)}</span></div>
               <Tabs value={agentTab} onValueChange={setAgentTab} className="flex-1">
-                <TabsList className="mx-4 mt-3"><TabsTrigger value="review">合同审查</TabsTrigger><TabsTrigger value="notes">备注</TabsTrigger></TabsList>
+                <TabsList className="mx-4 mt-3"><TabsTrigger value="review">业务处理</TabsTrigger><TabsTrigger value="notes">备注</TabsTrigger></TabsList>
                 <TabsContent value="review" forceMount hidden={agentTab !== "review"}>
                   <ContractReviewPanel documentId={state.saved.document.id} revisionId={state.saved.revision.id} dirty={dirty} busy={busy || !ready || conflict} initialTaskId={initialReviewTaskId} onSessionUnavailable={onSessionUnavailable} />
                 </TabsContent>

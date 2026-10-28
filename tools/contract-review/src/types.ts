@@ -3,6 +3,7 @@ import type { SceneCandidate } from "./scenes"
 import type { AuditResult } from "./agent/audit"
 import type { RoutingResult } from "./agent/router"
 import type { RevisionState, RevisionAudit, RevisionRepair } from "./revision"
+import type { DocumentAnalysis } from "../../../src/lib/document-agent/types"
 
 export type Collaboration = {
   version: "multi-agent-v1" | "multi-agent-revision-v1" | "revision-only-v1"; manifestSha256: string
@@ -176,6 +177,7 @@ export type CategoryReport = {
 }
 
 export type ReviewResult = {
+  documentAnalysis?: DocumentAnalysis
   schemaVersion: 1
   reviewId: string
   createdAt: string

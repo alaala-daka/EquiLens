@@ -9,6 +9,8 @@ import { loadSceneBundles } from "../../../../tools/contract-review/src/bundles"
 import type { ReviewAvailability, SubmitReview } from "../../../lib/contract-reviews/types"
 import { reviewTaskConfig } from "./config"
 import { ReviewTaskRepository } from "./repository"
+import { documentSkill } from "../../document-agent/skills"
+import { resolveLetterSources } from "../../document-agent/letter-sources"
 
 const state = globalThis as typeof globalThis & { equilensReviewTasks?: Promise<ReviewTaskRepository> }
 export function reviewTaskRepository() {
@@ -34,20 +36,46 @@ async function resources() {
     workflows: ["multi-agent-v1", "multi-agent-revision-v1"], bundles: sceneBundles.map(bundle => bundle.sha256) })).digest("hex")
   return { config, pack, skill, packSha256, configurationId, sceneCandidates, sceneBundles }
 }
+function documentResources() {
+  const config = reviewTaskConfig(), skills = [documentSkill("payment-reconciliation"), documentSkill("evidence-organization"), documentSkill("collection-letter")]
+  const maxCalls = Math.min(3, config.maxCalls), maxKnownTokens = Math.min(30000, config.maxKnownTokens)
+  const configurationId = createHash("sha256").update(JSON.stringify({ workflow: "document-agent-v1", config, maxCalls, maxKnownTokens, skills: skills.map(skill => skill.sha256) })).digest("hex")
+  return { config, configurationId, maxCalls, maxKnownTokens }
+}
 export async function reviewAvailability(): Promise<ReviewAvailability> {
+  let documentTasks: ReviewAvailability["documentTasks"], documentConfig: ReturnType<typeof reviewTaskConfig> | undefined
+  try {
+    const value = documentResources(); documentConfig = value.config
+    documentTasks = { ready: value.maxCalls >= 2, configurationId: value.configurationId, maxCalls: value.maxCalls, maxKnownTokens: value.maxKnownTokens,
+      ...(value.maxCalls < 2 ? { error: "资料整理和独立核对至少需要两次请求预算。" } : {}) }
+  } catch (failure) { documentTasks = { ready: false, configurationId: "", maxCalls: 3, maxKnownTokens: 30000, error: safeError(failure).message } }
   try {
     const { config, configurationId } = await resources()
-    return { ready: true, mode: config.mode, model: config.model, providerHost: new URL(config.baseURL).host, retentionDays: config.retentionDays,
+    return { ready: true, documentTasks, mode: config.mode, model: config.model, providerHost: new URL(config.baseURL).host, retentionDays: config.retentionDays,
       maxKnownTokens: config.maxKnownTokens, configurationId }
   } catch (failure) {
-    return { ready: false, mode: process.env.AI_REVIEW_MODE === "debug" || (process.env.NODE_ENV !== "production" && !process.env.AI_REVIEW_MODE) ? "debug" : "published",
-      model: "", providerHost: "", retentionDays: 0, maxKnownTokens: 0, configurationId: "", error: safeError(failure).message }
+    return { ready: false, documentTasks, mode: documentConfig?.mode ?? "published",
+      model: documentConfig?.model ?? "", providerHost: documentConfig ? new URL(documentConfig.baseURL).host : "", retentionDays: documentConfig?.retentionDays ?? 0, maxKnownTokens: documentConfig?.maxKnownTokens ?? 0, configurationId: "", error: safeError(failure).message }
   }
 }
 export async function submitReview(owner: string, key: string, request: SubmitReview, contextId: string) {
   const repository = await reviewTaskRepository()
   const prior = await repository.existing(owner, key, request, contextId)
   if (prior) return prior
+  if (request.task && request.task !== "contract-review") {
+    const { config, configurationId, maxCalls, maxKnownTokens } = documentResources()
+    if (request.configurationId !== configurationId || maxCalls < 2 || !request.asOf || request.generateRevision) throw new StoreError(409, "请刷新配置并确认核对截止日。")
+    const revision = await repository.readRevision(owner, request.documentId, request.revisionId, contextId)
+    const skill = documentSkill(request.task)
+    if (request.task === "collection-letter" && !request.letterPlan) throw new StoreError(422, "请确认催款函拟发送安排。")
+    const { sources: letterSources, notAfter } = request.task === "collection-letter" ? await resolveLetterSources(repository, owner, request, contextId) : { sources: {}, notAfter: undefined }
+    return repository.create(owner, key, request, { ...request, documentContextId: contextId, title: revision.title, revisionHash: revision.hash,
+      context: { role: request.context.role }, mode: config.mode, model: config.model, baseURL: config.baseURL,
+      maxPromptChars: Math.min(config.maxPromptChars, 60000), maxKnownTokens, consentAt: new Date().toISOString(), workflow: "document-agent-v1", skill,
+      ...(request.task === "collection-letter" ? { letterSources } : {}),
+      packSha256: skill.sha256, pack: { manifest: { version: skill.version, name: skill.name, status: "草拟", ruleFiles: [], sourceFiles: [] }, rules: [], sources: [], warnings: [] },
+    }, maxCalls, config.retentionDays, notAfter)
+  }
   const { config, pack, skill, packSha256, configurationId, sceneCandidates, sceneBundles } = await resources()
   if (configurationId !== request.configurationId) throw new StoreError(409, "模型、规则或保留配置已变化，请刷新后重新确认。")
   if (config.mode === "debug" && !request.unreviewedMaterialsConsent) throw new StoreError(422, "请确认本次使用未核对的审查资料。")
@@ -64,6 +92,7 @@ export async function submitReview(owner: string, key: string, request: SubmitRe
 export async function submitRevision(owner: string, key: string, sourceTaskId: string, ruleIds: string[], contextId: string) {
   const repository = await reviewTaskRepository()
   const source = await repository.sourceReview(owner, sourceTaskId, contextId)
+  if (source.input.workflow === "document-agent-v1") throw new StoreError(409, "资料整理任务不能生成合同修订稿。")
   if (source.result.collaboration?.version !== "multi-agent-v1" || source.result.sceneSelection?.status !== "matched" || !source.input.sceneBundles?.length)
     throw new StoreError(409, "原审查结果不支持生成修订稿。")
   const rules = [...new Set(ruleIds)]

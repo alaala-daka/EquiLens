@@ -1,4 +1,5 @@
 import type { Finding, ReviewResult } from "./types"
+import { documentAnalysisMarkdown } from "../../../src/lib/document-agent/report"
 import { CATEGORY_LABELS, compactText, getReportView, sortFindings } from "./presentation"
 
 const plain = (value: string): string => value.replace(/[\r\n]+/g, " ").replace(/[\\`*_[\]{}<>|]/g, "\\$&")
@@ -55,6 +56,7 @@ function auditDetails(result: ReviewResult): string[] {
 }
 
 export function toMarkdown(result: ReviewResult): string {
+  if (result.documentAnalysis) return documentAnalysisMarkdown(result.documentAnalysis, result.documentTitle, result.input.documentVersionId, result.input.parseSnapshotId)
   const selection = result.sceneSelection
   if (result.sceneCandidates && selection?.status !== "matched") return [
     "# 合同场景识别：" + plain(result.documentTitle), "",

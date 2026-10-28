@@ -8,6 +8,7 @@ import { canExportRevision } from "../../../../tools/contract-review/src/revisio
 import { renderRevisionInChild } from "../../../../tools/contract-review/src/revision-export"
 import type { ReviewTask, ReviewResult } from "../../../lib/contract-reviews/types"
 import type { ClaimedReview, ReviewTaskRepository } from "./repository"
+import { runDocumentAgent } from "../../document-agent/workflow"
 
 /**
  * 执行一次已领取的审查任务。
@@ -61,6 +62,12 @@ export async function runClaimedReview(job: ClaimedReview, overrides: RunnerOver
     // 空文档没有可审查内容，先明确失败，避免进入解析/模型阶段消耗预算。
     if (!snapshot.paragraphs.some(paragraph => paragraph.text.trim())) throw new ReviewError("REVIEW_INPUT_EMPTY")
     progress.paragraphCount = snapshot.paragraphs.length
+    if (job.input.workflow === "document-agent-v1") {
+      result = await runDocumentAgent(job, { repository, signal: controller.signal, elapsed,
+        env: overrides.env ?? { AI_BASE_URL: job.input.baseURL, AI_MODEL: job.input.model, AI_API_KEY: process.env.AI_API_KEY }, fetcher: overrides.fetcher })
+      await repository.finish(job, result, result.errors[0] ?? null, elapsed())
+      return
+    }
     const settings = {
       paragraphs: snapshot.paragraphs, complete: snapshot.complete,
       documentTitle: job.input.title, documentVersionId: job.input.revisionId, parseSnapshotId: snapshot.id,

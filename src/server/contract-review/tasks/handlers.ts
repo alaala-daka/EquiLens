@@ -127,3 +127,18 @@ export function createReviewRevisionHandler(getServices: Services) {
     } catch (failure) { return reviewFailure(failure) }
   }
 }
+
+export function createLetterDownloadHandler(getServices: Services) {
+  return async function GET(request: NextRequest, context: Context) {
+    try {
+      const services = await getServices(), { identity, contextId } = await access(request, services, "read")
+      const file = await services.repository.letterExport(identity.owner, identifier((await context.params).id), contextId)
+      await access(request, services, "read")
+      return identity.apply(new NextResponse(new Uint8Array(file.bytes), { headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(file.filename),
+        "Cache-Control": "private, no-store", "X-Document-Context": contextId, "X-Content-SHA256": file.sha256,
+      } }))
+    } catch (failure) { return reviewFailure(failure) }
+  }
+}

@@ -25,7 +25,7 @@ export async function setup(blob = blankDocx()) {
   const repository = new ReviewTaskRepository(database, sessions)
   await repository.initialize()
   const request: SubmitReview = { documentId: saved.document.id, revisionId: saved.revision.id, context: { scene: "auto", role: "专业分包人", region: "上海" }, externalProcessingConsent: true, unreviewedMaterialsConsent: true, configurationId: "0".repeat(64) }
-  const input: TaskInput = { ...request, context: { scene: "mep-sub-2026", role: "专业分包人", region: "上海" }, documentContextId: contextId, title: saved.document.title, revisionHash: saved.revision.hash,
+  const input: Exclude<TaskInput, { workflow: "document-agent-v1" }> = { ...request, context: { scene: "mep-sub-2026", role: "专业分包人", region: "上海" }, documentContextId: contextId, title: saved.document.title, revisionHash: saved.revision.hash,
     pack: testPack(), packSha256: "1".repeat(64), skill: { id: "contract-review", name: "合成", description: "合成测试", version: "test", instructions: "仅合成测试", sha256: "2".repeat(64) },
     mode: "debug", model: "synthetic", baseURL: "https://model.invalid/v1", maxPromptChars: 24000, consentAt: clock.toISOString() }
   return { token, database, sessions, repository, owner, contextId, request, input, saved,

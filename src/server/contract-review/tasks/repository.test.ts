@@ -71,6 +71,7 @@ test("AC-23: recovered attempts retain budgets and reject stale execution tokens
   try {
     await s.create()
     const first = (await s.repository.claim())!
+    assert.ok(first.input.workflow !== "document-agent-v1")
     await s.repository.reserve(first, 1, 10)
     await s.repository.release(first)
     await s.database.transaction(c => c.query("UPDATE equilens_review_tasks SET lease_until=$1 WHERE id=$2", [new Date(0).toISOString(), first.id]))
@@ -117,6 +118,7 @@ test("AC-21/23: task recovery retains catalog, scene evidence and cumulative cal
     input.sceneCandidates[0].version = "changed after submission"
     const first = (await s.repository.claim())!
     assert.equal(first.input.sceneCandidates![0].version, "1")
+    assert.ok(first.input.workflow !== "document-agent-v1")
     const paragraphs = [{ index: 0, text: "合成办公楼机电安装专业分包合同。", inTable: false }]
     const snapshot = { id: randomUUID(), paragraphs, complete: true, textSha256: createHash("sha256").update(paragraphs[0].text).digest("hex") }
     await s.repository.snapshot(first, snapshot)
@@ -129,6 +131,7 @@ test("AC-21/23: task recovery retains catalog, scene evidence and cumulative cal
     await s.repository.release(first)
     await s.database.transaction(c => c.query("UPDATE equilens_review_tasks SET lease_until=$1 WHERE id=$2", [new Date(0).toISOString(), first.id]))
     const recovered = (await s.repository.claim())!
+    assert.ok(recovered.input.workflow !== "document-agent-v1")
     assert.equal(recovered.callsUsed, 2)
     assert.deepEqual(recovered.snapshot, snapshot)
     assert.equal(recovered.checkpoint!.sceneSelection!.status, "matched")

@@ -40,10 +40,12 @@ export function createRevisionTask(id: string, ruleIds: string[], key: string, s
     body: JSON.stringify({ externalProcessingConsent: true, ruleIds }) })
 }
 
-export async function downloadRevisedContract(id: string, signal?: AbortSignal): Promise<Blob> {
+export async function downloadRevisedContract(id: string, signal?: AbortSignal): Promise<Blob> { return downloadTaskWord(id, "revision", signal) }
+export async function downloadCollectionLetter(id: string, signal?: AbortSignal): Promise<Blob> { return downloadTaskWord(id, "letter", signal) }
+async function downloadTaskWord(id: string, kind: "revision" | "letter", signal?: AbortSignal): Promise<Blob> {
   signal?.throwIfAborted()
   const expectedContext = getDocumentContext()
-  const response = await fetch("/api/contract-reviews/" + encodeURIComponent(id) + "/revision", {
+  const response = await fetch("/api/contract-reviews/" + encodeURIComponent(id) + "/" + kind, {
     headers: { "X-Document-Context": expectedContext }, signal, credentials: "same-origin", cache: "no-store",
   })
   signal?.throwIfAborted()
