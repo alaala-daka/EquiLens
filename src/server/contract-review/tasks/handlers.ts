@@ -5,7 +5,7 @@ import { StoreError } from "../../documents/errors"
 import type { DocumentSessionRepository } from "../../documents/session-repository"
 import type { ReviewAvailability, ReviewTask, SubmitReview } from "../../../lib/contract-reviews/types"
 import type { ReviewTaskRepository } from "./repository"
-import { submitReviewSchema, revisionTaskSchema } from "./schema"
+import { submitReviewSchema, revisionTaskSchema, documentRevisionSchema, documentReviewSchema } from "./schema"
 import { reviewBody, reviewFailure } from "./http"
 
 export type ReviewHttpServices = {
@@ -124,6 +124,44 @@ export function createReviewRevisionHandler(getServices: Services) {
         "Cache-Control": "private, no-store", "X-Document-Context": contextId, "X-Content-SHA256": file.sha256,
       } })
       return identity.apply(response)
+    } catch (failure) { return reviewFailure(failure) }
+  }
+}
+
+export function createDocumentRevisionsHandlers(getServices: Services) {
+  return {
+    async GET(request: NextRequest, context: Context) {
+      try {
+        const services = await getServices(), { identity, contextId } = await access(request, services, "read")
+        const value = await services.repository.documentRevisions(identity.owner, identifier((await context.params).id), contextId)
+        return await respond(request, services, value)
+      } catch (failure) { return reviewFailure(failure) }
+    },
+    async POST(request: NextRequest, context: Context) {
+      try {
+        sameOrigin(request)
+        const services = await getServices(), { identity, contextId } = await access(request, services, "review")
+        const parsed = documentRevisionSchema.safeParse(await reviewBody(request, 512 * 1024))
+        if (!parsed.success) throw new StoreError(422, "修订内容无效或缺少修改理由。")
+        const value = await services.repository.saveDocumentRevision(identity.owner, identifier((await context.params).id), contextId, parsed.data)
+        return await respond(request, services, value, 201)
+      } catch (failure) { return reviewFailure(failure) }
+    },
+  }
+}
+
+export function createDocumentReviewHandler(getServices: Services) {
+  return async function POST(request: NextRequest, context: Context & { params: Promise<{ id: string; revisionId: string }> }) {
+    try {
+      sameOrigin(request)
+      const services = await getServices(), { identity, contextId } = await access(request, services, "review")
+      const params = await context.params
+      const versionId = params.revisionId
+      if (!/^(?:machine|[0-9a-f-]{36})$/.test(versionId)) throw new StoreError(404, "找不到该结果版本。")
+      const parsed = documentReviewSchema.safeParse(await reviewBody(request))
+      if (!parsed.success) throw new StoreError(422, "复核结论或意见无效。")
+      const value = await services.repository.reviewDocumentRevision(identity.owner, identifier(params.id), contextId, versionId, parsed.data)
+      return await respond(request, services, value, 201)
     } catch (failure) { return reviewFailure(failure) }
   }
 }

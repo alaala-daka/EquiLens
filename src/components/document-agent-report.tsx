@@ -10,6 +10,7 @@ import { documentAnalysisMarkdown, formatFen } from "@/lib/document-agent/report
 import { useEffect, useRef, useState } from "react"
 import { downloadCollectionLetter } from "@/lib/contract-reviews/client"
 import { DocumentSessionError } from "@/lib/documents/client"
+import { DocumentAgentReview } from "@/components/document-agent-review"
 
 function Sources({ sources }: { sources: Citation[] }) {
   if (!sources.length) return null
@@ -57,8 +58,10 @@ export function DocumentAgentReport({ result, taskId, onSessionUnavailable }: { 
     {notes.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="link" size="sm" className="px-0">查看范围提示</Button></CollapsibleTrigger><CollapsibleContent className="space-y-2 text-sm text-muted-foreground">{notes.map(note => <p key={note}>{note}</p>)}</CollapsibleContent></Collapsible>}
     {(analysis.rejected.length > 0 || analysis.audit.checks.some(item => !item.accepted)) && <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm">查看未采用或存疑内容</Button></CollapsibleTrigger><CollapsibleContent className="space-y-2 pt-3 text-sm">{analysis.rejected.map(item => <p key={item.id}>{item.reason}</p>)}{analysis.audit.checks.filter(item => !item.accepted).map(item => <p key={item.id}>{item.reason}</p>)}</CollapsibleContent></Collapsible>}
     {result.errors.map(error => <p role="alert" key={error.code} className="text-sm text-destructive">{error.message}</p>)}
-    {data && <Button type="button" variant="outline" size="sm" onClick={exportReport}>导出报告（Markdown）</Button>}
+    {data && <Button type="button" variant="outline" size="sm" onClick={exportReport}>导出机器结果（Markdown）</Button>}
     {taskId && analysis.letter?.export && <Button type="button" variant="outline" size="sm" disabled={downloading} onClick={() => void downloadLetter()}>下载催款函草稿（Word）</Button>}
     {downloadError && <p role="alert" className="text-sm text-destructive">{downloadError}</p>}
+    <DocumentAgentReview analysis={analysis} taskId={taskId} documentTitle={result.documentTitle} documentVersionId={result.input.documentVersionId ?? ""}
+      parseSnapshotId={result.input.parseSnapshotId ?? ""} onSessionUnavailable={onSessionUnavailable} />
   </section>
 }

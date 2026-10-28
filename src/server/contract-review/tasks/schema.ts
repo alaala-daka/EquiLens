@@ -20,3 +20,18 @@ export const revisionTaskSchema = z.object({
   externalProcessingConsent: z.literal(true),
   ruleIds: z.array(z.string().min(1).max(100)).min(1).max(22),
 }).strict()
+
+export const documentRevisionSchema = z.object({
+  baseVersionId: z.string().min(1).max(40),
+  extraction: z.unknown(),
+  changeReason: z.string().trim().min(1).max(500),
+  createdBy: z.string().trim().min(1).max(100),
+}).strict()
+
+export const documentReviewSchema = z.object({
+  decision: z.enum(["通过", "驳回", "退回修改"]),
+  reviewer: z.string().trim().min(1).max(100),
+  note: z.string().trim().max(1000),
+}).strict().superRefine((value, context) => {
+  if (value.decision !== "通过" && !value.note) context.addIssue({ code: "custom", message: "驳回或退回修改需填写意见。" })
+})

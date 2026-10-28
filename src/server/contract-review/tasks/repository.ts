@@ -13,6 +13,9 @@ import { draftHash, revisionHash } from "../../../../tools/contract-review/src/a
 import { ReviewError } from "../../../../tools/contract-review/src/errors"
 import type { documentSkill } from "../../document-agent/skills"
 import { letterDraftHash, letterVerificationAllowed } from "../../document-agent/letter"
+import { analysisSha, applyHumanExtraction, type HumanRevisionPayload } from "../../document-agent/revision"
+import type { DocumentAnalysis } from "../../../lib/document-agent/types"
+import type { DocumentReview, DocumentRevision, DocumentReviewDecision } from "../../../lib/document-agent/revisions"
 
 /** 新任务固定候选目录；存量无目录任务沿用显式场景。 */
 export type TaskInput = Omit<SubmitReview, "context"> & {
@@ -241,6 +244,60 @@ export class ReviewTaskRepository {
       const result = jsonResult(row)
       if (!["success", "partial"].includes(String(row.state)) || !result) throw new StoreError(409, "原审查尚未完成，不能生成修订稿。")
       return { input: parse<TaskInput>(row.input), result, expiresAt: String(row.expires_at) }
+    })
+  }
+  /** 文档 Agent 结果的人工修订版本；版本 0 为机器结果，不写入 artifact。 */
+  async documentRevisions(owner: string, id: string, contextId: string): Promise<{ machine: DocumentRevision; revisions: DocumentRevision[] }> {
+    return this.database.transaction(async c => {
+      const row = await this.owned(c, owner, id, contextId)
+      const result = jsonResult(row), machine = result?.documentAnalysis
+      if (!result || !machine) throw new StoreError(409, "该任务不是文档 Agent 结果。")
+      const rows = (await c.query("SELECT stage,ordinal,payload,created_at FROM equilens_review_artifacts WHERE task_id=$1 AND attempt=0 AND stage IN ('human-revision','review') ORDER BY ordinal", [id])).rows
+      const reviews: DocumentReview[] = rows.filter(item => item.stage === "review").map(item => parse<DocumentReview>(item.payload))
+      const latestReview = (versionId: string) => reviews.filter(item => item.versionId === versionId).at(-1) ?? null
+      const revisions = rows.filter(item => item.stage === "human-revision")
+        .map(item => parse<HumanRevisionPayload>(item.payload))
+        .map(payload => ({ versionId: payload.versionId, versionNumber: payload.versionNumber, baseVersionId: payload.baseVersionId,
+          isMachine: false, createdAt: payload.createdAt, createdBy: payload.createdBy, changeReason: payload.changeReason,
+          sha256: payload.sha256, review: latestReview(payload.versionId), analysis: payload.analysis }))
+      const machineRevision: DocumentRevision = { versionId: "machine", versionNumber: 0, isMachine: true, createdAt: result.createdAt,
+        createdBy: "机器整理", sha256: analysisSha(machine), review: latestReview("machine"), analysis: machine }
+      return { machine: machineRevision, revisions }
+    })
+  }
+  async saveDocumentRevision(owner: string, id: string, contextId: string, input: { baseVersionId: string; extraction: unknown; changeReason: string; createdBy: string }): Promise<DocumentRevision> {
+    return this.database.transaction(async c => {
+      const row = await this.owned(c, owner, id, contextId, "review")
+      const result = jsonResult(row), machine = result?.documentAnalysis
+      const snapshot = row.parse_snapshot ? parse<ParseSnapshot>(row.parse_snapshot) : null
+      if (!result || !machine || !snapshot) throw new StoreError(409, "该任务不是可修订的文档 Agent 结果。")
+      const rows = (await c.query("SELECT payload FROM equilens_review_artifacts WHERE task_id=$1 AND attempt=0 AND stage='human-revision' ORDER BY ordinal", [id])).rows
+      const latest = rows.length ? parse<HumanRevisionPayload>(rows.at(-1)!.payload) : null
+      const baseVersionId = latest?.versionId ?? "machine"
+      if (input.baseVersionId !== baseVersionId) throw new StoreError(409, "结果已有新版本，请重新载入后再修订。")
+      let analysis: DocumentAnalysis
+      try { analysis = applyHumanExtraction(machine, input.extraction, snapshot.paragraphs, machine.cutoff) }
+      catch (failure) { if (failure instanceof ReviewError) throw new StoreError(422, failure.message); throw failure }
+      const versionNumber = rows.length + 1, versionId = randomUUID(), createdAt = now()
+      const payload: HumanRevisionPayload = { versionId, versionNumber, baseVersionId, analysis, changeReason: input.changeReason, createdBy: input.createdBy, createdAt, sha256: "" }
+      payload.sha256 = analysisSha(analysis)
+      await c.query("INSERT INTO equilens_review_artifacts(task_id,attempt,stage,ordinal,payload,created_at) VALUES ($1,0,'human-revision',$2,$3,$4)",
+        [id, versionNumber, JSON.stringify(payload), createdAt])
+      return { versionId, versionNumber, baseVersionId, isMachine: false, createdAt, createdBy: input.createdBy, changeReason: input.changeReason, sha256: payload.sha256, review: null, analysis }
+    })
+  }
+  async reviewDocumentRevision(owner: string, id: string, contextId: string, versionId: string, input: { decision: DocumentReviewDecision; reviewer: string; note: string }): Promise<DocumentReview> {
+    return this.database.transaction(async c => {
+      const row = await this.owned(c, owner, id, contextId, "review")
+      const result = jsonResult(row)
+      if (!result?.documentAnalysis) throw new StoreError(409, "该任务不是文档 Agent 结果。")
+      const human = (await c.query("SELECT payload FROM equilens_review_artifacts WHERE task_id=$1 AND attempt=0 AND stage='human-revision'", [id])).rows
+      if (versionId !== "machine" && !human.some(item => parse<HumanRevisionPayload>(item.payload).versionId === versionId)) throw new StoreError(404, "找不到该结果版本。")
+      const reviews = (await c.query("SELECT ordinal FROM equilens_review_artifacts WHERE task_id=$1 AND attempt=0 AND stage='review' ORDER BY ordinal", [id])).rows
+      const review: DocumentReview = { reviewId: randomUUID(), versionId, decision: input.decision, reviewer: input.reviewer, note: input.note, createdAt: now() }
+      await c.query("INSERT INTO equilens_review_artifacts(task_id,attempt,stage,ordinal,payload,created_at) VALUES ($1,0,'review',$2,$3,$4)",
+        [id, reviews.length + 1, JSON.stringify(review), review.createdAt])
+      return review
     })
   }
   async saveRevisionExport(job: ClaimedReview, input: ReviewResult, bytes: Buffer, elapsedMs: number): Promise<ReviewResult> {

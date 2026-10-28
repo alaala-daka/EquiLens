@@ -1,4 +1,5 @@
 import type { ReviewAvailability, ReviewTask, SubmitReview } from "./types"
+import type { DocumentReview, DocumentRevision } from "../document-agent/revisions"
 import { DocumentSessionError, documentSessionFailure, getDocumentContext } from "../documents/client"
 
 async function request<T>(path: string, signal?: AbortSignal, init?: RequestInit): Promise<T> {
@@ -38,6 +39,17 @@ export function createRevisionTask(id: string, ruleIds: string[], key: string, s
   return request<ReviewTask>("/" + encodeURIComponent(id) + "/revision", signal, { method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": key },
     body: JSON.stringify({ externalProcessingConsent: true, ruleIds }) })
+}
+
+export function readDocumentRevisions(id: string, signal?: AbortSignal) {
+  return request<{ machine: DocumentRevision; revisions: DocumentRevision[] }>("/" + encodeURIComponent(id) + "/revisions", signal)
+}
+export function saveDocumentRevision(id: string, body: { baseVersionId: string; extraction: unknown; changeReason: string; createdBy: string }, signal?: AbortSignal) {
+  return request<DocumentRevision>("/" + encodeURIComponent(id) + "/revisions", signal, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+}
+export function reviewDocumentRevision(id: string, versionId: string, body: { decision: DocumentReview["decision"]; reviewer: string; note: string }, signal?: AbortSignal) {
+  return request<DocumentReview>("/" + encodeURIComponent(id) + "/revisions/" + encodeURIComponent(versionId) + "/review", signal,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 }
 
 export async function downloadRevisedContract(id: string, signal?: AbortSignal): Promise<Blob> { return downloadTaskWord(id, "revision", signal) }

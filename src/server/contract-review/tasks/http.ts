@@ -2,9 +2,9 @@ import { NextResponse } from "next/server"
 import { StoreError } from "../../documents/repository"
 import { ReviewError, safeError } from "../../../../tools/contract-review/src/errors"
 
-export async function reviewBody(request: Request): Promise<unknown> {
+export async function reviewBody(request: Request, limit = 4096): Promise<unknown> {
   if (!request.headers.get("content-type")?.startsWith("application/json")) throw new StoreError(415, "请求格式无效。")
-  if (Number(request.headers.get("content-length")) > 4096) throw new StoreError(413, "审查参数过长。")
+  if (Number(request.headers.get("content-length")) > limit) throw new StoreError(413, "审查参数过长。")
   const reader = request.body?.getReader()
   if (!reader) throw new StoreError(400, "请求内容为空。")
   const chunks: Uint8Array[] = []
@@ -14,7 +14,7 @@ export async function reviewBody(request: Request): Promise<unknown> {
       const { done, value } = await reader.read()
       if (done) break
       size += value.length
-      if (size > 4096) { await reader.cancel(); throw new StoreError(413, "审查参数过长。") }
+      if (size > limit) { await reader.cancel(); throw new StoreError(413, "审查参数过长。") }
       chunks.push(value)
     }
   } finally { reader.releaseLock() }
