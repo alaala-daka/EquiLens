@@ -262,11 +262,12 @@ const tableMerge: StructureFixture = {
       '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid>' +
       '<w:tr><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>分包范围</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="6000" w:type="dxa"/><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t>机电安装工程</w:t></w:r></w:p></w:tc></w:tr>' +
       '<w:tr><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>合同价款</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>暂定伍佰万元</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>工期一百八十日</w:t></w:r></w:p></w:tc></w:tr>' +
+      '<w:tr><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p/></w:tc><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p/></w:tc></w:tr>' +
       '</w:tbl>' + sect())
   }),
   expected: {
     text: "分包范围机电安装工程合同价款暂定伍佰万元工期一百八十日",
-    structures: { ...emptyStructures(), mergedCells: 2 },
+    structures: { ...emptyStructures(), mergedCells: 3 },
     word: { bodyContains: ["分包范围", "机电安装工程"], headerContains: [], tables: 1 },
   },
 }

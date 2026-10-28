@@ -81,7 +81,7 @@ test("校准: 文本框、脚注、批注、合并单元格计数", () => {
   assert.equal(editorText(sample("textbox-drawingml")), "框内文字")
   assert.equal(editorStructures(sample("footnotes")).notes, 1)
   assert.equal(editorStructures(sample("comments")).comments, 1)
-  assert.equal(editorStructures(sample("table-merge")).mergedCells, 2)
+  assert.equal(editorStructures(sample("table-merge")).mergedCells, 3)
 })
 
 test("校准: 修订正文保留插入与移入文字、排除删除与移出文字", () => {

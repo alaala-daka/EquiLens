@@ -130,9 +130,11 @@ export function editorStructures(value: unknown): EditorStructureCounts {
         const attrs = item.attrs ?? {}
         const props = (attrs.tableCellProperties ?? {}) as Record<string, unknown>
         const span = Number(attrs.colspan ?? props.gridSpan ?? 1)
-        const vertical = Boolean(props.vMerge ?? attrs.vMerge) || Number(attrs.rowspan ?? 1) > 1
+        const rows = Math.max(Number(attrs.rowspan ?? 1), 1)
+        const vertical = props.vMerge != null || attrs.vMerge != null || rows > 1
         if (span > 1) counts.mergedCells++
-        if (vertical) counts.mergedCells++
+        // 模型把纵向合并区折叠为 rowspan 个 w:vMerge 元素（restart+continue），按行数计。
+        if (vertical) counts.mergedCells += rows
         break
       }
       default:
