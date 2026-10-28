@@ -14,8 +14,12 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Separator } from "@/components/ui/separator"
 import { WordCanvas, type WordCanvasHandle } from "@/components/word-canvas"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { createDocument, DocumentSessionError, preflightEditorAccess, saveDocument } from "@/lib/documents/client"
+import type { DocumentSessionError } from "@/lib/documents/client"
+import {
+  createAnonymousEditorAccess, createEditorSessionDependencies, describeEditorFailure, type EditorAccess,
+} from "@/lib/documents/editor-access"
 import { createEditorSession, type EditorIntent, type EngineState } from "@/lib/documents/editor-session"
+import { createUnsavedRegistry, type UnsavedRegistry } from "@/lib/documents/unsaved-registry"
 
 import { documentTitle, downloadName, errorMessage, type OpenDocument } from "@/lib/documents/types"
 
@@ -25,6 +29,13 @@ type EditorCallbacks = {
   onCopy: (saved: OpenDocument) => void
   onSessionUnavailable?: (error: DocumentSessionError) => void
   onDirtyChange?: (dirty: boolean) => void
+}
+
+export type DocumentEditorAccessProps = {
+  /** C3 injects the project access adapter; omitted means the anonymous adapter. */
+  access?: EditorAccess
+  /** Workspace-level unsaved registry shared with facts, payments, results and task conditions. */
+  unsaved?: UnsavedRegistry
 }
 
 // Connect React callbacks and the imperative canvas only after commit. The
@@ -95,26 +106,25 @@ const phaseLabel = {
 
 type LeaveTarget = "list" | "reload"
 
-export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnavailable, onDirtyChange, initialReviewTaskId }: {
+export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnavailable, onDirtyChange, initialReviewTaskId, access: providedAccess, unsaved: providedUnsaved }: {
   opened: OpenDocument
   initialReviewTaskId?: string
-} & EditorCallbacks) {
+} & EditorCallbacks & DocumentEditorAccessProps) {
   const isMobile = useIsMobile()
-  const [{ bridge, session }] = useState(() => {
+  const [{ bridge, access, registry, session }] = useState(() => {
     const bridge = createEditorBridge()
-    const session = createEditorSession({
-      opened,
-      serialize: bridge.serialize,
-      preflight: options => preflightEditorAccess(opened.document.id, options),
-      save: saveDocument,
-      copy: createDocument,
-      download: bridge.download,
-      onSaved: bridge.onSaved,
-      onSessionUnavailable: bridge.onSessionUnavailable,
+    const registry = providedUnsaved ?? createUnsavedRegistry()
+    const access = providedAccess ?? createAnonymousEditorAccess({
+      download: (blob, title) => bridge.download(blob, title),
+      onSessionInvalid: failure => bridge.onSessionUnavailable(failure),
     })
-    return { bridge, session }
+    const session = createEditorSession(createEditorSessionDependencies({
+      access, opened, serialize: bridge.serialize, onSaved: bridge.onSaved,
+    }))
+    return { bridge, access, registry, session }
   })
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot)
+  const unsaved = useSyncExternalStore(registry.subscribe, registry.getSnapshot, registry.getSnapshot)
   const { title, prompt, dirty, conflict, error, engine, phase } = state
   // Ordinary saves must never replace the engine's loading input.
   const [load, setLoad] = useState(() => ({ blob: opened.revision.blob, token: 0 }))
@@ -131,7 +141,7 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
 
   const keyboardHelpId = useId()
   const dialogError = useRef<HTMLDivElement>(null)
-  const busy = phase !== "idle" || cleaning
+  const busy = phase !== "idle" || cleaning || unsaved.saving
   const ready = engine === "ready"
   const status = phase !== "idle" ? phaseLabel[phase] : engine === "loading" ? "正在打开文档" : engine === "failed" ? "编辑器不可用" : dirty ? "未保存" : "已保存"
 
@@ -159,11 +169,11 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
   const engineChanged = useCallback((value: EngineState, message?: string) => session.setEngine(value, message), [session])
 
   useEffect(() => {
-    if (!dirty && !busy) return
+    if (!dirty && !busy && unsaved.entries.length === 0) return
     const protect = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = "" }
     window.addEventListener("beforeunload", protect)
     return () => window.removeEventListener("beforeunload", protect)
-  }, [dirty, busy])
+  }, [dirty, busy, unsaved.entries.length])
 
   const run = useCallback(async (intent: EditorIntent) => {
     const current = bridge.capture()
@@ -176,6 +186,16 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
   }, [bridge, session])
 
   const locateCitation = useCallback(async (paragraphIndex: number, quote: string) => bridge.locate(paragraphIndex, quote), [bridge])
+  // Register the document's own unsaved state so workspace navigation (project
+  // switch, cross-panel leave) can use one save-all gate.
+  const savePendingDocument = useCallback(async () => {
+    const saved = await run("save")
+    return Boolean(saved) && !session.getSnapshot().dirty
+  }, [run, session])
+  useEffect(() => {
+    if (!dirty) return
+    return registry.register({ id: `document:${opened.document.id}`, label: "文档修改", save: savePendingDocument })
+  }, [dirty, registry, opened.document.id, savePendingDocument])
   const executeLeave = async (target: LeaveTarget) => {
     if (session.getSnapshot().phase !== "idle") return
     if (target === "list") bridge.onBack()
@@ -184,7 +204,7 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
   const requestLeave = (target: LeaveTarget, trigger: HTMLButtonElement) => {
     const snapshot = session.getSnapshot()
     if (snapshot.phase !== "idle") return
-    if (snapshot.dirty) {
+    if (snapshot.dirty || registry.hasUnsaved()) {
       leaveTrigger.current = trigger
       setLeaveTarget(target)
     } else void executeLeave(target)
@@ -192,20 +212,29 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
   const saveAndLeave = async () => {
     if (!leaveTarget) return
     const result = await run("save")
-    if (result && !session.getSnapshot().dirty) await executeLeave(leaveTarget)
+    if (!result || session.getSnapshot().dirty) return
+    // Every workspace object (document, facts, payments, results, task
+    // conditions) must confirm its saved version before navigation. Failures
+    // keep the dialog open; objects that already committed were removed from
+    // the registry and are never saved twice.
+    if (!(await registry.saveAll()).ok) return
+    await executeLeave(leaveTarget)
   }
   const cleanCopy = async () => {
     if (!ready || busy || cleaning || !state.saved) return
     setCleaning(true); setCleanError("")
     try {
       const blob = await bridge.cleanDocx()
-      const saved = await createDocument(blob, documentTitle(title) + "（仅正文副本）", "copy", undefined, prompt,
-        { documentId: opened.document.id, revisionId: state.saved.revision.id })
+      const saved = await access.copy({
+        blob, title: documentTitle(title) + "（仅正文副本）", source: "copy", prompt,
+        copiedFrom: { documentId: opened.document.id, revisionId: state.saved.revision.id },
+      })
       onCopy(saved)
       setCleanDialog(false)
     } catch (failure) {
       setCleanError(errorMessage(failure))
-      if (failure instanceof DocumentSessionError) onSessionUnavailable?.(failure)
+      const described = (access.describeFailure ?? describeEditorFailure)(failure)
+      if (described.code === "SESSION_INVALID") access.notifySessionInvalid?.(failure)
     } finally { setCleaning(false) }
   }
   const restoreLeaveFocus = (event: Event) => {
@@ -244,6 +273,10 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
     {unsupportedDocument && !leaveTarget && <Button type="button" variant="outline" disabled={busy || cleaning} onClick={() => { setCleanError(""); setCleanDialog(true) }}>仅保留正文另存</Button>}
     {conflict && <Button variant="outline" disabled={busy || !ready} onClick={() => void run("copy")}>另存为新文档</Button>}
     {engine === "failed" && !leaveTarget && <Button variant="outline" disabled={busy} onClick={event => requestLeave("reload", event.currentTarget)}>重新加载</Button>}
+  </div>
+
+  const unsavedFailureNotice = unsaved.failures.length > 0 && <div role="alert" className="space-y-1 text-sm text-destructive">
+    {unsaved.failures.map(failure => <p key={failure.id}>{failure.label}保存失败：{failure.message}</p>)}
   </div>
 
   return (
@@ -299,8 +332,9 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
           </aside>
         </ResizablePanel>
       </ResizablePanelGroup>
-      <EditorLeaveDialog open={leaveTarget !== null} busy={busy} canSave={ready && !conflict} onCancel={() => setLeaveTarget(null)} onDiscard={() => { if (leaveTarget) void executeLeave(leaveTarget) }} onSave={() => void saveAndLeave()} onCloseAutoFocus={restoreLeaveFocus}>
+      <EditorLeaveDialog open={leaveTarget !== null} busy={busy} canSave={ready && !conflict} onCancel={() => setLeaveTarget(null)} onDiscard={() => { if (leaveTarget) { registry.discardAll(); void executeLeave(leaveTarget) } }} onSave={() => void saveAndLeave()} onCloseAutoFocus={restoreLeaveFocus}>
         {failureNotice}
+        {unsavedFailureNotice}
       </EditorLeaveDialog>
       <AlertDialog open={cleanDialog} onOpenChange={value => { if (!cleaning) setCleanDialog(value) }}>
         <AlertDialogContent>

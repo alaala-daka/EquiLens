@@ -44,3 +44,17 @@ test("DB-01: original 0001 checksum and upgrade history remain immutable", async
     assert.ok(indexes.includes("equilens_auth_session_expiry")); assert.ok(indexes.includes("equilens_auth_limit_window"))
   } finally { await db.close() }
 })
+
+test("DB-01: frozen 0004-0006 checksums prevent silent migration drift", async () => {
+  const { createHash } = await import("node:crypto")
+  const expected: Record<string, string> = {
+    "0004": "e5cd6fdbc6534c3586f1bd5ffecdc3f0306d76c78a231181e3c599e5175cc185",
+    "0005": "9677479c49ed95563d2e3330a777b20371ea5bc87b07db4144b4f0d9715e541c",
+    "0006": "e6422725f6e246dfd57c8d139c885088f9ad22ef61a97c8dc11f04b588a03edf",
+  }
+  for (const [id, digest] of Object.entries(expected)) {
+    const migration = businessMigrations.find(row => row.id === id)
+    assert.ok(migration, `missing migration ${id}`)
+    assert.equal(createHash("sha256").update(JSON.stringify(migration)).digest("hex"), digest, `migration ${id} changed; append a new migration instead`)
+  }
+})

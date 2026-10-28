@@ -1,4 +1,5 @@
-import { DocumentSessionError, RevisionConflict, type createDocument, type saveDocument } from "./client"
+import type { DocumentSessionError, createDocument, saveDocument } from "./client"
+import { describeEditorFailure, type EditorAccessFailure } from "./editor-access"
 import { documentTitle, errorMessage, type OpenDocument } from "./types"
 
 export type EditorIntent = "save" | "export" | "copy" | "reload"
@@ -23,6 +24,12 @@ export type EditorDependencies = {
   download: (blob: Blob, title: string) => void
   onSaved: (saved: OpenDocument) => void
   onSessionUnavailable: (error: DocumentSessionError) => void
+  /**
+   * Optional provider-neutral failure classification. The default recognizes
+   * the anonymous client errors so existing wiring keeps its semantics; an
+   * EditorAccess adapter supplies its own mapping instead.
+   */
+  describeFailure?: (failure: unknown) => EditorAccessFailure
 }
 
 export function createEditorSession(deps: EditorDependencies) {
@@ -114,15 +121,13 @@ export function createEditorSession(deps: EditorDependencies) {
         if (current()) {
           // Creation/consent errors can leave existing documents readable and
           // savable. Only lost context or editor access invalidates the session.
-          const sessionLost = failure instanceof DocumentSessionError && (
-            failure.code === "RETENTION_EXPIRED" || failure.code === "SESSION_CHANGED"
-            || failure.code === "SESSION_CONTEXT_REQUIRED" || failure.code === "RETENTION_READ_ONLY"
-            || failure.code === "LEGACY_RETENTION_PENDING"
-            || failure.session?.canRead === false || failure.session?.canSave === false
-          )
+          // Classification comes from the injected access adapter; the default
+          // maps the legacy anonymous client errors.
+          const described = (deps.describeFailure ?? describeEditorFailure)(failure)
+          const sessionLost = described.code === "SESSION_INVALID"
           if (sessionLost) { unavailable = true; retry = null }
-          publish({ error: errorMessage(failure), conflict: snapshot.conflict || failure instanceof RevisionConflict })
-          if (current() && sessionLost) deps.onSessionUnavailable(failure)
+          publish({ error: errorMessage(failure), conflict: snapshot.conflict || described.code === "CONFLICT" })
+          if (current() && sessionLost) deps.onSessionUnavailable(failure as DocumentSessionError)
         }
         return null
       } finally {
