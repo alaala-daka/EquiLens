@@ -179,14 +179,27 @@ if (journalRoot && existsSync(journalRoot) && statSync(journalRoot).isDirectory(
 }
 
 // 5) Non-sensitive configuration name list (names only; no values are copied).
+// Commented `# NAME=` sample lines are included as well so the frozen restore-critical
+// names (lifecycle/deletion journal, provider, origin) are never omitted just because
+// a deployment inherited them from defaults instead of uncommenting the example file.
 const environmentFile = resolve(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", ".env.example")
-const configNames = []
+const requiredConfigNames = [
+  "DATABASE_PROVIDER",
+  "SQLITE_PATH",
+  "APP_ORIGIN",
+  "ANONYMOUS_DATA_RETENTION_DAYS",
+  "PROJECT_DELETION_JOURNAL_DIR",
+  "PROJECT_RECLAIM_BATCH",
+  "PROJECT_LIFECYCLE_INTERVAL_MS",
+]
+const configNames = new Set(requiredConfigNames)
 if (existsSync(environmentFile)) {
   for (const line of readFileSync(environmentFile, "utf8").split(/\r?\n/)) {
-    const match = line.match(/^([A-Z][A-Z0-9_]+)=/)
-    if (match) configNames.push(match[1])
+    const match = line.match(/^#?\s*([A-Z][A-Z0-9_]+)=/)
+    if (match) configNames.add(match[1])
   }
 }
+const configNameList = [...configNames].sort()
 
 // 6) Manifest: the backup set is only complete together with the deletion journal
 //    and the object manifest; DB-only backups are explicitly rejected by docs.
@@ -209,7 +222,7 @@ const manifest = {
   migrationLedger,
   templates: templateVersions,
   publicationsGlobal: publicationVersions,
-  configNames,
+  configNames: configNameList,
   keyRecovery: "凭据与密钥不进入备份集：恢复后必须重新注入私有配置（AI_API_KEY/AI_BASE_URL、OCR_*、BOOTSTRAP_ADMIN_* 如需要等），登录会话/cookie 不可恢复；本清单只记录配置名，不记录值。数据库行与对象字节共同构成项目数据，缺一项都不算完整恢复。",
   notes: [
     "Local SQLite + dev file object store backup set; NOT a verified OBS/GaussDB/CI/off-host backup.",

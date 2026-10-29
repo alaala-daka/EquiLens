@@ -9,9 +9,14 @@ export async function register() {
     // pending reclamation complete in the background; business endpoints stay 503
     // through the projects access gate until projectLifecycleReady() resolves. Material
     // orphan repair must only run after that readiness (it could otherwise resurrect
-    // objects of a project whose deletion replay has not finished).
+    // objects of a project whose deletion replay has not finished). A synchronous
+    // configuration error must not take down the HTTP server/health endpoint.
     const { startProjectLifecycleRuntime, projectLifecycleReady } = await import("./server/projects/lifecycle")
-    startProjectLifecycleRuntime()
+    try {
+      startProjectLifecycleRuntime()
+    } catch {
+      // Keep server/health available; lifecycle stays not-ready so business requests get 503.
+    }
     void projectLifecycleReady()
       .then(async () => {
         const { startMaterialRuntime } = await import("./server/materials/runtime")

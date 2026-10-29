@@ -89,6 +89,13 @@ const manifest = JSON.parse(readFileSync(manifestPath, "utf8"))
 assert.equal(manifest.version, 1, "manifest version")
 assert.equal(manifest.kind, "equilens-project-backup-set", "manifest kind")
 assert.equal(manifest.quiesced, true, "manifest 必须记录 quiesced 备份")
+assert.ok(typeof manifest.appVersion === "string" && manifest.appVersion.length > 0, "备份集必须记录应用版本")
+assert.ok(Array.isArray(manifest.templates), "备份集必须记录模板版本清单")
+assert.ok(Array.isArray(manifest.configNames) && manifest.configNames.length > 0, "备份集必须记录非敏感配置名清单")
+assert.ok(typeof manifest.keyRecovery === "string" && manifest.keyRecovery.length > 0, "备份集必须记录密钥安全恢复说明")
+for (const required of ["DATABASE_PROVIDER", "SQLITE_PATH", "APP_ORIGIN", "PROJECT_DELETION_JOURNAL_DIR", "PROJECT_RECLAIM_BATCH", "PROJECT_LIFECYCLE_INTERVAL_MS"]) {
+  assert.ok(manifest.configNames.includes(required), `配置名清单缺少恢复必需项：${required}`)
+}
 const backupDatabase = join(setRoot, manifest.database.file)
 if (!existsSync(backupDatabase)) fail(`备份集缺少数据库：${backupDatabase}`)
 if (sha256File(backupDatabase) !== manifest.database.sha256) fail("备份数据库 sha256 与 manifest 不一致")

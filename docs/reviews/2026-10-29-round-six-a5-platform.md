@@ -102,3 +102,11 @@
 - C7 合入（`4ac0d61`/`896cec3`）且 Lead 通知后执行完整演练：每个需要一致备份的时点先停止 dev server；DELETE 与恢复后 HTTP 验证期间运行唯一一个 managed dev server（127.0.0.1:3000）；每个 leg 结束即停止；最终确认 **端口 3000 空闲、无服务进程残留**。
 - 本机服务日志：`.superpowers/round6/drill-seed-server.log`、`drill-delete-server.log`、`drill-restore-before-server.log`、`drill-restore-after-server.log`、`volume-server-1.log`、`volume-server-2.log`、`capacity-server.log`、`browser-server.log`（忽略目录，不作为产品证据）。
 - 用户 A5 未提交文件：`scripts/seed-restore-project.mts`、`scripts/backup-objects.mjs`、`scripts/restore-verify.mjs`、`scripts/smoke-database.mjs`（改）、`docs/deployment.md`、`docs/operations.md`（改）、本文件；HEAD 为 Lead 的 `896cec3`，A5 未执行 git add/commit。
+
+## 9. 交叉审查后修复（Lead 执行）
+
+- **B3 修复**：`backup-objects.mjs` 的非敏感配置名清单原先只解析未注释的 `NAME=` 行，会漏掉 `PROJECT_DELETION_JOURNAL_DIR`/`PROJECT_RECLAIM_BATCH`/`PROJECT_LIFECYCLE_INTERVAL_MS`；现同时解析 `# NAME=` 示例行并合并冻结必需名单。`restore-verify.mjs` 新增 manifest 必填断言（appVersion/templates/configNames/keyRecovery 及 6 个恢复必需配置名）。
+- 修复后实际复跑：`backup-objects.mjs` 对既有 seed 根生成新备份集 exit 0（31 ms，manifest `configNames` 已含 `PROJECT_*`）；`restore-verify.mjs --set <新备份> --restored-root <新根> --database/--objects/--journal` 离线恢复 exit 0（恢复复制 11 ms、总 28 ms，integrity/对象清单/日志/迁移账本/租约清理通过）。旧备份集因 manifest 缺这些字段会被新断言拒绝（符合 fail-closed）。
+- **证据限制（如实）**：D9/D11 的 HTTP 22 项为演练时脚本输出，原始 stdout 未保存（已保存服务器日志、capacity JSON、浏览器截图与恢复根/备份集工件）；审查者独立复现了离线双向演练、15 项离线检查、浏览器 11/11、容量 JSON 与 CLI。最终验收记录不把 HTTP 22 项表述为可逐项复核的原始证据。
+- **C7 证据更正**：C7 记录中 Windows 目录 fsync 的表述已按实际代码与复测改为“已文档化平台回退，reclaim --apply exit 0/reclaimed”，非平台故障仍 fail-closed；Linux 真实 fsync 保持未验证。
+- **404/403 口径**：已删/未知项目的内容访问对非成员统一拒绝（403），不暴露存在性；超级管理员等路径按 404 语义。文档与证据统一使用“拒绝（403 非成员/或 404）”措辞。
