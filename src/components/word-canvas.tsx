@@ -6,12 +6,13 @@ import "superdoc/style.css"
 import { Button } from "@/components/ui/button"
 import { createEngineLoad } from "@/lib/documents/engine-lifecycle"
 import type { EngineState } from "@/lib/documents/editor-session"
-import { createWordSerializer, editorText, editorParagraphs, WordExportTimeout } from "@/lib/documents/serialize"
+import { createWordSerializer, editorText, editorParagraphs, editorStructures, WordExportTimeout } from "@/lib/documents/serialize"
 import { docxFromParagraphs } from "@/lib/documents/docx"
+import type { ExportExpectation } from "@/lib/documents/structures"
 import { editorFocusShortcut } from "@/lib/documents/editor-keyboard"
 import { validateDocx } from "@/lib/documents/validate"
 
-export type WordCanvasHandle = { serialize: () => Promise<Blob>; cleanDocx: () => Promise<Blob>; locate: (paragraphIndex: number, quote: string) => Promise<boolean> }
+export type WordCanvasHandle = { serialize: () => Promise<Blob>; cleanDocx: () => Promise<Blob>; locate: (paragraphIndex: number, quote: string) => Promise<boolean>; snapshot: () => unknown }
 
 export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChange, keyboardHelpId, keyboardBlocked, controlsDisabled, onFocusShortcut, ref }: {
   initialBlob: Blob
@@ -28,7 +29,7 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
   const toolbar = useRef<HTMLDivElement>(null)
   const engine = useRef<WordCanvasHandle | null>(null)
   const zoomEngine = useRef<SuperDoc | null>(null)
-  const [fitWidth, setFitWidth] = useState(false)
+  const [fitWidth, setFitWidth] = useState(true)
   const notifyState = useEffectEvent((state: EngineState, message?: string) => {
     onStateChange(state, message)
   })
@@ -51,6 +52,10 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
     async locate(paragraphIndex, quote) {
       if (!engine.current) throw new Error("文档尚未就绪。")
       return engine.current.locate(paragraphIndex, quote)
+    },
+    snapshot() {
+      if (!engine.current) throw new Error("文档尚未就绪。")
+      return engine.current.snapshot()
     },
   }), [])
 
@@ -118,6 +123,12 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
     } })
     const serialize = createWordSerializer(() => errors)
     const session: WordCanvasHandle = {
+      snapshot() {
+        if (disposed || !load.isCurrent() || !ready || engine.current !== session || !instance?.activeEditor) {
+          throw new Error("文档尚未就绪。")
+        }
+        return structuredClone(instance.activeEditor.getJSON())
+      },
       async serialize() {
         if (disposed || !load.isCurrent() || !ready || engine.current !== session || !instance?.activeEditor) {
           throw new Error("文档尚未就绪。")
@@ -128,7 +139,7 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
         try {
           return await serialize(async () => {
             const snapshot = structuredClone(editor.getJSON())
-            const text = editorText(snapshot)
+            const expected: ExportExpectation = { text: editorText(snapshot), structures: editorStructures(snapshot) }
             const editable = editor.isEditable
             editor.setEditable(false, false)
             try {
@@ -138,12 +149,12 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
               // The vendor can return original bytes after emitting an error.
               if (errors !== before || !blob?.size) throw new Error("Word 文档导出失败，当前编辑已保留，请重试。")
               if (!ready) throw new Error("操作已取消。")
-              if (editorText(editor.getJSON()) !== text) throw new Error("导出过程改变了编辑内容，此次结果未保存，请重试。")
-              await validateDocx(blob, load.signal, false, text)
+              if (editorText(editor.getJSON()) !== expected.text) throw new Error("导出过程改变了编辑内容，此次结果未保存，请重试。")
+              await validateDocx(blob, load.signal, false, expected)
               if (!current() || !ready) throw new Error("操作已取消。")
               return blob
             } catch (failure) {
-              if (current() && editorText(editor.getJSON()) !== text) {
+              if (current() && editorText(editor.getJSON()) !== expected.text) {
                 const restored = editor.schema.nodeFromJSON(snapshot)
                 editor.dispatch(editor.state.tr.replaceWith(0, editor.state.doc.content.size, restored.content).setMeta("addToHistory", false))
               }
@@ -220,7 +231,7 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
         role: "editor",
         telemetry: { enabled: false },
         proofing: { enabled: false },
-        zoom: { initial: 100, mode: "manual", fitWidth: { min: 10, max: 200, padding: 64 } },
+        zoom: { initial: 100, mode: "fit-width", fitWidth: { min: 10, max: 200, padding: 64 } },
         uiDisplayFallbackFont: 'Arial, "Microsoft YaHei", sans-serif',
         modules: {
           comments: false,

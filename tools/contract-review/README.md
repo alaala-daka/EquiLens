@@ -60,7 +60,7 @@ const result = await reviewTextWithAgent({
   parseSnapshotId: "由调用方提供的真实解析快照ID",
   context: sceneContext(defaultSceneId, "上海"),
   mode: "debug",
-  complete: true,
+  complete: coverageComplete(parsed.coverage), // 由解析覆盖派生（coverageComplete：关键嵌图、修订标记、文本框、复杂结构全零才为 true）
 })
 ```
 
@@ -206,7 +206,7 @@ pnpm review:contract:compare --challenge --debug
       documentTitle: "合成联调合同",
       context: sceneContext(defaultSceneId, "上海"),
       mode: "debug",
-      complete: true,
+      complete: coverageComplete(parsed.coverage), // 由解析覆盖派生（coverageComplete：关键嵌图、修订标记、文本框、复杂结构全零才为 true）
     })
 
 这是一次真实模型调用，会发送所给合同文字并产生费用。不要在浏览器组件导入或调用。
@@ -223,7 +223,7 @@ Next.js 自动读取本机 .env.local；字段见根目录 .env.example。
 | documentTitle | 可选，显示标题 |
 | context | 调用方已明确确认的场景标识（scene）、立场、项目类型、地域；scene 是规则判定依据，缺失时会排除带适用场景的规则，不能从甲乙方或文字猜测 |
 | documentVersionId / parseSnapshotId | 可选，集成时传入实际已保存版本与快照 ID |
-| complete | 输入解析是否完整，默认 true；后端必须根据实际解析状态填写 |
+| complete | 输入解析是否完整，由解析覆盖派生（coverageComplete：关键嵌图、修订标记、文本框、复杂结构全零才为 true）；后端必须根据实际解析状态填写 |
 | mode | published 或 debug，默认 published；由可信后端固定，不能直接使用客户端传入的开关 |
 
 纯编排函数 reviewContract 支持 documentText 或 paragraphs 二选一。
@@ -314,8 +314,8 @@ Next.js standalone 构建会复制规则包；依赖或规则更新后需要重�
 
 在末尾增加 --dry-run 只显示计划检查的规则与关键词线索，不调用模型。
 DOCX 使用同一命令并替换文件路径。CLI 会生成隔离解析器，保持正文/表格的顺序和单元格行列。
-支持 UTF-8 TXT 与通过主应用校验器的基础 DOCX；图片、页眉页脚、域、修订、外链、
-嵌套表格等不支持内容明确拒绝，不当成已完整解析。PDF 由后端后续提供解析快照。
+支持 UTF-8 TXT 与通过主应用校验器的 DOCX；外链、宏、嵌入对象按安全边界拒绝；
+图片、修订标记、文本框等结构不再拒绝，超出分析覆盖的类别记入解析覆盖并使 `complete` 为 false。PDF 由后端后续提供解析快照。
 
 报告位于 output/<标题-结果ID>/report.json 和 report.md，重复运行创建新目录。
 Markdown 按六类显示问题数与优先项，其余问题及原文/依据折叠保留；JSON 保持完整。

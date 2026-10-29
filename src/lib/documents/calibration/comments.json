@@ -1,0 +1,22 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "run", "content": [{ "type": "text", "marks": [], "text": "第一条付款期限为" }] },
+        {
+          "type": "run",
+          "content": [
+            {
+              "type": "text",
+              "marks": [{ "type": "commentMark", "attrs": { "commentId": "imported-fa1fc86d", "importedId": "0", "internal": false, "trackedChange": false } }],
+              "text": "三十日"
+            }
+          ]
+        },
+        { "type": "run", "content": [{ "type": "text", "marks": [], "text": "。" }] }
+      ]
+    }
+  ]
+}

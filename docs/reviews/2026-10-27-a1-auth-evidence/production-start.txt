@@ -1,0 +1,9 @@
+$ node .next/standalone/server.js
+▲ Next.js 16.4.2
+- Local:         http://127.0.0.1:3187
+- Network:       http://127.0.0.1:3187
+✓ Ready in 0ms
+✓ Running next.config took 197ms
+(node:87768) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[ELIFECYCLE] Command failed with exit code 4294967295.

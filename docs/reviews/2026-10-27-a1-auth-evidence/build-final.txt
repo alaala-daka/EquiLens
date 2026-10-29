@@ -1,0 +1,36 @@
+$ node scripts/build-docx-validator.mjs && node scripts/build-retention-tools.mjs && next build && node scripts/prepare-standalone.mjs
+▲ Next.js 16.4.2 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.ts took 41ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.2s
+  Running TypeScript ...
+  Finished TypeScript in 3.1s ...
+  Collecting page data using 15 workers ...
+  Generating static pages using 15 workers (0/4) ...
+  Generating static pages using 15 workers (1/4) 
+  Generating static pages using 15 workers (2/4) 
+  Generating static pages using 15 workers (3/4) 
+✓ Generating static pages using 15 workers (4/4) in 1136ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/session
+├ ƒ /api/contract-reviews
+├ ƒ /api/contract-reviews/[id]
+├ ƒ /api/document-session
+├ ƒ /api/documents
+├ ƒ /api/documents/[id]
+├ ƒ /healthz
+├ ○ /login
+└ ƒ /source
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

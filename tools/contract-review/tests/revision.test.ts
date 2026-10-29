@@ -15,7 +15,7 @@ test("WD-02/08/AC-11: revised DOCX preserves untouched content, table, source by
   const before = Uint8Array.from(bytes)
   const output = buildRevisionDocx(bytes, primary, draft, audit)
   assert.deepEqual(bytes, before)
-  const paragraphs = parseDocxBytes(output)
+  const paragraphs = parseDocxBytes(output).paragraphs
   assert.match(paragraphs[0].text, /AI 生成，待人工审核/)
   assert.equal(paragraphs[1].text, draft.edits[0].after)
   assert.equal(paragraphs[2].text, draft.edits[1].after)
@@ -25,7 +25,7 @@ test("WD-02/08/AC-11: revised DOCX preserves untouched content, table, source by
   const originalFiles = unzipSync(bytes), newFiles = unzipSync(output)
   for (const name of Object.keys(originalFiles).filter(name => name !== "word/document.xml")) assert.deepEqual(newFiles[name], originalFiles[name])
   const child = await renderRevisionInChild(Buffer.from(bytes), primary, draft, audit, new AbortController().signal)
-  assert.deepEqual(parseDocxBytes(child), paragraphs)
+  assert.deepEqual(parseDocxBytes(child).paragraphs, paragraphs)
   const marked = unzipSync(bytes)
   marked["word/document.xml"] = strToU8(strFromU8(marked["word/document.xml"]).replace("<w:r>", '<w:bookmarkStart w:id="1" w:name="contract"/><w:bookmarkEnd w:id="1"/><w:r>'))
   assert.throws(() => buildRevisionDocx(zipSync(marked), primary, draft, audit), /内联结构/)
@@ -113,7 +113,7 @@ test("AC-09/11/21: changed draft, incomplete audit and new risks block Word; pen
   draft.edits = draft.edits.filter(item => !item.ruleIds.includes("T-001"))
   draft.paragraphs = revisedParagraphs(primary.paragraphs, draft.edits); draft.sha256 = draftHash(draft)
   audit.draftSha256 = draft.sha256; audit.checks[0] = { ...audit.checks[0], outcome: "需确认", note: "请确认结算款支付期限。" }
-  assert.ok(parseDocxBytes(buildRevisionDocx(bytes, primary, draft, audit)).some(item => item.text === "请确认结算款支付期限。"))
+  assert.ok(parseDocxBytes(buildRevisionDocx(bytes, primary, draft, audit)).paragraphs.some(item => item.text === "请确认结算款支付期限。"))
   draft.paragraphs[0].text = "私自替换正文"
   assert.throws(() => buildRevisionDocx(bytes, primary, draft, audit))
 })

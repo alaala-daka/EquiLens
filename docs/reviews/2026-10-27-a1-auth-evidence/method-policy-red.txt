@@ -1,0 +1,39 @@
+node:internal/modules/cjs/loader:1456
+  const err = new Error(message);
+              ^
+
+Error: Cannot find module './methods'
+Require stack:
+- C:\Users\aefar\source\repos\EquiLens\src\server\auth\methods.test.ts
+    at node:internal/modules/cjs/loader:1456:15
+    at nextResolveSimple (C:\Users\aefar\source\repos\EquiLens\node_modules\.pnpm\tsx@4.23.15\node_modules\tsx\dist\register-B1c7OH6V.cjs:23:1010)
+    at C:\Users\aefar\source\repos\EquiLens\node_modules\.pnpm\tsx@4.23.15\node_modules\tsx\dist\register-B1c7OH6V.cjs:22:4512
+    at C:\Users\aefar\source\repos\EquiLens\node_modules\.pnpm\tsx@4.23.15\node_modules\tsx\dist\register-B1c7OH6V.cjs:22:2830
+    at resolveTsPaths (C:\Users\aefar\source\repos\EquiLens\node_modules\.pnpm\tsx@4.23.15\node_modules\tsx\dist\register-B1c7OH6V.cjs:23:762)
+    at C:\Users\aefar\source\repos\EquiLens\node_modules\.pnpm\tsx@4.23.15\node_modules\tsx\dist\register-B1c7OH6V.cjs:23:1203
+    at j._resolveFilename (file:///C:/Users/aefar/source/repos/EquiLens/node_modules/.pnpm/tsx@4.23.15/node_modules/tsx/dist/register-nyXW-TH3.mjs:2:18825)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)
+    at defaultResolve (node:internal/modules/cjs/loader:1101:31)
+    at nextStep (node:internal/modules/customization_hooks:189:26) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'C:\\Users\\aefar\\source\\repos\\EquiLens\\src\\server\\auth\\methods.test.ts'
+  ]
+}
+
+Node.js v24.14.1
+✖ src\server\auth\methods.test.ts (203.9275ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 210.8383
+
+✖ failing tests:
+
+test at src\server\auth\methods.test.ts:1:1
+✖ src\server\auth\methods.test.ts (203.9275ms)
+  'test failed'

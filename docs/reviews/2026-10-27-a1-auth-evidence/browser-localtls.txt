@@ -1,0 +1,8 @@
+keyboard login error, password clear, username retained, narrow no-horizontal-overflow PASS
+intercepted network failure visible, password clear, no automatic retry PASS
+actual Secure/HttpOnly/SameSite=Lax __Host cookie accepted by isolated browser over synthetic localTLS PASS
+actual browser login200, unsafe external returnTo falls back same-origin root, session200 PASS
+held/intercepted login response: duplicate form submit blocked (1 request), busy button disabled PASS
+actual browser cookie + synthetic DB expires_at moved to past: session401 PASS (not 12h elapsed acceptance)
+synthetic maintain disable/re-enable: old browser session401 both times PASS
+browser-context actual logout204 then session401 PASS (no workspace logout UI available)

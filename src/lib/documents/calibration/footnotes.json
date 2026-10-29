@@ -1,0 +1,13 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "run", "content": [{ "type": "text", "marks": [], "text": "工程价款以结算单为准" }] },
+        { "type": "run", "content": [{ "type": "footnoteReference", "attrs": { "id": "1", "customMarkFollows": null }, "marks": [] }] },
+        { "type": "run", "content": [{ "type": "text", "marks": [], "text": "。" }] }
+      ]
+    }
+  ]
+}

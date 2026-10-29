@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { BookOpenIcon, FileTextIcon, PlusIcon, ScaleIcon, UploadIcon, LoaderCircleIcon } from "lucide-react"
 
+import { AccountEntry } from "@/components/auth/account-entry"
+import { ProjectHostProvider } from "@/components/business/platform/project-host"
+import { ProjectSwitcher } from "@/components/business/platform/project-switcher"
 import { DocumentEditor } from "@/components/document-editor"
 import { ContractReviewHistory } from "@/components/contract-review-history"
 import { DocumentList } from "@/components/document-list"
@@ -16,6 +19,7 @@ import { validateDocx } from "@/lib/documents/validate"
 import { selectDocuments } from "@/lib/documents/list-view"
 import { createDocumentListStore } from "@/lib/documents/list-store"
 import { createDocumentOperations, type OperationDependencies } from "@/lib/documents/operations"
+import { createUnsavedRegistry } from "@/lib/documents/unsaved-registry"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
@@ -46,6 +50,7 @@ export function Workbench() {
   const resolver = useRef<((accepted: boolean) => void) | null>(null)
   const sessionRequest = useRef<{ generation: number; controller: AbortController | null }>({ generation: 0, controller: null })
   const [bridge] = useState(createSessionBridge)
+  const [workspaceRegistry] = useState(() => createUnsavedRegistry())
   const [restarting, setRestarting] = useState(false)
   const [restartDialog, setRestartDialog] = useState(false)
   const restartPending = useRef(false)
@@ -281,15 +286,24 @@ export function Workbench() {
   const editorDirtyChanged = useCallback((value: boolean) => { dirty.current = value }, [])
 
   if (opened && session?.canSave) {
-    return <DocumentEditor key={opened.document.id} opened={opened} onSaved={recordSaved} onBack={editorBack} onCopy={editorCopy} onSessionUnavailable={unavailable} onDirtyChange={editorDirtyChanged} initialReviewTaskId={reviewSelection?.documentId === opened.document.id ? reviewSelection.taskId : undefined} />
+    return (
+      <ProjectHostProvider registry={workspaceRegistry}>
+        <DocumentEditor key={opened.document.id} opened={opened} onSaved={recordSaved} onBack={editorBack} onCopy={editorCopy} onSessionUnavailable={unavailable} onDirtyChange={editorDirtyChanged} initialReviewTaskId={reviewSelection?.documentId === opened.document.id ? reviewSelection.taskId : undefined} unsaved={workspaceRegistry} />
+      </ProjectHostProvider>
+    )
   }
 
   return (
+    <ProjectHostProvider registry={workspaceRegistry}>
     <main className="flex min-h-svh flex-col">
       <header className="flex h-16 shrink-0 items-center justify-between border-b px-6">
         <div className="flex items-center gap-2 text-sm font-medium">
           <ScaleIcon className="size-5" />
           衡鉴 <span className="font-normal text-muted-foreground">EquiLens</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <ProjectSwitcher />
+          <AccountEntry />
         </div>
       </header>
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col p-6">
@@ -365,5 +379,6 @@ export function Workbench() {
         </Tabs>
       </div>
     </main>
+    </ProjectHostProvider>
   )
 }

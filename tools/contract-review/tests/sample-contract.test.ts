@@ -12,7 +12,7 @@ test("AC-03/21：完整 TXT 唯一生成 DOCX，段数、首尾及关键条款�
   const text = await readFile(fixture + ".txt", "utf8")
   const source = paragraphsFromString(text)
   const bytes = await readFile(fixture + ".docx")
-  const actual = parseDocxBytes(bytes)
+  const actual = parseDocxBytes(bytes).paragraphs
   assert.equal(source.length, 18)
   assert.equal(actual.length, source.length)
   assert.equal(actual[0].text, source[0].text)

@@ -1,0 +1,58 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "run",
+          "content": [
+            {
+              "type": "passthroughInline",
+              "attrs": {
+                "originalName": "w:pict",
+                "originalXml": {
+                  "type": "element",
+                  "name": "w:pict",
+                  "elements": [
+                    {
+                      "type": "element",
+                      "name": "v:shape",
+                      "attributes": { "id": "文本框 1", "type": "#_x0000_t202", "style": "width:144pt;height:36pt" },
+                      "elements": [
+                        {
+                          "type": "element",
+                          "name": "v:textbox",
+                          "elements": [
+                            {
+                              "type": "element",
+                              "name": "w:txbxContent",
+                              "elements": [
+                                {
+                                  "type": "element",
+                                  "name": "w:p",
+                                  "elements": [
+                                    {
+                                      "type": "element",
+                                      "name": "w:r",
+                                      "elements": [{ "type": "element", "name": "w:t", "elements": [{ "type": "text", "text": "框内文字（VML）" }] }]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "marks": []
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

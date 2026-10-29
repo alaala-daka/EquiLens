@@ -21,7 +21,7 @@ const text = (items: Node[]): string => items.map(node => Object.entries(node).m
 export function buildRevisionDocx(bytes: Uint8Array, primary: ReviewResult, draft: RevisionState, audit: RevisionAudit): Uint8Array {
   if (!canExportRevision(draft, audit) || draft.sha256 !== draftHash(draft) || draft.primarySha256 !== revisionHash(primary) ||
     !validateRevision(primary, draft.edits, draft.decisions, draft.decisions.map(item => item.ruleId)) || JSON.stringify(draft.paragraphs) !== JSON.stringify(revisedParagraphs(primary.paragraphs, draft.edits))) throw new Error("修订稿与机器核对记录不匹配。")
-  const parsed = parseDocxBytes(bytes)
+  const parsed = parseDocxBytes(bytes).paragraphs
   if (JSON.stringify(parsed) !== JSON.stringify(primary.paragraphs)) throw new Error("源 Word 与固定解析快照不匹配。")
   const files = unzipSync(bytes)
   const parser = new XMLParser({ preserveOrder: true, ignoreAttributes: false, parseTagValue: false, trimValues: false })
@@ -63,7 +63,7 @@ export function buildRevisionDocx(bytes: Uint8Array, primary: ReviewResult, draf
   content.splice(section < 0 ? content.length : section, 0, ...ending.map(paragraph))
   files["word/document.xml"] = strToU8(new XMLBuilder({ preserveOrder: true, ignoreAttributes: false }).build(document))
   const output = zipSync(files, { level: 6 })
-  const check = parseDocxBytes(output)
+  const check = parseDocxBytes(output).paragraphs
   const expected = [marker, ...draft.paragraphs.map(item => item.text), ...ending]
   if (check.length !== expected.length || check.some((item, index) => item.text !== expected[index])) throw new Error("生成 Word 正文与保存稿不一致。")
   const actualBody = check.slice(1, 1 + draft.paragraphs.length)
