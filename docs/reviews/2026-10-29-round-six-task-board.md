@@ -11,8 +11,8 @@
 | W0 | Lead | spec/01 §10.4—10.5、spec/04 0013/运行时/env/CLI、`.env.example`、计划 | 基线 | 已提交 `ed7b585` |
 | C7 | Agent E | 接管 DELETE、每请求保留期撤销、删除记录/回收/日志/离线重放、按序删行覆盖、运行时与 CLI、删除状态入口 | W0 | 已提交 `4ac0d61`（C7+迁移定向 73/71 pass/2 skip；tsc 0；CLI e2e 记录） |
 | A5 | Agent F | seed/备份集、双向删除重放演练、restore-verify、租约清理、卷式重启、迁移账本、两层容量、部署/运维文档 | W0 | 已提交 `aef2b9a`（双向演练/恢复/容量/浏览器基线均 exit 0，详见证据） |
-| I1 | Lead | 0013 注册、运行时接线、CLI 打包、全量门禁、最终 A/C 收口 | C7、A5 | 0013/接线/CLI `896cec3`；门禁 `pnpm check` 0、`pnpm test` 958/956+2skip/0、`pnpm build` 0、smoke 通过；收口文档 `2026-10-29-ac-final-acceptance.md` 待随审查提交 |
-| Review | 交叉审查 | 独立核对 C7/A5 实现与证据 | C7、A5 | 进行中 |
+| I1 | Lead | 0013 注册、运行时接线、CLI 打包、全量门禁、最终 A/C 收口 | C7、A5 | 0013/接线/CLI `896cec3`；审查修复 `3c25675`；门禁 `pnpm check` 0、`pnpm test` 958/956+2skip/0、`pnpm build` 0、smoke 通过、diff-check 0；收口文档 `2026-10-29-ac-final-acceptance.md` 已提交 |
+| Review | 交叉审查 | 独立核对 C7/A5 实现与证据 | C7、A5 | 已完成：APPROVE WITH FIXES → B1—B3 修复（`3c25675`/`4464637`）→ 复核 **CONFIRMED，无剩余 blocker**；N1—N10 处置见最终验收 §7 |
 
 ## C7 已落地要点
 
