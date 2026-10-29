@@ -86,12 +86,6 @@ export function renderDraft(input: DraftingRenderInput): DraftingRenderResult {
       paragraphs.push(`${sectionIndex + 1}.${clauseNumber} ${fillClause(template, clause.text, values, originalContract)}`)
     }
   }
-  for (const field of template.fields) {
-    if (field.required === "always" || conditionActive(template, field.required.when, values)) continue
-    if (!(values[field.id] ?? "").trim()) continue
-    // A conditionally-required field without an active requirement is not part
-    // of the rendered contract; keep only required/conditional clauses above.
-  }
   paragraphs.push(`提示：${TEMPLATE_UNREVIEWED_WARNING}`)
   const missing = missingFields(template, values).map(item => ({ ...item }))
   return { paragraphs, missing }
