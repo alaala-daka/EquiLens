@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { LogInIcon, LogOutIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { useProjectHost } from "@/components/business/platform/project-host"
 import { FieldError } from "@/components/ui/field"
 import { accountEntryState, type AccountEntryState } from "@/lib/auth/account-entry"
 import { AuthClientError, authClient } from "@/lib/auth/client"
@@ -15,7 +15,7 @@ import { AuthClientError, authClient } from "@/lib/auth/client"
  * Signing in or out never reads, migrates or clears the anonymous document session.
  */
 export function AccountEntry() {
-  const router = useRouter()
+  const host = useProjectHost()
   const [state, setState] = useState<AccountEntryState>({ kind: "loading" })
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
@@ -43,8 +43,10 @@ export function AccountEntry() {
     setError("")
     try {
       await authClient.logout()
-      router.replace("/login")
-      router.refresh()
+      // Drop project views explicitly so an intentional sign-out returns to the anonymous
+      // workspace; the anonymous document session is separate and stays intact.
+      host.signOut()
+      setState({ kind: "anonymous" })
     } catch (failure) {
       setError(failure instanceof AuthClientError ? failure.message : "退出失败，请重试。")
     } finally {

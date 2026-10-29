@@ -1,12 +1,12 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
-import { BookOpenIcon, FileTextIcon, PlusIcon, ScaleIcon, UploadIcon, LoaderCircleIcon } from "lucide-react"
+import { BookOpenIcon, FileTextIcon, FolderOpenIcon, PlusIcon, ScaleIcon, UploadIcon, LoaderCircleIcon } from "lucide-react"
 
 import { AccountEntry } from "@/components/auth/account-entry"
 import { ProjectHostProvider, useProjectHost } from "@/components/business/platform/project-host"
 import { ProjectDocumentsWorkspace } from "@/components/business/platform/project-documents-workspace"
-import { workspaceRoute } from "@/components/business/platform/project-retention"
+import { workspaceSurface } from "@/components/business/platform/project-retention"
 import { ProjectSwitcher } from "@/components/business/platform/project-switcher"
 import { DocumentEditor } from "@/components/document-editor"
 import { ContractReviewHistory } from "@/components/contract-review-history"
@@ -46,15 +46,30 @@ export function Workbench() {
 
 function WorkspaceRouter({ registry }: { registry: ReturnType<typeof createUnsavedRegistry> }) {
   const host = useProjectHost()
-  if (workspaceRoute(host.status, host.currentProject) === "anonymous") return <AnonymousWorkbench workspaceRegistry={registry} />
-  if (host.currentProject) return <ProjectDocumentsWorkspace key={host.currentProject.id} project={host.currentProject} accessBlocked={host.status !== "ready"} registry={registry} />
-  return <main className="flex min-h-svh flex-col"><header className="flex h-16 items-center justify-between border-b px-6"><span className="text-sm font-medium">衡鉴</span><div className="flex items-center gap-3"><ProjectSwitcher /><AccountEntry /></div></header>{host.status === "loading" && <p role="status" className="p-6 text-sm">正在读取项目</p>}</main>
+  // Signing in keeps the anonymous workspace reachable; signing out returns to it.
+  const [anonymous, setAnonymous] = useState(false)
+  async function openAnonymous() {
+    if (!(await registry.saveAll()).ok) return false
+    setAnonymous(true)
+    return true
+  }
+  async function openProject() {
+    if (!(await registry.saveAll()).ok) return false
+    setAnonymous(false)
+    return true
+  }
+  if (workspaceSurface(anonymous, host.status, host.currentProject) === "anonymous") {
+    return <AnonymousWorkbench workspaceRegistry={registry} onOpenProject={host.status === "ready" ? openProject : undefined} />
+  }
+  if (host.currentProject) return <ProjectDocumentsWorkspace key={host.currentProject.id} project={host.currentProject} accessBlocked={host.status !== "ready"} registry={registry} onOpenAnonymous={openAnonymous} />
+  return <main className="flex min-h-svh flex-col"><header className="flex h-16 items-center justify-between border-b px-6"><span className="text-sm font-medium">衡鉴</span><div className="flex items-center gap-3"><ProjectSwitcher /><Button variant="outline" size="sm" onClick={() => void openAnonymous()}><FileTextIcon />匿名工作台</Button><AccountEntry /></div></header>{host.status === "loading" && <p role="status" className="p-6 text-sm">正在读取项目</p>}</main>
 }
 
-function AnonymousWorkbench({ workspaceRegistry }: { workspaceRegistry: ReturnType<typeof createUnsavedRegistry> }) {
+function AnonymousWorkbench({ workspaceRegistry, onOpenProject }: { workspaceRegistry: ReturnType<typeof createUnsavedRegistry>; onOpenProject?: () => Promise<boolean> }) {
   const [session, setSession] = useState<AnonymousSessionView | null>(null)
   const sessionRef = useRef<AnonymousSessionView | null>(null)
   const [sessionError, setSessionError] = useState("")
+  const [navigationError, setNavigationError] = useState("")
   const [sessionLoading, setSessionLoading] = useState(true)
   const [sessionRefreshNeeded, setSessionRefreshNeeded] = useState(false)
   const [unsavedNotice, setUnsavedNotice] = useState(false)
@@ -109,6 +124,11 @@ function AnonymousWorkbench({ workspaceRegistry }: { workspaceRegistry: ReturnTy
   const documents = list.documents
   const listReady = list.kind === "ready" && session?.canRead === true && !sessionRefreshNeeded
   const busy = operationState.operation !== null || restarting || downloading
+  async function switchWorkspace() {
+    if (busy || !onOpenProject) return
+    setNavigationError("")
+    if (!(await onOpenProject())) setNavigationError("存在未保存的修改，切换已取消。")
+  }
   const error = operationState.error ? errorMessage(operationState.error) : ""
   const fileInput = useRef<HTMLInputElement>(null)
   const initiatingControl = useRef<HTMLButtonElement | null>(null)
@@ -312,7 +332,7 @@ function AnonymousWorkbench({ workspaceRegistry }: { workspaceRegistry: ReturnTy
           衡鉴 <span className="font-normal text-muted-foreground">EquiLens</span>
         </div>
         <div className="flex items-center gap-3">
-          <ProjectSwitcher />
+          {onOpenProject ? <Button variant="outline" size="sm" onClick={() => void switchWorkspace()}><FolderOpenIcon />项目工作区</Button> : <ProjectSwitcher />}
           <AccountEntry />
         </div>
       </header>
@@ -320,6 +340,7 @@ function AnonymousWorkbench({ workspaceRegistry }: { workspaceRegistry: ReturnTy
         <DocumentSessionDialog request={confirmation} onDecision={decide} />
         <input ref={fileInput} type="file" accept=".docx" aria-label="选择 Word 文件" className="hidden" disabled={!listReady || busy || !session?.canCreate} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) runCreate(file) }} />
         {sessionError && <div className="mb-4 flex items-center gap-2"><p role="alert" className="text-sm text-destructive">{sessionError}</p><Button variant="outline" disabled={busy} onClick={() => void refreshSession()}>重试</Button></div>}
+        {navigationError && <p role="alert" className="mb-4 text-sm text-destructive">{navigationError}</p>}
         {unsavedNotice && <p role="alert" className="mb-4 text-sm">会话访问已结束，未保存的更改未能保存。</p>}
         {session?.state === "legacy_export" && <p role="status" className="mb-4 text-sm">文档仅可下载。导出截止：{session.exportUntil ? new Date(session.exportUntil).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }) : ""}</p>}
         {session?.state === "expired" && <AlertDialog open={restartDialog} onOpenChange={setRestartDialog}>

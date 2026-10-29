@@ -23,6 +23,8 @@ export type ProjectHostValue = {
   refresh(): Promise<void>
   selectProject(projectId: string): Promise<boolean>
   createProject(input: ProjectCreatePayload): Promise<ProjectSummary>
+  /** Explicit sign-out: drop project views without the retained-editor guard used for unexpected 401s. */
+  signOut(): void
 }
 
 const storageKey = "equilens.project"
@@ -100,6 +102,23 @@ export function ProjectHostProvider({ children, registry }: { children: ReactNod
     setCanCreateProject(false)
     setGeneration(value => value + 1)
   }, [])
+
+  const signOut = useCallback(() => {
+    listGate.cancel()
+    switchGate.cancel()
+    clearStoredProjectId()
+    currentId.current = null
+    projectsRef.current = []
+    setCurrentProjectId(null)
+    setProjects([])
+    setCanCreateProject(false)
+    setStatus("anonymous")
+    setError("")
+    setSwitchError("")
+    setSwitchFailures([])
+    setSwitching(false)
+    setGeneration(value => value + 1)
+  }, [listGate, switchGate])
 
   const reconcile = useCallback((list: ProjectSummary[], preferredId: string | null) => {
     const wanted = preferredId ?? currentId.current ?? storedProjectId()
@@ -272,7 +291,8 @@ export function ProjectHostProvider({ children, registry }: { children: ReactNod
     refresh: load,
     selectProject,
     createProject,
-  }), [status, projects, currentProject, canCreateProject, error, generation, switching, switchFailures, switchError, load, selectProject, createProject])
+    signOut,
+  }), [status, projects, currentProject, canCreateProject, error, generation, switching, switchFailures, switchError, load, selectProject, createProject, signOut])
 
   return <ProjectHostContext.Provider value={value}>{children}</ProjectHostContext.Provider>
 }

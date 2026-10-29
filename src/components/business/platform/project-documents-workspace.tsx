@@ -25,7 +25,7 @@ import { submitMaterialUpload } from "./project-upload"
 const roles = { admin: "项目管理员", editor: "可编辑成员", viewer: "只读成员" }
 const states: Record<string, string> = { queued: "排队中", running: "处理中", success: "已完成", succeeded: "已完成", completed: "已完成", failed: "失败", cancelled: "已取消", available: "可读取", partial: "部分覆盖" }
 
-export function ProjectDocumentsWorkspace({ project, registry, accessBlocked = false }: { project: ProjectSummary; registry: UnsavedRegistry; accessBlocked?: boolean }) {
+export function ProjectDocumentsWorkspace({ project, registry, accessBlocked = false, onOpenAnonymous }: { project: ProjectSummary; registry: UnsavedRegistry; accessBlocked?: boolean; onOpenAnonymous: () => Promise<boolean> }) {
   const [materials, setMaterials] = useState<MaterialSummary[]>([])
   const [documents, setDocuments] = useState<ProjectDocument[]>([])
   const [opened, setOpened] = useState<OpenDocument | null>(null)
@@ -99,7 +99,7 @@ export function ProjectDocumentsWorkspace({ project, registry, accessBlocked = f
   return <main className="flex min-h-svh flex-col">
     <header className="flex min-h-16 flex-wrap items-center justify-between gap-2 border-b px-6 py-2">
       <div className="flex items-center gap-2 text-sm font-medium"><ScaleIcon className="size-5" />衡鉴</div>
-      <div className="flex items-center gap-3"><ProjectSwitcher /><AccountEntry /></div>
+      <div className="flex items-center gap-3"><ProjectSwitcher /><Button variant="outline" size="sm" onClick={() => void act(async () => { if (!(await onOpenAnonymous())) setError("存在未保存的修改，切换已取消。") })}><FileTextIcon />匿名工作台</Button><AccountEntry /></div>
     </header>
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-6">
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
