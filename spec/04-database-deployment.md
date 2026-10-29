@@ -71,6 +71,14 @@ GaussDB 的目标是集中式实例，版本、兼容模式和真实服务的往
 或 RETURNING；枚举与状态转换由服务层校验，并断言条件更新恰好影响一行。OCR 运行/字段与核验记录是
 项目私有数据，纳入项目删除与恢复清单；知识/规则发布版本是全局数据，不随项目删除。
 
+第五轮迁移分配：C6 已发布知识/规则使用 0011（`equilens_publications`、`equilens_publication_versions`，
+含 `UNIQUE(kind,artifact_id)`、`UNIQUE(publication_id,version)`；核对人/核对时间/证据可空以支持草拟与
+待核对，发布转换时强制非空）；C5 拟约定输入使用 0012（`equilens_drafting_inputs`、
+`equilens_drafting_input_versions`，含 `UNIQUE(project_id,operation_id)`）。0013 是 C7 生命周期的规划意图，
+落地时取当时下一连续编号并在该轮计划登记。发布版本为全局数据，不随项目删除，C7 恢复清单登记但不回滚；
+拟约定输入与文书成果为项目私有数据，进入项目删除与恢复清单。唯一约束沿用既有迁移已采用的 `UNIQUE`
+语法；重复键按既有 provider 兼容模式处理。
+
 业务迁移验收：空库应用、重复启动、同号摘要不符、未知编号、失败回滚、既有匿名文档/版本不变及双 provider 首闭环分别留证。
 业务迁移与认证核心已有本地基础；登录 HTTP、项目功能及平台验收仍按各自记录判断，
 本段不表示已经运行或通过。

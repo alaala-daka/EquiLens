@@ -15,9 +15,10 @@ export async function resultHttpServices() {
       // Machine-only kinds: the browser POST and the review/export flows can read
       // them, but only a server-owned task or the explicit server-owned save below
       // may write a value. C4 requirement sets are machine candidates that a human
-      // confirms through VerificationService.saveRequirementSet.
-      new Set(["contract-review", "bid-requirements", "bid-verification"]),
-      new Set(["bid-requirements"]),
+      // confirms through VerificationService.saveRequirementSet; C5 drafting results
+      // are human input composed by the server-owned DraftingService.
+      new Set(["contract-review", "bid-requirements", "bid-verification", "specialty-subcontract", "supplementary-agreement"]),
+      new Set(["bid-requirements", "specialty-subcontract", "supplementary-agreement"]),
     ),
   }
 }

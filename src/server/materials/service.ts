@@ -170,7 +170,8 @@ export class MaterialService {
     const material = await this.deps.repository.findMaterial(projectId, snapshot.materialId)
     const version = await this.deps.repository.findVersion(projectId, snapshot.materialId, snapshot.versionId)
     if (!material || material.status !== "active" || !version) throw new BusinessError("NOT_FOUND", "找不到该解析快照。")
-    return { snapshot, material, version }
+    const fragments = await this.deps.repository.fragments(snapshot.id)
+    return { snapshot, material, version, fragments }
   }
 
   async readSource(identity: AuthIdentity, ref: { projectId?: unknown; snapshotId?: unknown; fragmentId?: unknown }): Promise<SourceReadResult> {

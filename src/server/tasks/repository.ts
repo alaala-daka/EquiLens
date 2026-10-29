@@ -6,6 +6,7 @@ import {
 } from "./catalog"
 import { TaskError } from "./errors"
 import { taskLimits } from "./limits"
+import type { PublicationPin } from "./publications"
 
 export type TaskState = "queued" | "running" | "success" | "partial" | "failed" | "cancelled"
 export type TaskTerminalState = "success" | "partial" | "failed" | "cancelled"
@@ -177,7 +178,7 @@ export class TaskRepository {
    * Persist a queued task. Same account + project + operationId + same input
    * returns the original task; the same key with a different input conflicts.
    */
-  async submit(owner: string, operationId: string, request: unknown): Promise<SubmitResult> {
+  async submit(owner: string, operationId: string, request: unknown, options: { publications?: PublicationPin } = {}): Promise<SubmitResult> {
     const parsed: ParsedTaskRequest = parseTaskRequest(request)
     const requestHash = taskRequestDigest(parsed)
     const work = () => this.database.transaction(async connection => {
@@ -201,7 +202,7 @@ export class TaskRepository {
         throw new TaskError(429, "LIMIT_EXCEEDED", `每位用户最多保留 ${taskLimits.maxUnfinishedPerOwner} 个未终结任务，请稍后提交。`)
       }
       const id = this.nextId()
-      const manifest = buildTaskManifest(parsed, owner, clock)
+      const manifest = buildTaskManifest(parsed, owner, clock, options.publications)
       const encoded = encodeManifest(manifest)
       const budgets = taskAttemptBudget(parsed.kind)
       await connection.query(

@@ -134,6 +134,8 @@ export type ParseSnapshotReadResult = {
   snapshot: ParseSnapshotRecord
   material: MaterialRecord
   version: MaterialVersionRecord
+  /** Immutable fragments of this snapshot in document order (round-five C4-UI source picker). */
+  fragments: SourceFragmentRecord[]
 }
 
 export type SourceReadResult = {

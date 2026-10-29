@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { z } from "zod"
 import { TaskError } from "./errors"
 import { taskLimits } from "./limits"
+import type { PublicationPin } from "./publications"
 
 /**
  * Server-fixed task catalogue (A3a).
@@ -25,7 +26,7 @@ export const taskKinds = [
 ] as const
 export type TaskKind = (typeof taskKinds)[number]
 
-export const TASK_CATALOG_VERSION = 3
+export const TASK_CATALOG_VERSION = 4
 
 const identifier = z.string().trim().min(1).max(64)
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/)
@@ -156,6 +157,11 @@ export type TaskManifest = {
   conditions: Record<string, unknown>
   submittedBy: string
   submittedAt: string
+  /**
+   * Server-resolved published basis (round-five C6). Optional: old manifests and
+   * the current debug path have no publications. The browser can never supply it.
+   */
+  publications?: PublicationPin
 }
 
 const envelopeSchema = z.object({
@@ -233,7 +239,7 @@ export function taskRequestDigest(request: ParsedTaskRequest): string {
   return digest(canonicalJson({ kind: request.kind, projectId: request.projectId, refs: request.refs, conditions: request.conditions }))
 }
 
-export function buildTaskManifest(request: ParsedTaskRequest, submittedBy: string, submittedAt: string): TaskManifest {
+export function buildTaskManifest(request: ParsedTaskRequest, submittedBy: string, submittedAt: string, publications?: PublicationPin): TaskManifest {
   return {
     version: 1,
     catalogVersion: TASK_CATALOG_VERSION,
@@ -243,6 +249,7 @@ export function buildTaskManifest(request: ParsedTaskRequest, submittedBy: strin
     conditions: request.conditions,
     submittedBy,
     submittedAt,
+    ...(publications ? { publications } : {}),
   }
 }
 

@@ -84,7 +84,29 @@ test("C4: bid task schemas pin records/asOf/one-image and reject the superseded 
     refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }], requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) }, externalRecords: [{ recordId: "record-1", sha256: "not-a-digest" }] },
     conditions: { asOf: "2026-10-28" },
   }))
-  assert.equal(TASK_CATALOG_VERSION, 3)
+  assert.equal(TASK_CATALOG_VERSION, 4)
+})
+
+test("R5: server-resolved publications are pinned into the manifest and never accepted from the browser", () => {
+  const request = parseTaskRequest(validRequest("contract-review"))
+  const pin = {
+    rules: [{ id: "rule-pack", versionId: "v1", sha256: "a".repeat(64) }],
+    knowledge: [],
+    templates: [],
+  }
+  const manifest = buildTaskManifest(request, "account-1", "2026-10-29T00:00:00.000Z", pin)
+  assert.deepEqual(manifest.publications, pin)
+  assert.equal(encodeManifest(manifest), encodeManifest({ ...manifest, publications: { ...pin } }))
+  const debugManifest = buildTaskManifest(request, "account-1", "2026-10-29T00:00:00.000Z")
+  assert.equal("publications" in debugManifest, false)
+  // Browser input cannot claim a published basis; only the server resolver may add it.
+  submissionError(() => parseTaskRequest({ ...validRequest("contract-review"), publications: pin }))
+  submissionError(() => parseTaskRequest({
+    ...validRequest("contract-review"),
+    conditions: { ...reviewConditions, publications: pin },
+  }))
+  // Idempotency stays keyed on the browser request, so a pin change never creates a new identity.
+  assert.equal(taskRequestDigest(request), taskRequestDigest(parseTaskRequest(validRequest("contract-review"))))
 })
 
 test("A3a: unknown kinds and browser-supplied manifest/model/rules/executor are rejected", () => {

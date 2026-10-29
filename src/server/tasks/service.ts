@@ -7,6 +7,7 @@ import type { AuthIdentity } from "../auth/service"
 import { TaskBudgetRepository, type BudgetSettlement, type BudgetUsage, type ProjectBudgetView, type TaskBudgetView } from "./budget"
 import { applicationDatabase } from "../database/runtime"
 import { parseOperationId, parseTaskRequest, type TaskSubmission } from "./catalog"
+import { resolvePublication } from "./publications"
 import {
   TaskRepository, type CallBudgetEstimate, type ClaimedTask, type SubmitResult, type TaskView,
 } from "./repository"
@@ -55,17 +56,21 @@ export async function submitTask(identity: AuthIdentity, authorize: ProjectTaskA
   if (!taskExecutorRegistry.get(submission.kind)) throw new TaskError(503, "SERVICE_UNAVAILABLE", "该任务类型尚未开放。")
   const operationId = parseOperationId(submission.operationId)
   await authorize(identity, submission.projectId, "edit")
+  const parsed = parseTaskRequest({
+    kind: submission.kind, projectId: submission.projectId, refs: submission.refs, conditions: submission.conditions,
+  })
   // Kind-level admission runs before persistence: a kind whose current capability
   // is unverified (e.g. no tested OCR certificate kinds) must never enter the queue.
   const admission = taskAdmission(submission.kind)
-  if (admission) {
-    const parsed = parseTaskRequest({ kind: submission.kind, projectId: submission.projectId, refs: submission.refs, conditions: submission.conditions })
-    await admission({ kind: parsed.kind, projectId: parsed.projectId, refs: parsed.refs, conditions: parsed.conditions })
-  }
+  if (admission) await admission({ kind: parsed.kind, projectId: parsed.projectId, refs: parsed.refs, conditions: parsed.conditions })
+  // Server-resolved published basis (C6). Missing resolver or blocked basis is
+  // fail-closed; the pin is written into the immutable manifest, never the browser.
+  const resolution = await resolvePublication(parsed)
+  if (resolution.state === "blocked") throw new TaskError(422, "INVALID_SUBMISSION", "已发布依据已停用或待核对，无法提交新任务。")
   const repository = await taskRepository()
   return repository.submit(identity.account.id, operationId, {
     kind: submission.kind, projectId: submission.projectId, refs: submission.refs, conditions: submission.conditions,
-  })
+  }, resolution.state === "pinned" ? { publications: resolution.pin } : {})
 }
 
 export async function getTask(identity: AuthIdentity, authorize: ProjectTaskAuthorizer, id: string): Promise<TaskView> {
