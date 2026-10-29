@@ -160,8 +160,12 @@ export class MaterialRepository {
   }
 
   /** Conditional revision bump keeps a concurrent reparse from overwriting a newer snapshot. */
-  async addSnapshot(snapshot: ParseSnapshotRecord, fragments: SourceFragmentRecord[], expectedRevision: number): Promise<void> {
+  async addSnapshot(snapshot: ParseSnapshotRecord, fragments: SourceFragmentRecord[], expectedRevision: number, job?: import("../tasks/repository").ClaimedTask): Promise<void> {
     await this.database.transaction(async connection => {
+      if (job) {
+        const claimed = await connection.query("UPDATE equilens_tasks SET stage=stage WHERE id=$1 AND project_id=$2 AND state='running' AND execution_token=$3 AND attempt=$4 AND lease_until>$5", [job.id, snapshot.projectId, job.token, job.attempt, this.timestamp()])
+        if (claimed.changes !== 1) throw new BusinessError("CONFLICT", "任务执行权已变化。")
+      }
       const updated = await connection.query(
         "UPDATE equilens_materials SET latest_revision=$1 WHERE id=$2 AND project_id=$3 AND status='active' AND latest_revision=$4",
         [snapshot.revision, snapshot.materialId, snapshot.projectId, expectedRevision],
@@ -196,6 +200,10 @@ export class MaterialRepository {
     return rows.length ? versionRecord(rows[0]) : null
   }
 
+  async versionById(projectId: string, versionId: string): Promise<MaterialVersionRecord | null> {
+    const { rows } = await this.database.transaction(c => c.query("SELECT * FROM equilens_material_versions WHERE project_id=$1 AND id=$2", [projectId, versionId]))
+    return rows.length ? versionRecord(rows[0]) : null
+  }
   async findVersion(projectId: string, materialId: string, versionId: string): Promise<MaterialVersionRecord | null> {
     const { rows } = await this.database.transaction(connection =>
       connection.query("SELECT * FROM equilens_material_versions WHERE project_id=$1 AND material_id=$2 AND id=$3", [projectId, materialId, versionId]))
