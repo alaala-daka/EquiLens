@@ -74,6 +74,25 @@ export type ResultRevisionRef = ProjectRef & {
   sha256: string
 }
 
+/** Project contract-review task input frozen for round three (catalog is the runtime authority). */
+export type ProjectReviewScene = "auto" | "mep-sub-2026" | "decoration-sub-2026" | "curtain-wall-sub-2026" | "steel-structure-sub-2026"
+
+export type ProjectReviewConditions = {
+  asOf?: string
+  scene: ProjectReviewScene
+  role: "专业分包人"
+  region: string
+  externalProcessingConsent: true
+  unreviewedMaterialsConsent: boolean
+}
+
+export type ProjectReviewMaterialRef = { materialVersionId: string; sha256: string }
+
+export type ProjectReviewSubmission = ProjectRef & {
+  materials: ProjectReviewMaterialRef[]
+  conditions: ProjectReviewConditions
+}
+
 export type ResultValidation = {
   status: "valid" | "invalid" | "partial"
   versionId: string

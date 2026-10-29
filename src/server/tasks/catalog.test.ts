@@ -5,7 +5,7 @@ import {
   taskKinds, taskRequestDigest, type TaskKind,
 } from "./catalog"
 import { TaskError } from "./errors"
-import { otherProjectId, validRequest } from "./test-fixtures"
+import { otherProjectId, reviewConditions, validRequest } from "./test-fixtures"
 
 function submissionError(work: () => unknown) {
   try { work() } catch (failure) {
@@ -37,20 +37,22 @@ test("A3a: unknown kinds and browser-supplied manifest/model/rules/executor are 
   }
   submissionError(() => parseTaskRequest({
     ...validRequest("contract-review"),
-    refs: { document: { projectId: "project-1", id: "document-1", versionId: "document-1-version" }, rules: "全文" },
+    refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }], rules: "全文" },
   }))
   submissionError(() => parseTaskRequest({
     ...validRequest("contract-review"),
-    conditions: { asOf: "2026-10-28", model: "https://model.invalid/v1" },
+    conditions: { ...reviewConditions, model: "https://model.invalid/v1" },
   }))
 })
 
 test("A3a: references from another project and malformed values are rejected", () => {
   submissionError(() => parseTaskRequest({
-    kind: "contract-review", projectId: "project-1",
+    kind: "document-analysis", projectId: "project-1",
     refs: { document: { projectId: otherProjectId, id: "document-1", versionId: "document-1-version" } },
     conditions: {},
   }))
+  submissionError(() => parseTaskRequest({ ...validRequest("contract-review"), refs: { materials: [{ materialVersionId: "material-1", sha256: "not-a-digest" }] } }))
+  submissionError(() => parseTaskRequest({ ...validRequest("contract-review"), conditions: { ...reviewConditions, externalProcessingConsent: false } }))
   submissionError(() => parseTaskRequest({ ...validRequest("material-parse"), refs: { materials: [{ materialVersionId: "m", sha256: "not-a-digest" }] } }))
   submissionError(() => parseTaskRequest({ ...validRequest("payment-reconciliation"), conditions: {} }))
   submissionError(() => parseTaskRequest({ kind: "result-export", projectId: "project-1", refs: { result: { projectId: "project-1", id: "r", versionId: "v" } }, conditions: { format: "pdf" } }))
@@ -62,8 +64,8 @@ test("A3a: operationId format is fixed and rejects missing/browser-selected ids"
 })
 
 test("A3a: request digest ignores key order and manifest is server-built and immutable", () => {
-  const ordered = parseTaskRequest({ kind: "contract-review", projectId: "project-1", refs: { document: { projectId: "project-1", id: "document-1", versionId: "document-1-version" } }, conditions: {} })
-  const reordered = parseTaskRequest({ conditions: {}, projectId: "project-1", refs: { document: { versionId: "document-1-version", id: "document-1", projectId: "project-1" } }, kind: "contract-review" })
+  const ordered = parseTaskRequest(validRequest("contract-review"))
+  const reordered = parseTaskRequest({ conditions: { region: "上海", scene: "auto", role: "专业分包人", unreviewedMaterialsConsent: true, externalProcessingConsent: true }, projectId: "project-1", refs: { materials: [{ sha256: "a".repeat(64), materialVersionId: "material-1" }] }, kind: "contract-review" })
   assert.equal(taskRequestDigest(ordered), taskRequestDigest(reordered))
   const manifest = buildTaskManifest(ordered, "account-1", "2026-10-28T00:00:00.000Z")
   assert.equal(manifest.version, 1)
@@ -75,7 +77,7 @@ test("A3a: request digest ignores key order and manifest is server-built and imm
   assert.equal(manifestHash(encoded), manifestHash(encodeManifest(manifest)))
   assert.equal(encoded.includes("executor"), false)
   // A changed input changes the digest, which the repository treats as a conflict.
-  const changed = parseTaskRequest({ ...validRequest("contract-review"), conditions: { asOf: "2026-10-29" } })
+  const changed = parseTaskRequest({ ...validRequest("contract-review"), conditions: { ...reviewConditions, asOf: "2026-10-29" } })
   assert.notEqual(taskRequestDigest(ordered), taskRequestDigest(changed))
 })
 

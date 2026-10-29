@@ -23,7 +23,7 @@ export const taskKinds = [
 ] as const
 export type TaskKind = (typeof taskKinds)[number]
 
-export const TASK_CATALOG_VERSION = 1
+export const TASK_CATALOG_VERSION = 2
 
 const identifier = z.string().trim().min(1).max(64)
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/)
@@ -45,8 +45,15 @@ const definitions: Record<TaskKind, TaskDefinition> = {
   "contract-review": {
     maxCalls: 25,
     maxCostFen: 3000,
-    refs: z.object({ document: versionRef }).strict(),
-    conditions: z.object({ asOf: day.optional() }).strict(),
+    refs: z.object({ materials: materialRefs }).strict(),
+    conditions: z.object({
+      asOf: day.optional(),
+      scene: z.enum(["auto", "mep-sub-2026", "decoration-sub-2026", "curtain-wall-sub-2026", "steel-structure-sub-2026"]),
+      role: z.literal("专业分包人"),
+      region: z.string().trim().min(1).max(100),
+      externalProcessingConsent: z.literal(true),
+      unreviewedMaterialsConsent: z.boolean(),
+    }).strict(),
   },
   "document-analysis": {
     maxCalls: 3,

@@ -30,9 +30,10 @@ const task: TaskView = {
   maxCalls: 25,
   elapsedMs: 0,
   manifest: {
-    version: 1, catalogVersion: 1, kind: "contract-review", projectId: "project-1",
-    refs: { document: { projectId: "project-1", id: "document-1", versionId: "document-1-version" } },
-    conditions: {}, submittedBy: "account-1", submittedAt: "2026-10-28T00:00:00.000Z",
+    version: 1, catalogVersion: 2, kind: "contract-review", projectId: "project-1",
+    refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }] },
+    conditions: { scene: "auto", role: "专业分包人", region: "上海", externalProcessingConsent: true, unreviewedMaterialsConsent: true },
+    submittedBy: "account-1", submittedAt: "2026-10-28T00:00:00.000Z",
   },
   error: null,
   resultSummary: null,
@@ -40,8 +41,8 @@ const task: TaskView = {
 const body = {
   kind: "contract-review",
   projectId: "project-1",
-  refs: { document: { projectId: "project-1", id: "document-1", versionId: "document-1-version" } },
-  conditions: {},
+  refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }] },
+  conditions: { scene: "auto", role: "专业分包人", region: "上海", externalProcessingConsent: true, unreviewedMaterialsConsent: true },
 }
 
 function request(path: string, options: { method?: string; body?: unknown; raw?: string; headers?: Record<string, string> } = {}) {

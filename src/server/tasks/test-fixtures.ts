@@ -17,10 +17,28 @@ function material(id: string) {
   return { materialVersionId: id, sha256: "a".repeat(64) }
 }
 
+export const reviewConditions = {
+  scene: "auto" as const,
+  role: "专业分包人" as const,
+  region: "上海",
+  externalProcessingConsent: true as const,
+  unreviewedMaterialsConsent: true,
+}
+
+export function reviewRequest(project = projectId) {
+  return {
+    kind: "contract-review" as const,
+    projectId: project,
+    refs: { materials: [material("material-1")] },
+    conditions: { ...reviewConditions },
+  }
+}
+
 /** A syntactically valid submission for each controlled kind. */
 export function validRequest(kind: TaskKind): TaskRequest {
   switch (kind) {
     case "contract-review":
+      return reviewRequest()
     case "document-analysis":
       return { kind, projectId, refs: { document: ref("document-1") }, conditions: {} }
     case "payment-reconciliation":
