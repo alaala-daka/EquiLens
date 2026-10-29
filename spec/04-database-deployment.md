@@ -88,6 +88,9 @@ lifecycle ready 后才启动材料孤儿对象修复；生命周期就绪前项�
 `PROJECT_RECLAIM_BATCH`（默认 10、上限 100）；清扫间隔 `PROJECT_LIFECYCLE_INTERVAL_MS`
 （默认 3600000，最小 60000）。私有维护入口 `project-lifecycle`（inspect|reclaim|replay，
 离线恢复重放使用 `--offline-restored-database`），随保留工具构建以在无 tsx 的容器中运行。
+删除日志与匿名删除日志共用持久化助手：文件内容 fsync + 原子 rename 后逐级 fsync 目录；Windows 本地无法
+fsync 目录（EPERM/EISDIR），该平台按“目录 fsync 不支持”记录为平台缺项（不中断本地验收），Linux/生产必须
+使用真实逐级目录 fsync；Linux 专用持久性测试不得以 Windows 结果充当通过。
 
 业务迁移验收：空库应用、重复启动、同号摘要不符、未知编号、失败回滚、既有匿名文档/版本不变及双 provider 首闭环分别留证。
 业务迁移与认证核心已有本地基础；登录 HTTP、项目功能及平台验收仍按各自记录判断，

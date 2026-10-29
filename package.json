@@ -28,7 +28,8 @@
     "smoke": "node scripts/smoke.mjs",
     "verify:c4": "tsx scripts/verify-bid-verification.mts",
     "verify:r5": "tsx scripts/verify-round-five-browser.mts",
-    "knowledge:maintain": "tsx scripts/knowledge-maintenance.mts"
+    "knowledge:maintain": "tsx scripts/knowledge-maintenance.mts",
+    "maintain:lifecycle": "tsx scripts/project-lifecycle.mts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "3.0.75",
