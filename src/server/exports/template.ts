@@ -119,6 +119,9 @@ function reportParagraphs(value: unknown): string[] {
 export const contractReviewReportTemplate = {
   version: "contract-review-report-v1",
   paragraphs: reportParagraphs,
+  // Unsigned/invalid machine results are readable and reviewable, but must not
+  // produce a downloadable report until validation passes (spec 01 §8.2.2).
+  requiresValidResult: true,
 }
 
 /** Server-owned production export templates; test templates never enter this registry. */
