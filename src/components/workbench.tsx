@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { BookOpenIcon, FileTextIcon, PlusIcon, ScaleIcon, UploadIcon, LoaderCircleIcon } from "lucide-react"
 
 import { AccountEntry } from "@/components/auth/account-entry"
-import { ProjectHostProvider } from "@/components/business/platform/project-host"
+import { ProjectHostProvider, useProjectHost } from "@/components/business/platform/project-host"
+import { ProjectDocumentsWorkspace } from "@/components/business/platform/project-documents-workspace"
+import { workspaceRoute } from "@/components/business/platform/project-retention"
 import { ProjectSwitcher } from "@/components/business/platform/project-switcher"
 import { DocumentEditor } from "@/components/document-editor"
 import { ContractReviewHistory } from "@/components/contract-review-history"
@@ -38,6 +40,18 @@ function createSessionBridge() {
 }
 
 export function Workbench() {
+  const [registry] = useState(() => createUnsavedRegistry())
+  return <ProjectHostProvider registry={registry}><WorkspaceRouter registry={registry} /></ProjectHostProvider>
+}
+
+function WorkspaceRouter({ registry }: { registry: ReturnType<typeof createUnsavedRegistry> }) {
+  const host = useProjectHost()
+  if (workspaceRoute(host.status, host.currentProject) === "anonymous") return <AnonymousWorkbench workspaceRegistry={registry} />
+  if (host.currentProject) return <ProjectDocumentsWorkspace key={host.currentProject.id} project={host.currentProject} accessBlocked={host.status !== "ready"} registry={registry} />
+  return <main className="flex min-h-svh flex-col"><header className="flex h-16 items-center justify-between border-b px-6"><span className="text-sm font-medium">衡鉴</span><div className="flex items-center gap-3"><ProjectSwitcher /><AccountEntry /></div></header>{host.status === "loading" && <p role="status" className="p-6 text-sm">正在读取项目</p>}</main>
+}
+
+function AnonymousWorkbench({ workspaceRegistry }: { workspaceRegistry: ReturnType<typeof createUnsavedRegistry> }) {
   const [session, setSession] = useState<AnonymousSessionView | null>(null)
   const sessionRef = useRef<AnonymousSessionView | null>(null)
   const [sessionError, setSessionError] = useState("")
@@ -50,7 +64,6 @@ export function Workbench() {
   const resolver = useRef<((accepted: boolean) => void) | null>(null)
   const sessionRequest = useRef<{ generation: number; controller: AbortController | null }>({ generation: 0, controller: null })
   const [bridge] = useState(createSessionBridge)
-  const [workspaceRegistry] = useState(() => createUnsavedRegistry())
   const [restarting, setRestarting] = useState(false)
   const [restartDialog, setRestartDialog] = useState(false)
   const restartPending = useRef(false)
@@ -287,14 +300,11 @@ export function Workbench() {
 
   if (opened && session?.canSave) {
     return (
-      <ProjectHostProvider registry={workspaceRegistry}>
         <DocumentEditor key={opened.document.id} opened={opened} onSaved={recordSaved} onBack={editorBack} onCopy={editorCopy} onSessionUnavailable={unavailable} onDirtyChange={editorDirtyChanged} initialReviewTaskId={reviewSelection?.documentId === opened.document.id ? reviewSelection.taskId : undefined} unsaved={workspaceRegistry} />
-      </ProjectHostProvider>
     )
   }
 
   return (
-    <ProjectHostProvider registry={workspaceRegistry}>
     <main className="flex min-h-svh flex-col">
       <header className="flex h-16 shrink-0 items-center justify-between border-b px-6">
         <div className="flex items-center gap-2 text-sm font-medium">
@@ -379,6 +389,5 @@ export function Workbench() {
         </Tabs>
       </div>
     </main>
-    </ProjectHostProvider>
   )
 }
