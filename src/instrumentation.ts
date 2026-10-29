@@ -15,6 +15,9 @@ export async function register() {
     startOcrRuntime()
     const { startVerificationRuntime } = await import("./server/verification/runtime")
     startVerificationRuntime()
+    // C6: register the publication resolver before any task can be submitted/claimed.
+    const { startKnowledgeRuntime } = await import("./server/knowledge/runtime")
+    startKnowledgeRuntime()
     const { startTaskRunner } = await import("./server/tasks/runner")
     startTaskRunner()
   }

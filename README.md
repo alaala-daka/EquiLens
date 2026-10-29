@@ -147,6 +147,7 @@ pnpm start
 | 生产构建 | `pnpm build` |
 | 检查运行中的应用 | `pnpm smoke` |
 | 本地容器 | `docker compose up --build -d` |
+| 私有知识/规则发布维护（本机 CLI） | `pnpm knowledge:maintain <list|validate|submit|publish|disable|show> ...` |
 
 ```text
 src/app/               页面、布局与 HTTP 入口
@@ -154,7 +155,7 @@ src/components/        工作台、Word 适配器与官方 UI 组件
 src/lib/documents/     DOCX 校验、存储客户端与历史浏览器存储
 src/server/            数据库适配、文档版本与会话隔离
 public/                公共静态资源
-scripts/               应用冒烟检查
+scripts/               应用冒烟检查与私有维护入口
 spec/                  已接受的产品与技术契约
 docs/                  操作指南与历史资料
 .github/workflows/     检查与镜像发布
@@ -162,6 +163,13 @@ docs/                  操作指南与历史资料
 
 服务端模块随实际业务建立，不预建多服务结构。开发边界见 [DEVELOPMENT.md](DEVELOPMENT.md)，
 贡献流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+受控知识/规则发布（C6）：发布只能通过 `pnpm knowledge:maintain` 私有命令执行，没有公开 HTTP 写路由，
+规范库页面在本轮保持“暂无规范”。发布要求操作者是现有且启用的超级管理员、核对人位于部署配置的
+`EQUILENS_DOMAIN_REVIEWERS` 允许清单且与操作者不同、核对时间与期望摘要匹配；缺少核对人/证据时拒绝发布。
+本仓库当前没有任何经领域核对并发布的真实规则或模板：未核对内容不得显示为已发布规范、不得作为正式法律
+结论依据；合同审查任务在无发布依据时仍走显式 debug/未签核路径，核验与文书起草的合成夹具不得冒充真实
+服务或法律结论。
 
 ## 镜像
 

@@ -20,7 +20,7 @@ import { errorMessage, type OpenDocument } from "@/lib/documents/types"
 import type { UnsavedRegistry } from "@/lib/documents/unsaved-registry"
 import { ProjectSwitcher } from "./project-switcher"
 import type { ProjectSummary } from "./projects-client"
-import { ProjectReviewWorkspace } from "./project-review-workspace"
+import { ProjectBusinessWorkspace } from "./project-business-workspace"
 import { submitMaterialUpload } from "./project-upload"
 
 const roles = { admin: "项目管理员", editor: "可编辑成员", viewer: "只读成员" }
@@ -131,11 +131,9 @@ export function ProjectDocumentsWorkspace({ project, registry, accessBlocked = f
           })}>下载原件</Button></section>}
         </TabsContent>
         <TabsContent value="business" forceMount hidden={tab !== "business"} className="flex flex-col gap-6">
-          <ProjectReviewWorkspace
+          <ProjectBusinessWorkspace
             project={project}
             active={tab === "business"}
-            canEdit={editable}
-            canManage={project.role === "admin"}
             blocked={denied || accessBlocked}
             isCurrent={current}
             onAccessInvalid={runtime.onAccessInvalid}

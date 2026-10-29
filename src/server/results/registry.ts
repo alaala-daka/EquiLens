@@ -1,4 +1,5 @@
 import { contractReviewResultValidator } from "../reviews/registry"
+import { specialtySubcontractValidator, supplementaryAgreementValidator } from "../drafting/validation"
 import { bidRequirementSetValidator } from "../verification/requirements"
 import { bidVerificationResultValidator } from "../verification/validation"
 import { ResultValidatorRegistry, type ResultValidator } from "./validation"
@@ -16,6 +17,8 @@ export function productionResultValidators(): ResultValidatorRegistry {
     ["contract-review", contractReviewResultValidator],
     ["bid-requirements", bidRequirementSetValidator],
     ["bid-verification", bidVerificationResultValidator],
+    ["specialty-subcontract", specialtySubcontractValidator],
+    ["supplementary-agreement", supplementaryAgreementValidator],
   ])
   return new ResultValidatorRegistry(validators)
 }

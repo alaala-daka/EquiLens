@@ -1,6 +1,7 @@
 import { CHECK_CATEGORIES, SEVERITIES } from "../../../tools/contract-review/src/types"
 import { BusinessError } from "../projects/errors"
 import { bidVerificationReportTemplate } from "../verification/export-template"
+import { specialtySubcontractExportTemplate, supplementaryAgreementExportTemplate } from "../drafting/export-template"
 import { ExportTemplateRegistry } from "./service"
 
 /**
@@ -131,5 +132,8 @@ export function productionExportTemplates(): ExportTemplateRegistry {
     ["contract-review", contractReviewReportTemplate],
     // C4 verification report (`bid-requirements` intentionally has no export template and keeps 503).
     ["bid-verification", bidVerificationReportTemplate],
+    // C5 deterministic drafting results (待核对 templates keep the opinion as a draft/partial).
+    ["specialty-subcontract", specialtySubcontractExportTemplate],
+    ["supplementary-agreement", supplementaryAgreementExportTemplate],
   ]))
 }
