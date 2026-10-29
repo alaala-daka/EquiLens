@@ -17,6 +17,7 @@ import { QueuedMaterialService } from "./queued"
 import { TaskRepository } from "../tasks/repository"
 import { validateUpload } from "../documents/validate"
 import { createMaterialHandlers } from "./http"
+import { OcrRepository, VerificationFieldService } from "../verification/ocr-repository"
 
 const site = "https://equilens.test"
 const config = () => authConfig({ APP_ORIGIN: site })
@@ -97,12 +98,14 @@ async function setup(store: PrivateObjectStore = createSyntheticObjectStore()) {
     now: () => clock,
   })
   const tasks = new TaskRepository(database)
+  const fields = new VerificationFieldService({ repository: new OcrRepository(database, () => clock), materials: repository, requireProjectAccess: projectAuthorization.requireProjectAccess, readProjectRetention: async id => (await projectRepository.findActive(id))?.retentionUntil ?? null, now: () => clock })
   const queued = new QueuedMaterialService({ repository, store, requireProjectAccess: projectAuthorization.requireProjectAccess,
     readProject: id => projectRepository.findActive(id), now: () => clock, available: () => true,
+    ocrAvailable: () => false,
     preflight: bytes => validateUpload(Buffer.from(bytes)),
     enqueue: async (identity, version, operationId) => (await tasks.submit(identity.account.id, operationId, { kind: "material-parse", projectId: version.projectId, refs: { materials: [{ materialVersionId: version.id, sha256: version.sha256 }] }, conditions: {} })).task.id,
   })
-  const handlers = createMaterialHandlers(async () => ({ requireAccount: access.requireAccount, origin: () => site, reads: material, writes: queued }))
+  const handlers = createMaterialHandlers(async () => ({ requireAccount: access.requireAccount, origin: () => site, reads: material, writes: queued, fields }))
   async function create(username: string) {
     await auth.maintain({ action: "create", username, password, actor: "synthetic-admin" })
   }
@@ -110,7 +113,7 @@ async function setup(store: PrivateObjectStore = createSyntheticObjectStore()) {
     const result = await auth.login(username, password, "deployment")
     return { token: result.token, identity: await access.requireAccount(new Request(`${site}/workbench`, { headers: { cookie: `__Host-equilens-auth=${result.token}` } })) }
   }
-  return { database, auth, access, projects, projectRepository, repository, material, queued, tasks, handlers, store, create, login }
+  return { database, auth, access, projects, projectRepository, repository, material, queued, tasks, handlers, store, fields, create, login }
 }
 
 test("C2a: upload persists task id without snapshot; duplicate shares task; reparse preserves history", async () => {
@@ -144,6 +147,7 @@ test("C2a: upload persists task id without snapshot; duplicate shares task; repa
     }
     assert.equal("coverage" in result, false)
     assert.equal(await env.repository.latestSnapshot(project.id, result.material.id), null)
+    assert.ok(result.parseTaskId)
     assert.equal((await env.tasks.get(alice.identity.account.id, result.parseTaskId)).kind, "material-parse")
     const duplicate = await env.queued.upload(alice.identity, project.id, registration(project.id), bytes)
     assert.equal(duplicate.parseTaskId, result.parseTaskId)

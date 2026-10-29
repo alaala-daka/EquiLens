@@ -3,12 +3,17 @@ import type { MaterialServiceDependencies } from "./service"
 import type { AuthIdentity } from "../auth/service"
 import type { MaterialFormat, MaterialRecord, MaterialVersionRecord } from "./types"
 import { BusinessError } from "../projects/errors"
-import { detectMaterialFormat, MATERIAL_LIMITS } from "./parse"
+import { detectMaterialFormat, MATERIAL_LIMITS, ParseFailure, parseImageMaterial } from "./parse"
 import { parseBytes, parseRegistration, today, uuid } from "./validation"
 import { objectKey } from "../storage/obs"
 
+const ocrImageRejected = () => new BusinessError("INVALID_SOURCE", "证照图片 OCR 尚未验证，当前仅接受 DOCX 与文字 PDF。")
+const imageContentType = (format: "png" | "jpeg") => format === "png" ? "image/png" : "image/jpeg"
+
 export type QueuedDependencies = MaterialServiceDependencies & {
   available: () => boolean
+  /** True only when the server OCR adapter reports a verified capability. */
+  ocrAvailable: () => boolean
   preflight: (bytes: Uint8Array, format: MaterialFormat) => Promise<void>
   enqueue: (identity: AuthIdentity, version: MaterialVersionRecord, operationId: string) => Promise<string>
 }
@@ -45,13 +50,30 @@ export class QueuedMaterialService {
     const registration = parseRegistration({ ...(body as object), projectId }, project.retentionUntil, today(now))
     const bytes = parseBytes(value, MATERIAL_LIMITS.fileBytes)
     const format = detectMaterialFormat(bytes)
-    if (format !== "docx" && format !== "pdf") throw new BusinessError("INVALID_SOURCE", "文件类型不受支持。")
-    await this.deps.preflight(bytes, format)
+    if (!format) throw new BusinessError("INVALID_SOURCE", "文件类型不受支持，当前仅接受 DOCX、文字 PDF 与证照图片。")
+    let image: { format: "png" | "jpeg"; width: number; height: number } | null = null
+    if (format === "image") {
+      // Images are accepted only when the server OCR capability is verified; the
+      // same fixed product message covers OCR unavailability, forged types and
+      // every 4 MiB / 8192 px / 40 MP limit failure.
+      if (!this.deps.ocrAvailable()) throw ocrImageRejected()
+      try {
+        image = parseImageMaterial(bytes)
+      } catch (failure) {
+        if (failure instanceof ParseFailure) throw new BusinessError(failure.code, failure.message)
+        throw failure
+      }
+    } else {
+      await this.deps.preflight(bytes, format)
+    }
     await this.deps.requireProjectAccess(identity, projectId, "edit")
     const sha256 = createHash("sha256").update(bytes).digest("hex")
     const duplicate = await this.deps.repository.findByDigest(projectId, sha256)
     if (duplicate) {
-      const parseTaskId = await this.deps.repository.parseTaskId(projectId, duplicate.material.id) ?? await this.submit(identity, duplicate.version, `material:${duplicate.version.id}`)
+      // Image originals have no parse step: never re-enqueue material-parse for a duplicate image.
+      const parseTaskId = duplicate.material.format === "image"
+        ? null
+        : await this.deps.repository.parseTaskId(projectId, duplicate.material.id) ?? await this.submit(identity, duplicate.version, `material:${duplicate.version.id}`)
       return { ...duplicate, parseTaskId, duplicate: true }
     }
     const materialId = randomUUID(), versionId = randomUUID()
@@ -60,12 +82,18 @@ export class QueuedMaterialService {
     const intent = await intents.begin({ ...registration, materialId, versionId, objectKey: key, accountId: identity.account.id })
     const createdAt = now.toISOString()
     const material: MaterialRecord = { ...registration, id: materialId, format, status: "active", latestRevision: 0, latestVersionId: versionId, createdBy: identity.account.id, createdAt }
-    const version: MaterialVersionRecord = { id: versionId, materialId, projectId, revision: 1, sha256, size: bytes.length, contentType: format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document", objectKey: key, fileName: registration.fileName, createdAt }
+    const version: MaterialVersionRecord = { id: versionId, materialId, projectId, revision: 1, sha256, size: bytes.length, contentType: format === "image" ? imageContentType(image!.format) : format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document", objectKey: key, fileName: registration.fileName, createdAt }
     try {
       const stored = await this.storePut({ key, bytes, contentType: version.contentType }, tracker)
       await intents.stored(intent.id)
       if (stored.sha256 !== sha256 || stored.size !== bytes.length) throw new BusinessError("INVALID_SOURCE", "材料摘要校验失败，请重试。")
       await this.deps.repository.create({ material, version })
+      if (format === "image") {
+        // Parse-less terminal intent: the original is committed and no material-parse
+        // task exists, so recovery can never re-enqueue document parsing for it.
+        await intents.committed(intent.id)
+        return { material, version, parseTaskId: null, duplicate: false }
+      }
       const parseTaskId = await this.submit(identity, version, `material:${version.id}`)
       await intents.committed(intent.id, parseTaskId)
       return { material, version, parseTaskId, duplicate: false }
@@ -103,6 +131,7 @@ export class QueuedMaterialService {
     const version = await this.deps.repository.latestVersion(projectId, materialId)
     const material = await this.deps.repository.findMaterial(projectId, materialId)
     if (!version || !material || material.status !== "active") throw new BusinessError("NOT_FOUND", "找不到该材料。")
+    if (material.format === "image") throw new BusinessError("INVALID_SOURCE", "图片材料不进入文档解析。")
     return { parseTaskId: await this.submit(identity, version, operationId) }
   }
 }

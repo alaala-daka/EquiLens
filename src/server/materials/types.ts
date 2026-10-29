@@ -1,4 +1,4 @@
-export type MaterialFormat = "docx" | "pdf"
+export type MaterialFormat = "docx" | "pdf" | "image"
 
 export type CoverageStatus = "available" | "partial" | "failed"
 export type CoverageFindingCode =
@@ -21,7 +21,7 @@ export type ParsedFragment = {
 }
 
 export type ParsedMaterial = {
-  format: MaterialFormat
+  format: "docx" | "pdf"
   parser: string
   parserVersion: string
   coverage: ParseCoverage

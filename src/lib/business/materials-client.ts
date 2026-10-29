@@ -1,7 +1,7 @@
 import { EditorAccessError } from "../documents/editor-access"
 
 export type MaterialSummary = {
-  id: string; title: string; format: "docx" | "pdf"; versionId: string
+  id: string; title: string; format: "docx" | "pdf" | "image"; versionId: string
   parseTaskId: string | null; parseState: string | null; snapshotId: string | null
   coverage: null | { status: "available" | "partial" | "failed"; textLength: number; pageCount: number | null; findings: { code: string; location: string }[] }
 }
@@ -50,7 +50,7 @@ export function createProjectMaterialsClient(options: {
       const body = new FormData()
       body.set("file", file)
       body.set("metadata", JSON.stringify({ ...input, fileName: file.name }))
-      return json<{ parseTaskId: string }>("", signal, body)
+      return json<{ parseTaskId: string | null }>("", signal, body)
     },
     async content(material: MaterialSummary, signal?: AbortSignal) {
       const response = await request(`/${encodeURIComponent(material.id)}/versions/${encodeURIComponent(material.versionId)}/content`, signal)

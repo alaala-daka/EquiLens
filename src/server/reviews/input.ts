@@ -161,6 +161,10 @@ export async function loadReviewInput(deps: ReviewInputDependencies, job: Claime
     if (!version || version.sha256 !== ref.sha256) throw new ProjectReviewError("INVALID_SOURCE")
     const material = await deps.repository.findMaterial(job.projectId, version.materialId)
     if (!material || material.status !== "active" || !material.processingAuthorized) throw new ProjectReviewError("INVALID_SOURCE")
+    // Contract review only consumes parsed document snapshots; certificate
+    // images have no parse snapshot and are rejected here without changing any
+    // existing review behavior (images were never accepted before round four).
+    if (material.format === "image") throw new ProjectReviewError("INVALID_SOURCE")
     if (retentionExpired(material.retentionUntil, now)) throw new ProjectReviewError("RETENTION_EXPIRED")
     // The latest snapshot must still belong to the referenced version; a newer
     // material version invalidates this task input instead of silently reviewing it.
