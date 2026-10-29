@@ -1,7 +1,7 @@
 # 第四轮集成与验收记录（C4 投标材料核验服务端闭环）
 
 - 日期：2026-10-29，Windows 10/11 本机、Node 24.14.1、pnpm 11.6.0、SQLite（`node:sqlite`）+ 开发文件对象存储。
-- 分支：`alaaladaka/round4/verification`（基线 `c74a2c2`，W0 提交 `c9ac2bb`）。
+- 分支：`alaaladaka/round4/verification`（基线 `c74a2c2`）；提交：`c9ac2bb` W0 契约冻结 → `b81aa1c` C4-OCR → `d7a9270` C4-VERIFY → `f837a9a` 集成与验收证据（本文）。未推送、未部署、未创建 Issue。
 - 计划：[第四轮计划](../superpowers/plans/2026-10-29-round-four-plan.md)（执行前经独立审查并修订，审查报告在忽略目录 `.superpowers/round4/plan-review.md`）。
 - 范围：C4 投标材料核验的**服务端闭环**；C4 界面、C5、C6、C7、A5 在后续轮次。本文只记录实际执行过的检查；未运行项单列，不宣称 AC 整项通过。
 

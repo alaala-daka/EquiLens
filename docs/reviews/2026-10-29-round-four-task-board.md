@@ -9,10 +9,10 @@
 | 包 | 主写者 | 范围 | 前置 | 状态 |
 | --- | --- | --- | --- | --- |
 | W0 | Lead | 规格、字段词表/归一化、catalog 三拆、admission、0010、field-source、ResultService/access、exports 保留期 | 基线 | 已提交（`c9ac2bb`；`pnpm check` exit 0；catalog/migrations/results/exports 定向测试通过；全量 682 测试 681 通过/1 skip/0 fail） |
-| C4-OCR | Agent A | OCR 边界、图片材料门控、certificate-ocr 执行器、字段插入式历史与接口 | W0 | 已完成（未提交；定向 91/91，reviews 34/34，tsc 0；证据 `2026-10-29-round-four-c4-ocr.md`） |
-| C4-VERIFY | Agent B | 要求候选、受控要求集保存、确定性比较、两类成果与导出、外部核验记录、HTTP | W0 | 已完成（未提交；定向 106/106 含跨包与闭环；tsc 0；证据 `2026-10-29-round-four-c4-verify.md`） |
-| Review | 交叉审查 Agent | 独立核对两包实现与证据 | A、B | 已完成：APPROVE WITH FIXES；2 blocker + 高价值项已修复，复核中（报告 `.superpowers/round4/cross-review.md`） |
-| I1 | Lead | 集成、注册接线、门禁、无外部服务闭环、证据、提交 | A、B | 已完成本地门禁：`pnpm check` 0、`pnpm test` 796/795+1skip/0、`pnpm build` 0、smoke 通过、E2E 22/22、`git diff --check` 0；证据 `2026-10-29-round-four-integration.md`；待提交 |
+| C4-OCR | Agent A | OCR 边界、图片材料门控、certificate-ocr 执行器、字段插入式历史与接口 | W0 | 已提交 `b81aa1c`（定向 92/92，reviews 34/34，tsc 0；证据 `2026-10-29-round-four-c4-ocr.md`） |
+| C4-VERIFY | Agent B | 要求候选、受控要求集保存、确定性比较、两类成果与导出、外部核验记录、HTTP | W0 | 已提交 `d7a9270`（定向 106/106 含跨包与闭环；tsc 0；证据 `2026-10-29-round-four-c4-verify.md`） |
+| Review | 交叉审查 Agent | 独立核对两包实现与证据 | A、B | 已完成：APPROVE WITH FIXES → 2 blocker + 高价值项修复 → 复核 CONFIRMED（报告 `.superpowers/round4/cross-review.md`） |
+| I1 | Lead | 集成、注册接线、门禁、无外部服务闭环、证据、提交 | A、B | 已提交 `f837a9a`：`pnpm check` 0、`pnpm test` 797/796+1skip/0、`pnpm build` 0、smoke 通过、E2E 22/22、`git diff --check` 0；证据 `2026-10-29-round-four-integration.md` |
 
 ## W0 冻结接口（实现以此为准）
 
