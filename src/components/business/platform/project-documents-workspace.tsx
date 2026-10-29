@@ -20,6 +20,7 @@ import { errorMessage, type OpenDocument } from "@/lib/documents/types"
 import type { UnsavedRegistry } from "@/lib/documents/unsaved-registry"
 import { ProjectSwitcher } from "./project-switcher"
 import type { ProjectSummary } from "./projects-client"
+import { submitMaterialUpload } from "./project-upload"
 
 const roles = { admin: "项目管理员", editor: "可编辑成员", viewer: "只读成员" }
 const states: Record<string, string> = { queued: "排队中", running: "处理中", success: "已完成", succeeded: "已完成", completed: "已完成", failed: "失败", cancelled: "已取消", available: "可读取", partial: "部分覆盖" }
@@ -30,6 +31,7 @@ export function ProjectDocumentsWorkspace({ project, registry, accessBlocked = f
   const [opened, setOpened] = useState<OpenDocument | null>(null)
   const [preview, setPreview] = useState<MaterialSummary | null>(null)
   const [error, setError] = useState("")
+  const [uploadError, setUploadError] = useState("")
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState(false)
@@ -70,6 +72,15 @@ export function ProjectDocumentsWorkspace({ project, registry, accessBlocked = f
     catch (failure) { if (current() && !(failure instanceof EditorAccessError && failure.code === "ABORTED")) setError(errorMessage(failure)) }
     finally { if (current()) setBusy(false) }
   }
+  async function uploadMaterial(file: File, metadata: MaterialUpload) {
+    return submitMaterialUpload({
+      upload: () => runtime.materials.upload(file, metadata, signal()),
+      refresh,
+      isCurrent: current,
+      setBusy,
+      setError: setUploadError,
+    })
+  }
   async function openDocument(id: string) {
     const view = await runtime.docs.view(id, signal())
     if (!view.canEdit || !editable) {
@@ -95,7 +106,7 @@ export function ProjectDocumentsWorkspace({ project, registry, accessBlocked = f
       {denied ? null : <Tabs defaultValue="documents">
         <TabsList><TabsTrigger value="documents"><FileTextIcon />文档</TabsTrigger><TabsTrigger value="standards"><BookOpenIcon />规范库</TabsTrigger></TabsList>
         <TabsContent value="documents" className="flex flex-col gap-6">
-          <div className="flex items-center justify-between gap-4"><h1 className="text-lg font-semibold">文档</h1><div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={() => void act(refresh)}>刷新</Button>{editable && <UploadMaterial project={project} busy={busy} onUpload={(file, metadata) => act(async () => { await runtime.materials.upload(file, metadata, signal()); await refresh() })} />}</div></div>
+          <div className="flex items-center justify-between gap-4"><h1 className="text-lg font-semibold">文档</h1><div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={() => void act(refresh)}>刷新</Button>{editable && <UploadMaterial project={project} busy={busy} error={uploadError} onUpload={uploadMaterial} onClearError={() => setUploadError("")} />}</div></div>
           {loading ? <p role="status" className="text-sm">正在读取文档</p> : materials.length === 0 ? <Empty className="border"><EmptyHeader><EmptyMedia variant="icon"><FileTextIcon /></EmptyMedia><EmptyTitle>暂无材料</EmptyTitle></EmptyHeader></Empty> : <div className="rounded-lg border"><Table><TableHeader><TableRow><TableHead>材料名称</TableHead><TableHead>版本</TableHead><TableHead>解析状态</TableHead><TableHead>覆盖范围</TableHead><TableHead>操作</TableHead></TableRow></TableHeader><TableBody>{materials.map(material => <TableRow key={material.id}>
             <TableCell className="whitespace-normal">{material.title}<Badge variant="outline" className="ml-2">{material.format.toUpperCase()}</Badge></TableCell>
             <TableCell className="whitespace-normal break-all text-xs">{material.versionId}</TableCell>
@@ -123,17 +134,23 @@ export function ProjectDocumentsWorkspace({ project, registry, accessBlocked = f
   </main>
 }
 
-function UploadMaterial({ project, busy, onUpload }: { project: ProjectSummary; busy: boolean; onUpload(file: File, metadata: MaterialUpload): Promise<void> }) {
+function UploadMaterial({ project, busy, error, onUpload, onClearError }: { project: ProjectSummary; busy: boolean; error: string; onUpload(file: File, metadata: MaterialUpload): Promise<boolean>; onClearError(): void }) {
   const [open, setOpen] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const form = new FormData(event.currentTarget)
+    const formElement = event.currentTarget
+    const form = new FormData(formElement)
     const file = form.get("file")
     if (!(file instanceof File) || !file.size) return
-    await onUpload(file, { title: String(form.get("title")), sourceKind: form.get("sourceKind") === "synthetic" ? "synthetic" : "authorized",
+    const accepted = await onUpload(file, { title: String(form.get("title")), sourceKind: form.get("sourceKind") === "synthetic" ? "synthetic" : "authorized",
       sourceReference: String(form.get("sourceReference")), purpose: String(form.get("purpose")), retentionUntil: String(form.get("retentionUntil")), processingAuthorized: form.get("processingAuthorized") === "on" })
+    if (!accepted) return
+    formElement.reset()
+    setOpen(false)
   }
-  return <Sheet open={open} onOpenChange={setOpen}><SheetTrigger asChild><Button>上传资料</Button></SheetTrigger><SheetContent className="overflow-auto"><SheetHeader><SheetTitle>上传资料</SheetTitle></SheetHeader><form onSubmit={event => void submit(event)} className="px-4 pb-4"><FieldGroup>
+  return <Sheet open={open} onOpenChange={value => { setOpen(value); if (value) onClearError() }}><SheetTrigger asChild><Button>上传资料</Button></SheetTrigger><SheetContent className="overflow-auto"><SheetHeader><SheetTitle>上传资料</SheetTitle></SheetHeader><form onSubmit={event => void submit(event)} className="px-4 pb-4">
+    {error && <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>}
+    <FieldGroup>
     <Field><FieldLabel htmlFor="material-file">文件（DOCX、文字 PDF，最大 20 MiB）</FieldLabel><Input id="material-file" name="file" type="file" accept=".docx,.pdf" required disabled={busy} /></Field>
     <Field><FieldLabel htmlFor="material-title">材料名称</FieldLabel><Input id="material-title" name="title" required maxLength={200} disabled={busy} /></Field>
     <Field><FieldLabel htmlFor="material-source">资料性质</FieldLabel><NativeSelect id="material-source" name="sourceKind" defaultValue={project.source} disabled={busy}><NativeSelectOption value="synthetic">合成材料</NativeSelectOption><NativeSelectOption value="authorized">已授权材料</NativeSelectOption></NativeSelect></Field>

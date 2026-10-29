@@ -47,4 +47,3 @@ export function parseInSubprocess(input: { bytes: Uint8Array; format: MaterialFo
     else child.send(input, error => { if (error) finish(new ParserProcessError("PARSE_WORKER_FAILED")) })
   })
 }
-

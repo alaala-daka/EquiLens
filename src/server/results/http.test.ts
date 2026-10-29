@@ -70,4 +70,3 @@ test("result HTTP enforces private scope, authorization, strict writes and safe 
     if (previous === undefined) delete process.env.APP_ORIGIN; else process.env.APP_ORIGIN = previous
   }
 })
-

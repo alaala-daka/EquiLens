@@ -45,7 +45,3 @@ export function startMaterialRuntime() {
   }
   createMaterialLifecycle({ register, repair, report: () => console.error("Material maintenance unavailable"), schedule: callback => { state.timer = setTimeout(callback, 60_000); state.timer.unref() } }).start()
 }
-
-
-
-

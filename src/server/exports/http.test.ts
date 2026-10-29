@@ -27,5 +27,3 @@ test("export HTTP bounds input, fixes project, uses private responses and masks 
     assert.ok(!((await unauthenticated.text()).includes("secret")))
   } finally { if (previous === undefined) delete process.env.APP_ORIGIN; else process.env.APP_ORIGIN = previous }
 })
-
-

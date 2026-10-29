@@ -44,5 +44,3 @@ export function createMaterialExecutor(deps: { repository: MaterialRepository; s
     return { outcome, resultSummary: JSON.stringify(snapshots) }
   }
 }
-
-

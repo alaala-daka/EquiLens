@@ -89,4 +89,3 @@ test("machine attempt token is checked transactionally; generated retries cannot
     assert.equal((await service.get(identity,authorize,"p",first.resultId)).value,"人工修订")
   } finally { await db.close() }
 })
-
