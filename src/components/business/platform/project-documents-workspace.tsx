@@ -20,6 +20,7 @@ import { errorMessage, type OpenDocument } from "@/lib/documents/types"
 import type { UnsavedRegistry } from "@/lib/documents/unsaved-registry"
 import { ProjectSwitcher } from "./project-switcher"
 import type { ProjectSummary } from "./projects-client"
+import { ProjectReviewWorkspace } from "./project-review-workspace"
 import { submitMaterialUpload } from "./project-upload"
 
 const roles = { admin: "项目管理员", editor: "可编辑成员", viewer: "只读成员" }
@@ -39,11 +40,12 @@ export function ProjectDocumentsWorkspace({ project, registry, accessBlocked = f
     const life = { active: false, denied: false, paused: false, editable: project.role !== "viewer", controller: new AbortController() }
     const isCurrent = () => life.active && !life.denied && !life.paused
     const onAccessInvalid = () => { life.denied = true; setDenied(true); setError("访问权限已失效，请重新登录或联系项目管理员。") }
-    return { pause(value: boolean, editable: boolean) { life.paused = value; life.editable = editable }, start() { life.active = true; life.controller = new AbortController() }, stop() { life.active = false; life.controller.abort() }, signal: () => life.controller.signal, isCurrent,
+    return { pause(value: boolean, editable: boolean) { life.paused = value; life.editable = editable }, start() { life.active = true; life.controller = new AbortController() }, stop() { life.active = false; life.controller.abort() }, signal: () => life.controller.signal, isCurrent, onAccessInvalid,
       docs: createProjectDocumentsClient({ projectId: project.id, isCurrent, canEdit: () => life.editable, onAccessInvalid }),
       materials: createProjectMaterialsClient({ projectId: project.id, isCurrent, onAccessInvalid }) }
   })
   const editable = project.role !== "viewer"
+  const [tab, setTab] = useState("documents")
   useLayoutEffect(() => { runtime.pause(accessBlocked, editable) }, [runtime, accessBlocked, editable])
   const signal = runtime.signal
   const current = runtime.isCurrent
@@ -103,8 +105,8 @@ export function ProjectDocumentsWorkspace({ project, registry, accessBlocked = f
     </header>
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-6">
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {denied ? null : <Tabs defaultValue="documents">
-        <TabsList><TabsTrigger value="documents"><FileTextIcon />文档</TabsTrigger><TabsTrigger value="standards"><BookOpenIcon />规范库</TabsTrigger></TabsList>
+      {denied ? null : <Tabs value={tab} onValueChange={setTab}>
+        <TabsList><TabsTrigger value="documents"><FileTextIcon />文档</TabsTrigger><TabsTrigger value="business"><ScaleIcon />业务处理</TabsTrigger><TabsTrigger value="standards"><BookOpenIcon />规范库</TabsTrigger></TabsList>
         <TabsContent value="documents" className="flex flex-col gap-6">
           <div className="flex items-center justify-between gap-4"><h1 className="text-lg font-semibold">文档</h1><div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={() => void act(refresh)}>刷新</Button>{editable && <UploadMaterial project={project} busy={busy} error={uploadError} onUpload={uploadMaterial} onClearError={() => setUploadError("")} />}</div></div>
           {loading ? <p role="status" className="text-sm">正在读取文档</p> : materials.length === 0 ? <Empty className="border"><EmptyHeader><EmptyMedia variant="icon"><FileTextIcon /></EmptyMedia><EmptyTitle>暂无材料</EmptyTitle></EmptyHeader></Empty> : <div className="rounded-lg border"><Table><TableHeader><TableRow><TableHead>材料名称</TableHead><TableHead>版本</TableHead><TableHead>解析状态</TableHead><TableHead>覆盖范围</TableHead><TableHead>操作</TableHead></TableRow></TableHeader><TableBody>{materials.map(material => <TableRow key={material.id}>
@@ -127,6 +129,19 @@ export function ProjectDocumentsWorkspace({ project, registry, accessBlocked = f
             try { link.href = url; link.download = `${preview.title.replace(/[<>:"/\\|?*]/g, "_")}.${preview.format}`; document.body.append(link); link.click() }
             finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000) }
           })}>下载原件</Button></section>}
+        </TabsContent>
+        <TabsContent value="business" forceMount hidden={tab !== "business"} className="flex flex-col gap-6">
+          <ProjectReviewWorkspace
+            project={project}
+            active={tab === "business"}
+            canEdit={editable}
+            canManage={project.role === "admin"}
+            blocked={denied || accessBlocked}
+            isCurrent={current}
+            onAccessInvalid={runtime.onAccessInvalid}
+            onOpenDocuments={() => setTab("documents")}
+            registry={registry}
+          />
         </TabsContent>
         <TabsContent value="standards"><Empty className="border"><EmptyHeader><EmptyMedia variant="icon"><BookOpenIcon /></EmptyMedia><EmptyTitle>暂无规范</EmptyTitle></EmptyHeader></Empty></TabsContent>
       </Tabs>}
