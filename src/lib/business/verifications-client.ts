@@ -324,6 +324,14 @@ export function createVerificationsClient(options: VerificationClientOptions) {
     return value as Record<string, unknown>
   }
 
+  /** Non-throwing kind probe: the shared project task list also contains unrelated kinds. */
+  function rawTaskKind(value: unknown): string | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null
+    const kind = (value as { kind?: unknown }).kind
+    return typeof kind === "string" ? kind : null
+  }
+
+  /** Strict builder for a task id the UI actually references. */
   function taskView(value: unknown): VerificationTaskView {
     const task = record(value)
     if (typeof task.id !== "string" || typeof task.state !== "string" || typeof task.createdAt !== "string" || typeof task.kind !== "string") throw invalidResponse()
@@ -372,11 +380,16 @@ export function createVerificationsClient(options: VerificationClientOptions) {
       if (!Array.isArray(value.materials)) throw invalidResponse()
       return value.materials as VerificationMaterial[]
     },
-    /** GET /api/tasks?projectId= — current account's tasks in this project. */
+    /** GET /api/tasks?projectId= — current account's C4 tasks; other project kinds are ignored. */
     async listTasks(signal?: AbortSignal): Promise<VerificationTaskView[]> {
       const value = record(await json(`${taskBase}?projectId=${encodeURIComponent(options.projectId)}`, { signal }))
       if (!Array.isArray(value.tasks)) throw invalidResponse()
-      return value.tasks.map(taskView)
+      return value.tasks
+        .filter(item => {
+          const kind = rawTaskKind(item)
+          return kind !== null && expectedKind(kind)
+        })
+        .map(taskView)
     },
     async getTask(id: string, signal?: AbortSignal): Promise<VerificationTaskView> {
       return taskView(await json(`${taskBase}/${encodeURIComponent(id)}`, { signal }))

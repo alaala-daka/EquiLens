@@ -266,6 +266,18 @@ test("C4-UI: admin budget endpoints are refused locally for non-administrators",
   assert.equal((await created.registerBudget(200)).costLimitFen, 200)
 })
 
+test("C4-UI: a mixed project task list filters unrelated kinds instead of failing the workspace", async () => {
+  const materialParse = { ...task, id: "task-parse", kind: "material-parse" }
+  const contractReview = { ...task, id: "task-review", kind: "contract-review" }
+  const instance = client(async () => Response.json({ tasks: [materialParse, task, contractReview] }))
+  const rows = await instance.listTasks()
+  assert.deepEqual(rows.map(row => row.id), ["task-1"], "only C4 task kinds are returned")
+  assert.deepEqual(rows.map(row => row.kind), ["bid-verification"])
+  // getTask stays strict: the UI only references C4 task ids it received from the filtered list.
+  const strict = client(async () => Response.json(materialParse))
+  await assert.rejects(strict.getTask("task-parse"), (failure: unknown) => failure instanceof VerificationClientError && failure.code === "FAILED")
+})
+
 test("C4-UI: malformed response bodies are reported without leaking them", async () => {
   const instance = client(async () => new Response("private-project-payload", { status: 200, headers: { "Content-Type": "application/json" } }))
   await assert.rejects(instance.listTasks(), (failure: unknown) => failure instanceof VerificationClientError && failure.code === "FAILED" && !failure.message.includes("private-project-payload"))
