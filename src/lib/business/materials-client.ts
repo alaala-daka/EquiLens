@@ -10,6 +10,38 @@ export type MaterialUpload = {
   purpose: string; retentionUntil: string; processingAuthorized: boolean
 }
 
+/** Immutable fragment of one parse snapshot; source picker for manual requirements/fields. */
+export type SnapshotFragment = {
+  id: string
+  kind: "paragraph" | "table"
+  order: number
+  page: number | null
+  paragraph: number | null
+  headingPath: string[]
+  tableIndex: number | null
+  row: number | null
+  column: number | null
+  text: string
+}
+
+/** GET …/materials/[materialId]/snapshots/[snapshotId] payload (round-five fragment read). */
+export type MaterialSnapshotRead = {
+  snapshot: {
+    id: string
+    projectId: string
+    materialId: string
+    versionId: string
+    revision: number
+    parser: string
+    parserVersion: string
+    coverage: MaterialSummary["coverage"]
+    createdAt: string
+  }
+  material: { id: string; projectId: string; title: string; format: MaterialSummary["format"]; status: "active" | "deleted" }
+  version: { id: string; projectId: string; materialId: string; sha256: string; size: number; contentType: string; createdAt: string }
+  fragments: SnapshotFragment[]
+}
+
 export function createProjectMaterialsClient(options: {
   projectId: string; isCurrent: () => boolean; onAccessInvalid: (failure: unknown) => void; fetch?: typeof fetch
 }) {
@@ -57,6 +89,13 @@ export function createProjectMaterialsClient(options: {
       const blob = await response.blob()
       check(signal)
       return blob
+    },
+    /** Read one immutable parse snapshot including its document-order fragments. */
+    async snapshot(materialId: string, snapshotId: string, signal?: AbortSignal) {
+      const value = await json<MaterialSnapshotRead>(`/${encodeURIComponent(materialId)}/snapshots/${encodeURIComponent(snapshotId)}`, signal)
+      check(signal)
+      if (!value || !Array.isArray(value.fragments)) throw new EditorAccessError("FAILED", "材料快照读取失败，请重试。")
+      return value
     },
   }
 }
