@@ -4,17 +4,17 @@
 
 | 包 | 主写者 | 范围 | 前置 | 状态 |
 | --- | --- | --- | --- | --- |
-| Wave 0 | Lead/Wave0 | spec/01、02、03，contracts.ts，接口/编号 | 基线 | 已实现待审查 |
-| A3c | A | tasks 执行侧、任务 HTTP、instrumentation、匿名 runner 包装 | Wave0、C1b | 未开始 |
-| C1b | C | projects authorization/access、auth account(id) | Wave0 | 未开始 |
-| A4a | A | results、项目成果 HTTP、results/schema.ts | Wave0 | 未开始 |
-| A4b | A | exports、导出 HTTP、依赖提示 | A4a、C2c | 未开始 |
-| C2c | C | storage、upload-intents、materials service/repository/schema | Wave0 | 未开始 |
-| C2a | C | materials HTTP、parse_task_id、任务提交 | C2c | 未开始 |
-| C2b | C | worker/subprocess/executor、构建脚本 | A3c、C2a | 未开始 |
-| C3 | C | 项目 documents、documents-client、workbench | C2a、A2 | 未开始 |
+| Wave 0 | Lead/Wave0 | spec/01、02、03，contracts.ts，接口/编号 | 基线 | 已验收（本地契约审查） |
+| A3c | A | tasks 执行侧、任务 HTTP、instrumentation、匿名 runner 包装 | Wave0、C1b | 已验收（本地测试/审查） |
+| C1b | C | projects authorization/access、auth account(id) | Wave0 | 已验收（本地测试/审查） |
+| A4a | A | results、项目成果 HTTP、results/schema.ts | Wave0 | 已验收（本地测试/审查） |
+| A4b | A | exports、导出 HTTP、依赖提示 | A4a、C2c | 已验收（本地测试/审查） |
+| C2c | C | storage、upload-intents、materials service/repository/schema | Wave0 | 已验收（本地测试/审查） |
+| C2a | C | materials HTTP、parse_task_id、任务提交 | C2c | 已验收（本地测试/审查） |
+| C2b | C | worker/subprocess/executor、构建脚本 | A3c、C2a | 已验收（本地测试/审查） |
+| C3 | C | 项目 documents、documents-client、workbench | C2a、A2 | 已验收（本地及浏览器） |
 | B1a/B3a | B（可选） | facts/payments 服务及 HTTP/schema | Wave0 | 未开始 |
-| I1 | Lead | 迁移注册、package、集成测试、证据 | A/C 工作包 | 未开始 |
+| I1 | Lead | 迁移注册、package、集成测试、证据 | A/C 工作包 | 已验收（本地工程/浏览器，外部项单列） |
 
 唯一共享类型写者为 Lead；迁移注册/package 为 Lead。C3 页头 document-editor.tsx 由 Lead 最小修改并互审。
 当前共享目录执行不切换 A/C 分支；团队按目录所有权写入，Lead 按工作包隔离提交，避免并行 checkout。

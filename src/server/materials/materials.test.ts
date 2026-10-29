@@ -9,11 +9,9 @@ import { connectDatabase } from "../database/connection"
 import { migrateBusiness } from "../database/migrations"
 import { createProjectAuthorization } from "../projects/authorization"
 import { ProjectRepository } from "../projects/repository"
-import { applyProjectSchema } from "../projects/schema"
 import { ProjectService } from "../projects/service"
 import { createFaultyObjectStore, createSyntheticObjectStore, type PrivateObjectStore, type SyntheticObjectStore } from "../storage/obs"
 import { MaterialRepository } from "./repository"
-import { applyMaterialSchema, uploadIntentStatements } from "./schema"
 import { MaterialService } from "./service"
 import { QueuedMaterialService } from "./queued"
 import { TaskRepository } from "../tasks/repository"
@@ -81,9 +79,6 @@ function encryptedPdf(): Uint8Array {
 async function setup(store: PrivateObjectStore = createSyntheticObjectStore()) {
   const database = await connectDatabase({ provider: "sqlite", path: ":memory:" })
   await migrateBusiness(database)
-  await applyProjectSchema(database)
-  await applyMaterialSchema(database)
-  await database.transaction(async c => { for (const sql of uploadIntentStatements) await c.query(sql) })
   const clock = new Date("2026-10-28T00:00:00Z")
   const auth = new AuthService(database, () => clock.getTime())
   const access = createAccountAccess({ services: () => auth, config })

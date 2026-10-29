@@ -55,12 +55,12 @@
 
 ### 2.2 退出条件（G3，全部满足才可宣告第二轮完成）
 
-- [ ] A3c、C1b、C2a、C2b、C2c、C3、A4a、A4b 各自定向测试与受影响回归通过，证据写入对应记录。
-- [ ] 集成浏览器流程通过：上传 DOCX → 解析任务排队/处理 → 覆盖状态显示 → 项目编辑器打开 → 保存 → 重开字节一致 → 冲突另存 → 只读/撤权拒绝写入。
-- [ ] `pnpm check`、`pnpm test`、`pnpm build`、`pnpm smoke` 在集成分支顺序执行并记录原始结果；新增测试目录已进入默认 `pnpm test`。
-- [ ] 迁移 0007—0011（按实际完成范围）注册、应用、checksum 冻结；0001—0006 未被改写。
-- [ ] 交叉审查完成：A 审 C2/C3，C 审 A3c/A4，Lead 核对最终 diff 与全量命令。
-- [ ] 未执行的外部项、未通过的 AC/UI 明确列在验证记录，未写成通过。
+- [x] A3c、C1b、C2a、C2b、C2c、C3、A4a、A4b 各自定向测试与受影响回归通过，证据写入对应记录。
+- [x] 集成浏览器流程通过：上传 DOCX → 解析任务排队/处理 → 覆盖状态显示 → 项目编辑器打开 → 保存 → 重开字节一致 → 冲突另存 → 只读/撤权拒绝写入。
+- [x] `pnpm check`、`pnpm test`、`pnpm build`、`pnpm smoke` 在集成分支顺序执行并记录原始结果；新增测试目录已进入默认 `pnpm test`。
+- [x] 迁移 0007—0011（按实际完成范围）注册、应用、checksum 冻结；0001—0006 未被改写。
+- [x] 交叉审查完成：A 审 C2/C3，C 审 A3c/A4，Lead 核对最终 diff 与全量命令。
+- [x] 未执行的外部项、未通过的 AC/UI 明确列在验证记录，未写成通过。
 
 ### 2.3 不在本轮范围
 
@@ -268,7 +268,15 @@ saveResultRevision(identity, authorize, input: SaveResultInput): Promise<ResultV
 validateResult(identity, authorize, ref: ResultRevisionRef): Promise<ResultValidation>
 reviewResult(identity, authorize, input: ReviewInput): Promise<ResultView>
 createExport(identity, authorize, ref: ResultRevisionRef): Promise<ExportRef>
+queryDependencyChanges(identity, authorize, ref: ResultRevisionRef, resolveCurrentVersion): Promise<DependencyChange[]>
 ```
+
+`resolveCurrentVersion(projectId, dependency): Promise<string | null>` 仅由服务端注入可信版本解析器；
+查询先授权读取所选成果版本及其依赖，再逐项返回 `unchanged` / `changed` / `unknown`、原版本和可信当前版本。
+解析器返回 null 时为 unknown，不接受浏览器上报当前版本作为真值；不写下游、不自动重算，本轮不新增 HTTP 端点。
+导出生命周期：put 前写 pending（用途、对象键、可信保留期限）；put 与重验权限后转 ready。
+保留期限为项目与选定成果/材料约束的最早期限，未知 fail-closed。恢复仅清理超过 min(保留期限,创建时间+可配置默认10分钟) 的 pending，删除后 aborted；ready 文件不删除。
+同项目/成果/所选版本的模板或渲染升级关联最新不同版本 ready 导出为 supersedes_id，保留旧字节。
 
 - `SaveResultInput` 至少包含 `projectId`、`resultId?`、`baseVersionId`、`operationId`、`reason`、`value`；值由业务校验器按任务类型固定注册，不接受浏览器上传脚本或任意执行器。
 - 所有 HTTP 入口固定项目与所选版本，重查 `requireProjectAccess`；只读成员不能保存/复核/生成新导出。
@@ -336,7 +344,7 @@ projects/<projectId>/exports/<exportId>/<sha256>
 | --- | --- | --- | --- |
 | 0007 | `equilens_results`、`equilens_result_versions`、`equilens_result_reviews`、`equilens_result_dependencies`、`equilens_result_exports` | A4a/A4b | 成果不可变版本、复核绑定、依赖提示、版本化导出 |
 | 0008 | `equilens_material_upload_intents`；`ALTER TABLE equilens_materials ADD COLUMN parse_task_id VARCHAR(36)` | C2a/C2c | 上传意图状态机与解析任务关联 |
-| 0009 | `equilens_project_documents`、`equilens_project_document_versions` | C3 | 项目 Word 文档与保存版本；不把匿名 owner 当 projectId |
+| 0009 | `equilens_project_documents`、`equilens_project_document_versions`、`equilens_project_document_writes` | C3 | 项目 Word 文档、保存版本与独立对象写入意图；不把匿名 owner 当 projectId |
 | 0010 | `equilens_fact_versions`（含项目索引） | B1a | 把现有运行时建表迁入迁移账本 |
 | 0011 | `equilens_payment_ledger_revisions` | B3a | 同上 |
 

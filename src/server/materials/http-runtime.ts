@@ -6,7 +6,7 @@ import { requireProjectAccess } from "../projects/access"
 import { ProjectRepository } from "../projects/repository"
 import { BusinessError } from "../projects/errors"
 import { validateUpload } from "../documents/validate"
-import { createUnavailableObjectStore } from "../storage/obs"
+import { privateObjectStoreRuntime } from "../storage/runtime"
 import { submitTask } from "../tasks/service"
 import { taskExecutorRegistry } from "../tasks/executors"
 import { MaterialRepository } from "./repository"
@@ -17,7 +17,7 @@ import type { MaterialHttpDependencies } from "./http"
 export async function materialHttpServices(): Promise<MaterialHttpDependencies> {
   const database = await applicationDatabase()
   const projects = new ProjectRepository(database)
-  const deps = { repository: new MaterialRepository(database), store: createUnavailableObjectStore(), requireProjectAccess,
+  const deps = { repository: new MaterialRepository(database), store: privateObjectStoreRuntime(), requireProjectAccess,
     readProject: (id: string) => projects.findActive(id) }
   return {
     requireAccount, origin: () => authConfig(process.env).origin,
