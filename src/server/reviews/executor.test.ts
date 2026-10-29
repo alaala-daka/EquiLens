@@ -80,6 +80,23 @@ test("A4c executor: each model exchange settles measured time instead of holding
   } finally { await fixture.close() }
 })
 
+test("A4c executor: optional undefined fields are JSON-normalized before the machine result is saved", async () => {
+  const fixture = await setupReview()
+  try {
+    const runner: ProjectReviewRunner = async input => {
+      const result = successResult(input) as unknown as Record<string, unknown>
+      result.documentAnalysis = undefined
+      result.sceneSelectionReadParagraphIndexes = undefined
+      return result as never
+    }
+    const outcome = await createProjectReviewExecutor(executorDependencies(fixture, { runner }))(await fixture.claim(), executorContext())
+    assert.equal(outcome.outcome, "success")
+    const views = await fixture.results.list(testIdentity, testAuthorizer, projectId)
+    assert.equal(views.length, 1)
+    assert.equal(views[0].validation.status, "valid")
+  } finally { await fixture.close() }
+})
+
 test("A4c executor: partial coverage is saved as a partial machine result, not as success or no-risk", async () => {
   const fixture = await setupReview({ coverage: { status: "partial", findings: [{ code: "embedded_image", location: "图片 1 处" }], pageCount: null, textLength: 30 } })
   try {

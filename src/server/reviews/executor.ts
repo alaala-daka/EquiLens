@@ -143,7 +143,7 @@ export function createProjectReviewExecutor(dependencies: ProjectReviewExecutorD
       // execution time instead of holding a 90s reservation per call; otherwise
       // a 25-call review could never pass the cumulative time budget.
       const callStarted = new Map<number, number>()
-      const result = await dependencies.runner({
+      const runnerResult = await dependencies.runner({
         paragraphs: loaded.paragraphs,
         complete: loaded.complete,
         documentTitle: loaded.documentTitle,
@@ -183,6 +183,10 @@ export function createProjectReviewExecutor(dependencies: ProjectReviewExecutorD
       })
       if (blocked) return blockedFailure(blocked)
       context.signal.throwIfAborted()
+      // Persist only JSON-normalized data: optional in-memory properties such as
+      // `undefined` would otherwise break canonical result serialization.
+      let result: ReviewResult
+      try { result = JSON.parse(JSON.stringify(runnerResult)) as ReviewResult } catch { return failed("RESULT_MISMATCH") }
       if (!result || result.schemaVersion !== 1) return failed("RESULT_MISMATCH")
       if (result.input?.textSha256 !== loaded.textSha256 || result.input?.parseSnapshotId !== loaded.parseSnapshotId ||
         result.input?.documentVersionId !== loaded.documentVersionId || result.input?.complete !== loaded.complete) {
