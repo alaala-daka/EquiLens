@@ -152,20 +152,19 @@ export async function readRulePackSnapshot(directory: string, options: PackLoadO
   return { sha256, load: () => (options.cache ?? packCache).getOrCreate(sha256, () => parsePackContents(manifest, saved)) }
 }
 
-function parsePackContents(manifest: RulePackManifest, contents: ReadonlyMap<string, string>): LoadedPack {
+const parseRuleList = (values: unknown[], origin: string): RuleEntry[] =>
+  values.map((item, index) => parseRule(item, `${origin}[${index}]`))
+
+const parseSourceList = (values: unknown[], origin: string): SourceEntry[] =>
+  values.map((item, index) => parseSource(item, `${origin}[${index}]`))
+
+/**
+ * Validate already-collected entries and merge them into one immutable pack.
+ * The file loader and the DB-published inline loader share this single
+ * validation path, so a published pack cannot skip the source/basis checks.
+ */
+function assemblePack(manifest: RulePackManifest, rules: RuleEntry[], sources: SourceEntry[]): LoadedPack {
   const warnings: string[] = []
-  const rules: RuleEntry[] = []
-  for (const file of manifest.ruleFiles) {
-    const value = parseJson(contents.get(file)!, file)
-    if (!Array.isArray(value)) throw new Error(`${file} 必须是规则数组。`)
-    value.forEach((item, index) => rules.push(parseRule(item, `${file}[${index}]`)))
-  }
-  const sources: SourceEntry[] = []
-  for (const file of manifest.sourceFiles) {
-    const value = parseJson(contents.get(file)!, file)
-    if (!Array.isArray(value)) throw new Error(`${file} 必须是来源数组。`)
-    value.forEach((item, index) => sources.push(parseSource(item, `${file}[${index}]`)))
-  }
   const ruleIds = new Set<string>()
   for (const rule of rules) {
     if (ruleIds.has(rule.ruleId)) throw new Error(`规则编号重复：${rule.ruleId}`)
@@ -190,6 +189,50 @@ function parsePackContents(manifest: RulePackManifest, contents: ReadonlyMap<str
   }
   if (manifest.status !== "已发布") warnings.push(`规则包状态为${manifest.status}，仅用于验证流程，不构成已核对结论。`)
   return { manifest, rules, sources, warnings }
+}
+
+function parsePackContents(manifest: RulePackManifest, contents: ReadonlyMap<string, string>): LoadedPack {
+  const rules: RuleEntry[] = []
+  for (const file of manifest.ruleFiles) {
+    const value = parseJson(contents.get(file)!, file)
+    if (!Array.isArray(value)) throw new Error(`${file} 必须是规则数组。`)
+    rules.push(...parseRuleList(value, file))
+  }
+  const sources: SourceEntry[] = []
+  for (const file of manifest.sourceFiles) {
+    const value = parseJson(contents.get(file)!, file)
+    if (!Array.isArray(value)) throw new Error(`${file} 必须是来源数组。`)
+    sources.push(...parseSourceList(value, file))
+  }
+  return assemblePack(manifest, rules, sources)
+}
+
+/**
+ * Parse a rule pack that is stored inline (C6 published rule packs in the
+ * business database) instead of read from the deployed file tree. The pack has
+ * no `ruleFiles`/`sourceFiles`, so paths never enter the published content; the
+ * same entry validation and source/basis checks as the file loader apply.
+ */
+export function parseInlineRulePack(value: unknown): LoadedPack {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("规则包内容必须是对象。")
+  const record = value as Record<string, unknown>
+  const manifestValue = record.manifest
+  if (!manifestValue || typeof manifestValue !== "object" || Array.isArray(manifestValue)) throw new Error("规则包缺少包清单（manifest）。")
+  const raw = manifestValue as Record<string, unknown>
+  const manifest: RulePackManifest = {
+    version: text(raw.version, "规则包版本"),
+    name: text(raw.name, "规则包名称"),
+    status: one(PUBLICATION_STATUSES, raw.status, "规则包发布状态"),
+    description: optionalText(raw.description, "规则包说明"),
+    reviewer: typeof raw.reviewer === "string" ? raw.reviewer : null,
+    reviewedAt: typeof raw.reviewedAt === "string" ? raw.reviewedAt : null,
+    ruleFiles: [],
+    sourceFiles: [],
+  }
+  if (manifest.status === "已发布" && (!manifest.reviewer?.trim() || !manifest.reviewedAt?.trim())) throw new Error("已发布规则包缺少核对人或核对时间。")
+  if (!Array.isArray(record.rules) || !record.rules.length) throw new Error("规则包必须包含非空规则列表。")
+  if (!Array.isArray(record.sources)) throw new Error("规则包缺少来源列表。")
+  return assemblePack(manifest, parseRuleList(record.rules, "规则"), parseSourceList(record.sources, "来源"))
 }
 
 // 发布过滤仍由 publishedRules / publishedSources 和调用方执行，缓存不赋予发布资格。

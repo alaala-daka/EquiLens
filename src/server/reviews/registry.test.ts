@@ -26,6 +26,48 @@ test("A4c validator: published-mode and structurally tampered results are invali
   assert.equal(missingInput.status, "invalid")
 })
 
+test("C6 validator: mode published with the executor-embedded fixed refs is valid", async () => {
+  const value = successResult(validRunnerInput())
+  const ruleRef = { id: "publication-rule-pack-1", versionId: "publication-version-1", sha256: "a".repeat(64) }
+  const checked = await contractReviewResultValidator({
+    ...value, mode: "published", publicationBasis: { rules: [ruleRef], knowledge: [] },
+  })
+  assert.equal(checked.status, "valid")
+  assert.deepEqual(checked.issues, [])
+})
+
+test("C6 validator: a bare or malformed published basis stays invalid", async () => {
+  const value = successResult(validRunnerInput())
+  const ruleRef = { id: "publication-rule-pack-1", versionId: "publication-version-1", sha256: "a".repeat(64) }
+  const emptyRules = await contractReviewResultValidator({
+    ...value, mode: "published", publicationBasis: { rules: [], knowledge: [] },
+  })
+  assert.equal(emptyRules.status, "invalid")
+  assert.ok(emptyRules.issues.some(issue => issue.code === "UNSIGNED_BASIS"))
+  const badSha = await contractReviewResultValidator({
+    ...value, mode: "published", publicationBasis: { rules: [{ ...ruleRef, sha256: "not-a-digest" }], knowledge: [] },
+  })
+  assert.equal(badSha.status, "invalid")
+  assert.ok(badSha.issues.some(issue => issue.code === "INVALID_STRUCTURE"))
+  const duplicate = await contractReviewResultValidator({
+    ...value, mode: "published", publicationBasis: { rules: [ruleRef, ruleRef], knowledge: [] },
+  })
+  assert.equal(duplicate.status, "invalid")
+  const badKnowledge = await contractReviewResultValidator({
+    ...value, mode: "published", publicationBasis: { rules: [ruleRef], knowledge: [{ id: "", versionId: "", sha256: "0".repeat(64) }] },
+  })
+  assert.equal(badKnowledge.status, "invalid")
+})
+
+test("C6 validator: debug results must not embed a published basis", async () => {
+  const value = successResult(validRunnerInput())
+  const checked = await contractReviewResultValidator({
+    ...value, publicationBasis: { rules: [{ id: "publication-1", versionId: "version-1", sha256: "b".repeat(64) }], knowledge: [] },
+  })
+  assert.equal(checked.status, "invalid")
+  assert.ok(checked.issues.some(issue => issue.code === "UNSIGNED_BASIS"))
+})
+
 test("A4c validator: the input text digest is rebuilt from the saved paragraphs", async () => {
   const value = successResult(validRunnerInput())
   const tampered = await contractReviewResultValidator({ ...value, input: { ...value.input, textSha256: "0".repeat(64) } })

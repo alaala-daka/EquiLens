@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import type { PublishedRef } from "../../lib/business/contracts"
 import {
   CHECK_CATEGORIES, SEVERITIES,
   type ReviewResult,
@@ -12,17 +13,24 @@ import type { ResultValidator } from "../results/validation"
  * src/server/results/registry.ts. It is not a re-implementation of the agent's
  * own checks: it revalidates the saved immutable value from scratch —
  * structure and required fields, the input text digest, finding/citation
- * verbatim quotes, coverage/status consistency and the unsigned-basis marker.
+ * verbatim quotes, coverage/status consistency and the declared basis mode.
  * `ResultService.validation` additionally checks that every recorded source
  * fragment exists and contains the quote verbatim in the project database.
  *
  * Status policy:
- * - invalid: structural failure, digest mismatch, invalid citation, published
- *   mode (rules are not signed off) or a success claim inconsistent with the
- *   declared coverage/complete flag.
+ * - invalid: structural failure, digest mismatch, invalid citation, a
+ *   `mode:"published"` claim without the embedded fixed publication refs (or a
+ *   malformed/debug-mode publication basis), or a success claim inconsistent
+ *   with the declared coverage/complete flag.
  * - partial: a genuine partial result (status partial or declared incomplete
  *   coverage). It can be saved and exported as a draft, but not approved.
  * - valid: complete coverage with no structural issues.
+ *
+ * C6 published mode: the executor re-reads the DB-pinned version and embeds the
+ * same `PublicationRef` list in the saved value. This validator can only check
+ * the embedded structure and its consistency with `mode`; it has no database
+ * access, so authenticity comes from the executor's pre-save DB check (spec/01
+ * §8.2.2). A bare `mode:"published"` value therefore stays invalid.
  */
 const categories = new Set<string>(CHECK_CATEGORIES)
 const findingKinds = new Set(["发现问题", "未发现问题", "缺失条款", "待核实"])
@@ -41,9 +49,7 @@ function checkStructure(value: unknown, issues: Issue[]) {
   if (!result) { issues.push({ code: "INVALID_STRUCTURE", message: "审查成果不是有效对象。" }); return null }
   if (result.schemaVersion !== 1) issues.push({ code: "INVALID_STRUCTURE", message: "成果版本不受支持。" })
   if (!["success", "partial", "failed"].includes(body(result.status))) issues.push({ code: "INVALID_STRUCTURE", message: "成果执行状态无效。" })
-  if (result.mode !== "debug") {
-    issues.push({ code: "UNSIGNED_BASIS", message: "审查依据尚未签核，只能保存调试模式成果。" })
-  }
+  if (result.mode !== "debug" && result.mode !== "published") issues.push({ code: "INVALID_STRUCTURE", message: "成果模式无效。" })
   if (!body(result.documentTitle) || body(result.documentTitle).length > 200) issues.push({ code: "INVALID_STRUCTURE", message: "成果缺少有效的文档标题。" })
   if (!body(result.packVersion) || body(result.packVersion).length > 128) issues.push({ code: "INVALID_STRUCTURE", message: "成果缺少规则包版本。" })
   if (!body(result.reviewId) || body(result.reviewId).length > 128) issues.push({ code: "INVALID_STRUCTURE", message: "成果缺少审查编号。" })
@@ -77,6 +83,51 @@ function checkStructure(value: unknown, issues: Issue[]) {
     }
   }
   return { result, input, paragraphs }
+}
+
+function checkPublishedRefs(value: unknown, ref: string, issues: Issue[]): PublishedRef[] | null {
+  if (!Array.isArray(value)) { issues.push({ code: "INVALID_STRUCTURE", message: "固定发布引用列表无效。", ref }); return null }
+  const refs: PublishedRef[] = []
+  const seen = new Set<string>()
+  for (const [index, raw] of value.entries()) {
+    const item = object(raw)
+    if (!item || !body(item.id) || body(item.id).length > 128 || !body(item.versionId) || body(item.versionId).length > 64 ||
+      typeof item.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(item.sha256)) {
+      issues.push({ code: "INVALID_STRUCTURE", message: "固定发布引用结构无效。", ref: `${ref}[${index}]` })
+      return null
+    }
+    const key = `${item.id}\u0000${item.versionId}`
+    if (seen.has(key)) { issues.push({ code: "INVALID_STRUCTURE", message: "固定发布引用重复。", ref: `${ref}[${index}]` }); return null }
+    seen.add(key)
+    refs.push({ id: body(item.id), versionId: body(item.versionId), sha256: item.sha256 })
+  }
+  return refs
+}
+
+/**
+ * Published-mode basis policy (spec/01 §8.2.2):
+ * - debug: valid only without an embedded publication basis.
+ * - published: valid only with the executor-embedded fixed refs; a bare mode
+ *   claim, malformed refs or an empty rules list is invalid.
+ */
+function checkPublicationBasis(result: Record<string, unknown>, issues: Issue[]): void {
+  const raw = result.publicationBasis
+  if (result.mode === "debug") {
+    if (raw !== undefined) issues.push({ code: "UNSIGNED_BASIS", message: "调试模式成果不得内嵌发布依据。" })
+    return
+  }
+  if (result.mode !== "published") return
+  if (raw === undefined || raw === null) {
+    issues.push({ code: "UNSIGNED_BASIS", message: "已发布模式成果缺少内嵌的固定发布引用。" })
+    return
+  }
+  const basis = object(raw)
+  if (!basis) { issues.push({ code: "UNSIGNED_BASIS", message: "已发布模式成果的固定发布引用结构无效。" }); return }
+  const rules = checkPublishedRefs(basis.rules, "publicationBasis.rules", issues)
+  if (!rules || !rules.length) issues.push({ code: "UNSIGNED_BASIS", message: "已发布模式成果缺少规则发布引用。" })
+  for (const key of ["knowledge", "templates"] as const) {
+    if (basis[key] !== undefined) checkPublishedRefs(basis[key], `publicationBasis.${key}`, issues)
+  }
 }
 
 function checkFindings(result: ReviewResult, paragraphs: Array<{ index: number; text: string }>, issues: Issue[]): void {
@@ -166,6 +217,7 @@ export const contractReviewResultValidator: ResultValidator = async value => {
   const shape = checkStructure(value, issues)
   if (!shape) return { status: "invalid", issues }
   const { result, input, paragraphs } = shape
+  checkPublicationBasis(result, issues)
   if (input && typeof input.textSha256 === "string" && paragraphs.length) {
     if (digest(paragraphs) !== input.textSha256) issues.push({ code: "INVALID_TEXT_HASH", message: "成果输入摘要与正文不一致。" })
   }

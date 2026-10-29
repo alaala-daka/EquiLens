@@ -1,9 +1,11 @@
-import type { ProjectAccess, ProjectAction, ProjectExecutionAccess } from "../../lib/business/contracts"
+import type { ProjectAccess, ProjectAction, ProjectExecutionAccess, PublishedRef } from "../../lib/business/contracts"
 import type { ReviewResult } from "../../../tools/contract-review/src/types"
 import type { AuthIdentity } from "../auth/service"
 import { isBusinessError } from "../projects/errors"
 import type { ResultAuthorizer, ResultDependency, ResultService, ResultSource } from "../results/service"
 import type { TaskExecutionResult, TaskExecutor } from "../tasks/runner-core"
+import type { TaskManifest } from "../tasks/catalog"
+import type { PublicationPin } from "../tasks/publications"
 import { estimateTaskCall } from "../tasks/estimates"
 import {
   ProjectReviewError, isProjectReviewError, projectReviewFailureMessages, taskFailureCode,
@@ -21,6 +23,13 @@ import { loadReviewInput, retentionExpired, type LoadedReviewInput, type ReviewI
  * result version through ResultService (never a human version, never a test
  * fixture), then reports the real task outcome.
  *
+ * C6 published basis: the server-resolved `publications` pin is read back from
+ * the immutable task manifest. When pinned, the runner must run
+ * `mode:"published"` from the pinned database pack and embed the same fixed
+ * `PublishedRef` list in the result; the executor re-checks that embedding
+ * before saving (so a runner cannot claim a published basis it did not load).
+ * Old manifests/queued tasks without `publications` keep the debug path.
+ *
  * The model runner is injected: production wires reviewWithAgent, tests inject
  * a deterministic fake so no real model traffic is produced by the test suite.
  */
@@ -32,11 +41,18 @@ export type ProjectReviewRunnerInput = {
   parseSnapshotId: string
   textSha256: string
   context: { scene: string; role: "专业分包人"; region: string }
+  /** Server-resolved immutable published basis; absent means the debug/unsigned path. */
+  published?: Pick<PublicationPin, "rules" | "knowledge">
   maxCalls: number
   signal: AbortSignal
   env: Record<string, string | undefined>
   onBeforeCall(reservation: { callNumber: number }): Promise<void>
   onExchange(exchange: unknown): Promise<void>
+}
+
+/** Review result extended with the fixed publication refs embedded by the runner. */
+export type PublishedReviewResult = ReviewResult & {
+  publicationBasis?: { rules: PublishedRef[]; knowledge: PublishedRef[] }
 }
 
 export type ProjectReviewRunner = (input: ProjectReviewRunnerInput) => Promise<ReviewResult>
@@ -86,11 +102,69 @@ function mapSources(loaded: LoadedReviewInput, result: ReviewResult): ResultSour
   return sources
 }
 
-function resultDependencies(loaded: LoadedReviewInput, result: ReviewResult): ResultDependency[] {
+const publishedRefPattern = /^[a-f0-9]{64}$/
+
+function assertPublishedRefs(value: unknown): PublishedRef[] {
+  if (!Array.isArray(value)) throw new ProjectReviewError("INVALID_SUBMISSION")
+  return value.map(item => {
+    const ref = (item ?? {}) as Partial<PublishedRef>
+    if (typeof ref.id !== "string" || !ref.id.trim() || ref.id.length > 128 ||
+      typeof ref.versionId !== "string" || !ref.versionId.trim() || ref.versionId.length > 64 ||
+      typeof ref.sha256 !== "string" || !publishedRefPattern.test(ref.sha256)) {
+      throw new ProjectReviewError("INVALID_SUBMISSION")
+    }
+    return { id: ref.id, versionId: ref.versionId, sha256: ref.sha256 }
+  })
+}
+
+/**
+ * Read the server-resolved publication pin back from the immutable task
+ * manifest. Old/queued manifests have no `publications` and keep the debug path;
+ * a malformed or empty-rule pin is rejected before any model call.
+ */
+function manifestPublicationPin(manifest: TaskManifest): Pick<PublicationPin, "rules" | "knowledge"> | null {
+  const value = manifest.publications as unknown
+  if (value === undefined) return null
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new ProjectReviewError("INVALID_SUBMISSION")
+  const record = value as Record<string, unknown>
+  const rules = assertPublishedRefs(record.rules)
+  const knowledge = assertPublishedRefs(record.knowledge)
+  assertPublishedRefs(record.templates)
+  if (!rules.length) throw new ProjectReviewError("INVALID_SUBMISSION")
+  return { rules, knowledge }
+}
+
+function embeddedBasis(result: unknown): { rules: PublishedRef[]; knowledge: PublishedRef[] } | null {
+  const basis = (result as PublishedReviewResult | null)?.publicationBasis
+  if (!basis || typeof basis !== "object") return null
+  try {
+    return { rules: assertPublishedRefs(basis.rules), knowledge: assertPublishedRefs(basis.knowledge) }
+  } catch {
+    return null
+  }
+}
+
+/** The saved result must embed exactly the immutable refs pinned in the manifest. */
+function publishedBasisMatches(result: ReviewResult, pin: Pick<PublicationPin, "rules" | "knowledge">): boolean {
+  if (result.mode !== "published") return false
+  const basis = embeddedBasis(result)
+  if (!basis) return false
+  return JSON.stringify(basis) === JSON.stringify({ rules: pin.rules, knowledge: pin.knowledge })
+}
+
+function resultDependencies(
+  loaded: LoadedReviewInput,
+  result: ReviewResult,
+  pin: Pick<PublicationPin, "rules" | "knowledge"> | null,
+): ResultDependency[] {
   const dependencies: ResultDependency[] = loaded.materials.map(material => ({
     kind: "material", id: material.materialId, versionId: material.versionId,
   }))
-  if (typeof result.packVersion === "string" && result.packVersion.trim()) {
+  if (pin) {
+    // Dependency rows record the fixed published refs (immutable provenance).
+    for (const ref of pin.rules) dependencies.push({ kind: "rule", id: ref.id, versionId: ref.versionId })
+    for (const ref of pin.knowledge) dependencies.push({ kind: "knowledge", id: ref.id, versionId: ref.versionId })
+  } else if (typeof result.packVersion === "string" && result.packVersion.trim()) {
     dependencies.push({ kind: "rule", id: "builtin-contract-review-rules", versionId: result.packVersion.slice(0, 128) })
   }
   return dependencies
@@ -135,6 +209,10 @@ export function createProjectReviewExecutor(dependencies: ProjectReviewExecutorD
       }, job)
       if (!loaded.unreviewedMaterialsConsent) return failed("UNREVIEWED_MATERIALS_CONSENT")
       await context.refreshAccess()
+      // Server-resolved published basis, read back from the immutable manifest.
+      // Old manifests have none (debug path); a malformed pin fails closed before
+      // any model call and no pinned run may fall back to file rules.
+      const pin = manifestPublicationPin(job.manifest)
       const remainingCalls = job.maxCalls - job.callsUsed
       if (remainingCalls <= 0) return failed("REVIEW_BUDGET_EXHAUSTED")
 
@@ -151,6 +229,7 @@ export function createProjectReviewExecutor(dependencies: ProjectReviewExecutorD
         parseSnapshotId: loaded.parseSnapshotId,
         textSha256: loaded.textSha256,
         context: { scene: loaded.scene, role: loaded.role, region: loaded.region },
+        ...(pin ? { published: pin } : {}),
         maxCalls: remainingCalls,
         signal: context.signal,
         env,
@@ -188,6 +267,11 @@ export function createProjectReviewExecutor(dependencies: ProjectReviewExecutorD
       let result: ReviewResult
       try { result = JSON.parse(JSON.stringify(runnerResult)) as ReviewResult } catch { return failed("RESULT_MISMATCH") }
       if (!result || result.schemaVersion !== 1) return failed("RESULT_MISMATCH")
+      // A published run must carry the exact pinned refs; the debug path must not
+      // claim any embedded published basis.
+      if (pin ? !publishedBasisMatches(result, pin) : result.mode !== "debug" || embeddedBasis(result) !== null) {
+        return failed("RESULT_MISMATCH")
+      }
       if (result.input?.textSha256 !== loaded.textSha256 || result.input?.parseSnapshotId !== loaded.parseSnapshotId ||
         result.input?.documentVersionId !== loaded.documentVersionId || result.input?.complete !== loaded.complete) {
         return failed("RESULT_MISMATCH")
@@ -207,7 +291,7 @@ export function createProjectReviewExecutor(dependencies: ProjectReviewExecutorD
         reason: "项目合同审查机器成果",
         value: result,
         sources,
-        dependencies: resultDependencies(loaded, result),
+        dependencies: resultDependencies(loaded, result, pin),
       }, {
         output: result,
         taskId: job.id,
