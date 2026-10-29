@@ -1,6 +1,6 @@
-import type { ProjectAccess, ProjectAction, ProjectRole } from "../../lib/business/contracts"
+import type { ProjectAccess, ProjectAction, ProjectRole, ProjectExecutionAccess } from "../../lib/business/contracts"
 import { isAuthError } from "../auth/errors"
-import type { AuthIdentity } from "../auth/service"
+import type { AuthIdentity, Account } from "../auth/service"
 import { BusinessError } from "./errors"
 import type { ProjectRepository } from "./repository"
 import { isProjectId } from "./validation"
@@ -19,6 +19,36 @@ export type ProjectAuthorizationDependencies = {
 }
 
 export type ProjectAuthorization = ReturnType<typeof createProjectAuthorization>
+
+export type TaskExecutionAuthorization = {
+  authorize(input: { accountId: string; projectId: string; action: ProjectAction }): Promise<ProjectExecutionAccess>
+}
+
+/** Execution snapshots expire at the next stage; never use browser sessions here. */
+export function createTaskExecutionAuthorization(deps: {
+  account: (id: string) => Promise<Account | null>
+  repository: {
+    findActive: (id: string) => Promise<{ id: string } | null>
+    findMember: (projectId: string, accountId: string) => Promise<ProjectRole | null>
+  }
+}): TaskExecutionAuthorization {
+  return {
+    async authorize({ accountId, projectId, action }) {
+      try {
+        const account = await deps.account(accountId)
+        if (!account || !isProjectId(projectId) || !await deps.repository.findActive(projectId)) {
+          throw new BusinessError("FORBIDDEN", "无权访问该项目。")
+        }
+        const role = account.role === "superadmin" ? "admin" : await deps.repository.findMember(projectId, account.id)
+        if (!role || !roleAllows(role, action)) throw new BusinessError("FORBIDDEN", "无权访问该项目。")
+        return { projectId, action, role, account }
+      } catch (failure) {
+        if (failure instanceof BusinessError) throw failure
+        throw new BusinessError("SERVICE_UNAVAILABLE", "服务暂不可用，请稍后重试。")
+      }
+    },
+  }
+}
 
 /**
  * Fresh project authorization. The returned ProjectAccess.identity is a

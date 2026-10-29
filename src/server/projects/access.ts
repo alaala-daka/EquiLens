@@ -8,6 +8,14 @@ import { createProjectAuthorization, type ProjectAuthorization } from "./authori
 import type { ProjectHttpDependencies } from "./handlers"
 import { ProjectRepository } from "./repository"
 import { ProjectService } from "./service"
+import { AuthService } from "../auth/service"
+import { createTaskExecutionAuthorization } from "./authorization"
+
+export async function authorizeTaskExecution(input: { accountId: string; projectId: string; action: ProjectAction }) {
+  const database = await applicationDatabase()
+  const auth = new AuthService(database)
+  return createTaskExecutionAuthorization({ repository: new ProjectRepository(database), account: id => auth.account(id) }).authorize(input)
+}
 
 type ProjectRuntime = { deps: ProjectHttpDependencies; authorization: ProjectAuthorization }
 

@@ -2,6 +2,9 @@ import { createHash } from "node:crypto"
 import { statements as materialStatements } from "../materials/schema"
 import { statements as projectStatements } from "../projects/schema"
 import { statements as taskStatements } from "../tasks/schema"
+import { statements as resultStatements } from "../results/schema"
+import { uploadIntentStatements } from "../materials/schema"
+import { documentStatements } from "../materials/document-schema"
 import type { Database } from "./connection"
 
 export type BusinessMigration = { id: string; statements: readonly string[] }
@@ -17,7 +20,7 @@ export const businessMigrations: readonly BusinessMigration[] = [{ id: "0001", s
 ] }, { id: "0003", statements: [
   "ALTER TABLE equilens_auth_accounts ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'member'",
   "CREATE TABLE equilens_auth_bootstrap (id INTEGER PRIMARY KEY)",
-] }, { id: "0004", statements: projectStatements }, { id: "0005", statements: taskStatements }, { id: "0006", statements: materialStatements }]
+] }, { id: "0004", statements: projectStatements }, { id: "0005", statements: taskStatements }, { id: "0006", statements: materialStatements }, { id: "0007", statements: resultStatements }, { id: "0008", statements: uploadIntentStatements }, { id: "0009", statements: documentStatements }]
 
 /** Explicit initialization only; never runs on module import. */
 export async function migrateBusiness(db: Database, migrations = businessMigrations) {

@@ -108,6 +108,8 @@ export type SourceFragmentRecord = {
 }
 
 export type MaterialSummary = {
+  parseTaskId: string | null
+  parseState: string | null
   id: string
   title: string
   fileName: string | null

@@ -1,5 +1,13 @@
 import type { Database } from "../database/connection"
 
+/** Migration 0008 only. Never append to the frozen 0006 statements below. */
+export const uploadIntentStatements: readonly string[] = [
+  "ALTER TABLE equilens_materials ADD COLUMN parse_task_id VARCHAR(36)",
+  "CREATE UNIQUE INDEX equilens_material_digest_unique ON equilens_material_versions(project_id,sha256)",
+  "CREATE TABLE equilens_material_upload_intents (id VARCHAR(36) PRIMARY KEY, project_id VARCHAR(36) NOT NULL, material_id VARCHAR(36) NOT NULL, version_id VARCHAR(36) NOT NULL UNIQUE, object_key VARCHAR(512) NOT NULL UNIQUE, account_id VARCHAR(36) NOT NULL, source_kind VARCHAR(16) NOT NULL, source_reference VARCHAR(500) NOT NULL, processing_authorized INTEGER NOT NULL, purpose VARCHAR(500) NOT NULL, retention_until VARCHAR(10) NOT NULL, state VARCHAR(16) NOT NULL, parse_task_id VARCHAR(36), attempts INTEGER NOT NULL, created_at VARCHAR(32) NOT NULL, updated_at VARCHAR(32) NOT NULL)",
+  "CREATE INDEX equilens_material_upload_intents_open ON equilens_material_upload_intents(state, updated_at)",
+]
+
 /**
  * C2 private-material schema. The Lead registers these statements as the next
  * business migration after the project statements; tests apply them directly.
