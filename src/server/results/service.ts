@@ -9,6 +9,8 @@ export type ResultAuthorizer = (identity: AuthIdentity, projectId: string, actio
 export type ResultSource = { fragmentId: string; snapshotId: string; quote: string }
 export type ResultDependency = { kind: "material" | "fact" | "ledger" | "result" | "rule" | "knowledge" | "template"; id: string; versionId: string }
 export type SaveResultInput = { projectId: string; resultId?: string; kind: string; baseVersionId: string; operationId: string; reason: string; value: unknown; sources: ResultSource[]; dependencies: ResultDependency[] }
+/** Server-owned save options; never reachable from the generic browser results POST. */
+export type SaveResultOptions = { serverOwned?: boolean }
 export type ReviewInput = ResultRevisionRef & { decision: ResultReview["decision"]; comment: string }
 export type ResultView = ResultRevisionRef & { kind: string; value: unknown; machineOutput: unknown; origin: string; sources: ResultSource[]; dependencies: ResultDependency[]; provenance: { taskId: string; attempt: number; manifest: unknown; manifestHash: string } | null; validation: ResultValidation; review: ResultReview | null; createdAt: string; createdBy: string; reason: string }
 const hash = (value: unknown) => createHash("sha256").update(canonicalJson(value)).digest("hex")
@@ -20,6 +22,12 @@ export class ResultService {
     private readonly registry = new ResultValidatorRegistry(),
     /** Kinds whose values may only be written by a server-owned task execution. */
     private readonly machineOnlyKinds: ReadonlySet<string> = new Set(),
+    /**
+     * Machine-only kinds that additionally accept a server-owned human revision
+     * (e.g. C4 requirement-set confirmation). The browser cannot request this:
+     * results/http.ts never forwards SaveResultOptions.
+     */
+    private readonly serverOwnedKinds: ReadonlySet<string> = new Set(),
   ) {}
   private async access(identity: AuthIdentity, authorize: ResultAuthorizer, projectId: string, action: ProjectAction) {
     const access = await authorize(identity, projectId, action)
@@ -43,15 +51,17 @@ export class ResultService {
     const reviews = (await connection.query("SELECT review_json FROM equilens_result_reviews WHERE project_id=$1 AND version_id=$2 ORDER BY created_at, id", [String(row.project_id), String(row.id)])).rows
     return { projectId: String(row.project_id), resultId: String(row.result_id), versionId: String(row.id), sha256: String(row.sha256), kind: String(row.kind), value: JSON.parse(String(row.value_json)), machineOutput: row.machine_json ? JSON.parse(String(row.machine_json)) : null, origin: String(row.origin), sources: JSON.parse(String(row.sources_json)), dependencies, provenance: row.provenance_json ? JSON.parse(String(row.provenance_json)) : null, validation: JSON.parse(String(row.validation_json)), review: reviews.length ? JSON.parse(String(reviews.at(-1)!.review_json)) : null, createdAt: String(row.created_at), createdBy: String(row.created_by), reason: String(row.reason) }
   }
-  async saveResultRevision(identity: AuthIdentity, authorize: ResultAuthorizer, input: SaveResultInput, machine?: { output: unknown; taskId: string; attempt: number; executionToken: string }): Promise<ResultView> {
+  async saveResultRevision(identity: AuthIdentity, authorize: ResultAuthorizer, input: SaveResultInput, machine?: { output: unknown; taskId: string; attempt: number; executionToken: string }, options?: SaveResultOptions): Promise<ResultView> {
     const access = await this.access(identity, authorize, input.projectId, "edit")
     if (machine && input.resultId) throw conflict()
+    if (machine && options?.serverOwned) throw invalid()
     if (!input.operationId?.trim() || input.operationId.length > 128 || !input.reason?.trim() || !Array.isArray(input.sources) || !Array.isArray(input.dependencies) || typeof input.baseVersionId !== "string") throw invalid()
     for (const source of input.sources) if (!source || typeof source.fragmentId !== "string" || typeof source.snapshotId !== "string" || typeof source.quote !== "string") throw invalid()
     for (const dependency of input.dependencies) if (!dependency || !["material","fact","ledger","result","rule","knowledge","template"].includes(dependency.kind) || typeof dependency.id !== "string" || typeof dependency.versionId !== "string") throw invalid()
     this.registry.require(input.kind)
-    if (!machine && this.machineOnlyKinds.has(input.kind)) throw new BusinessError("FORBIDDEN", "该成果类型只能由受控任务写入。")
-    const requestHash = hash({ input, machine: machine ? { output: machine.output, taskId: machine.taskId, attempt: machine.attempt } : null })
+    const serverOwned = options?.serverOwned === true && this.serverOwnedKinds.has(input.kind)
+    if (!machine && this.machineOnlyKinds.has(input.kind) && !serverOwned) throw new BusinessError("FORBIDDEN", "该成果类型只能由受控任务写入。")
+    const requestHash = hash({ input, machine: machine ? { output: machine.output, taskId: machine.taskId, attempt: machine.attempt } : null, serverOwned })
     return this.repository.transaction(async connection => {
       let provenanceJson: string | null = null
       if (machine) {

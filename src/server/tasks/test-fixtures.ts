@@ -49,8 +49,23 @@ export function validRequest(kind: TaskKind): TaskRequest {
       return { kind, projectId, refs: { facts: [ref("facts-1")], ledger: ref("ledger-1") }, conditions: { asOf: "2026-10-28" } }
     case "material-parse":
       return { kind, projectId, refs: { materials: [material("material-1")] }, conditions: {} }
+    case "bid-requirements":
+      return { kind, projectId, refs: { materials: [material("material-1")] }, conditions: { externalProcessingConsent: true } }
+    case "certificate-ocr":
+      return {
+        kind, projectId,
+        refs: { materials: [material("material-image-1")] },
+        conditions: { certificateKind: "enterprise_license", externalProcessingConsent: true },
+      }
     case "bid-verification":
-      return { kind, projectId, refs: { materials: [material("material-1")] }, conditions: { asOf: "2026-10-28" } }
+      return {
+        kind, projectId,
+        refs: {
+          materials: [material("material-1")],
+          requirementSet: { id: "requirements-1", versionId: "requirements-version-1", sha256: "a".repeat(64) },
+        },
+        conditions: { asOf: "2026-10-28" },
+      }
     case "result-export":
       return { kind, projectId, refs: { result: ref("result-1") }, conditions: { format: "docx" } }
   }

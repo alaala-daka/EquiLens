@@ -74,6 +74,13 @@ export type ResultRevisionRef = ProjectRef & {
   sha256: string
 }
 
+/** Selected immutable `bid-requirements` result version used by a comparison task. */
+export type RequirementSetRef = ProjectRef & {
+  id: string
+  versionId: string
+  sha256: string
+}
+
 /** Project contract-review task input frozen for round three (catalog is the runtime authority). */
 export type ProjectReviewScene = "auto" | "mep-sub-2026" | "decoration-sub-2026" | "curtain-wall-sub-2026" | "steel-structure-sub-2026"
 

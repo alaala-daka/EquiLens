@@ -1,11 +1,12 @@
 import "server-only"
+import { taskAdmission } from "./admission"
 import { taskExecutorRegistry } from "./executors"
 import { TaskError } from "./errors"
 import type { ProjectAction } from "../../lib/business/contracts"
 import type { AuthIdentity } from "../auth/service"
 import { TaskBudgetRepository, type BudgetSettlement, type BudgetUsage, type ProjectBudgetView, type TaskBudgetView } from "./budget"
 import { applicationDatabase } from "../database/runtime"
-import { parseOperationId, type TaskSubmission } from "./catalog"
+import { parseOperationId, parseTaskRequest, type TaskSubmission } from "./catalog"
 import {
   TaskRepository, type CallBudgetEstimate, type ClaimedTask, type SubmitResult, type TaskView,
 } from "./repository"
@@ -54,6 +55,13 @@ export async function submitTask(identity: AuthIdentity, authorize: ProjectTaskA
   if (!taskExecutorRegistry.get(submission.kind)) throw new TaskError(503, "SERVICE_UNAVAILABLE", "该任务类型尚未开放。")
   const operationId = parseOperationId(submission.operationId)
   await authorize(identity, submission.projectId, "edit")
+  // Kind-level admission runs before persistence: a kind whose current capability
+  // is unverified (e.g. no tested OCR certificate kinds) must never enter the queue.
+  const admission = taskAdmission(submission.kind)
+  if (admission) {
+    const parsed = parseTaskRequest({ kind: submission.kind, projectId: submission.projectId, refs: submission.refs, conditions: submission.conditions })
+    await admission({ kind: parsed.kind, projectId: parsed.projectId, refs: parsed.refs, conditions: parsed.conditions })
+  }
   const repository = await taskRepository()
   return repository.submit(identity.account.id, operationId, {
     kind: submission.kind, projectId: submission.projectId, refs: submission.refs, conditions: submission.conditions,

@@ -18,12 +18,14 @@ export const taskKinds = [
   "evidence-organization",
   "collection-letter",
   "material-parse",
+  "bid-requirements",
+  "certificate-ocr",
   "bid-verification",
   "result-export",
 ] as const
 export type TaskKind = (typeof taskKinds)[number]
 
-export const TASK_CATALOG_VERSION = 2
+export const TASK_CATALOG_VERSION = 3
 
 const identifier = z.string().trim().min(1).max(64)
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/)
@@ -85,11 +87,38 @@ const definitions: Record<TaskKind, TaskDefinition> = {
     refs: z.object({ materials: materialRefs }).strict(),
     conditions: z.object({}).strict(),
   },
-  "bid-verification": {
+  "bid-requirements": {
+    // Model proposes requirement candidates only; a human confirms and a
+    // server-owned save re-reads every citation before it becomes a version.
     maxCalls: 2,
     maxCostFen: 200,
     refs: z.object({ materials: materialRefs }).strict(),
-    conditions: z.object({ asOf: day.optional() }).strict(),
+    conditions: z.object({ asOf: day.optional(), externalProcessingConsent: z.literal(true) }).strict(),
+  },
+  "certificate-ocr": {
+    // Exactly one certificate image version per task; at most 2 OCR requests.
+    maxCalls: 2,
+    maxCostFen: 200,
+    refs: z.object({ materials: materialRefs.length(1) }).strict(),
+    conditions: z.object({
+      certificateKind: z.string().trim().min(1).max(64),
+      externalProcessingConsent: z.literal(true),
+    }).strict(),
+  },
+  "bid-verification": {
+    // Deterministic server-side comparison: no external request, no budget.
+    // requirementSet has no projectId key, so the executor re-reads it through
+    // the project-scoped result service and rejects cross-project versions.
+    // externalRecords pins the selected append-only manual records by digest so
+    // a later record cannot silently change a submitted or finished comparison.
+    maxCalls: 0,
+    maxCostFen: 0,
+    refs: z.object({
+      materials: materialRefs,
+      requirementSet: z.object({ id: identifier, versionId: identifier, sha256 }).strict(),
+      externalRecords: z.array(z.object({ recordId: identifier, sha256 }).strict()).max(200).default([]),
+    }).strict(),
+    conditions: z.object({ asOf: day }).strict(),
   },
   "result-export": {
     maxCalls: 0,

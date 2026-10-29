@@ -6,5 +6,18 @@ import { ResultRepository } from "./repository"
 import { productionResultValidators } from "./registry"
 import { ResultService } from "./service"
 export async function resultHttpServices() {
-  return { identity: requireAccount, authorize: requireProjectAccess, service: new ResultService(new ResultRepository(await applicationDatabase()), productionResultValidators(), new Set(["contract-review"])) }
+  return {
+    identity: requireAccount,
+    authorize: requireProjectAccess,
+    service: new ResultService(
+      new ResultRepository(await applicationDatabase()),
+      productionResultValidators(),
+      // Machine-only kinds: the browser POST and the review/export flows can read
+      // them, but only a server-owned task or the explicit server-owned save below
+      // may write a value. C4 requirement sets are machine candidates that a human
+      // confirms through VerificationService.saveRequirementSet.
+      new Set(["contract-review", "bid-requirements", "bid-verification"]),
+      new Set(["bid-requirements"]),
+    ),
+  }
 }

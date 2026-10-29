@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   buildTaskManifest, encodeManifest, manifestHash, maxCallsFor, parseOperationId, parseTaskRequest,
-  taskKinds, taskRequestDigest, type TaskKind,
+  TASK_CATALOG_VERSION, taskKinds, taskRequestDigest, type TaskKind,
 } from "./catalog"
 import { TaskError } from "./errors"
 import { otherProjectId, reviewConditions, validRequest } from "./test-fixtures"
@@ -20,14 +20,71 @@ function submissionError(work: () => unknown) {
 test("A3a: every controlled task kind has a server-fixed schema", () => {
   assert.deepEqual([...taskKinds], [
     "contract-review", "document-analysis", "payment-reconciliation", "evidence-organization",
-    "collection-letter", "material-parse", "bid-verification", "result-export",
+    "collection-letter", "material-parse", "bid-requirements", "certificate-ocr", "bid-verification", "result-export",
   ])
+  const expectedCalls: Record<TaskKind, number> = {
+    "contract-review": 25, "document-analysis": 3, "payment-reconciliation": 3, "evidence-organization": 3,
+    "collection-letter": 3, "material-parse": 0, "bid-requirements": 2, "certificate-ocr": 2,
+    "bid-verification": 0, "result-export": 0,
+  }
   for (const kind of taskKinds) {
     const parsed = parseTaskRequest(validRequest(kind))
     assert.equal(parsed.kind, kind)
     assert.equal(parsed.projectId, "project-1")
-    assert.equal(maxCallsFor(kind), kind === "contract-review" ? 25 : kind === "document-analysis" || kind === "payment-reconciliation" || kind === "evidence-organization" || kind === "collection-letter" ? 3 : kind === "bid-verification" ? 2 : 0)
+    assert.equal(maxCallsFor(kind), expectedCalls[kind])
   }
+})
+
+test("C4: bid task schemas pin records/asOf/one-image and reject the superseded shape", () => {
+  // The old two-call single bid-verification shape must not be accepted any more.
+  submissionError(() => parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }] },
+    conditions: { asOf: "2026-10-28" },
+  }))
+  // Comparison requires an explicit as-of point and a pinned requirement set.
+  submissionError(() => parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }], requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) } },
+    conditions: {},
+  }))
+  // Certificate OCR is exactly one image version per task.
+  submissionError(() => parseTaskRequest({
+    kind: "certificate-ocr", projectId: "project-1",
+    refs: { materials: [{ materialVersionId: "a", sha256: "a".repeat(64) }, { materialVersionId: "b", sha256: "a".repeat(64) }] },
+    conditions: { certificateKind: "enterprise_license", externalProcessingConsent: true },
+  }))
+  // A deterministic comparison must not accept outbound-processing fields.
+  submissionError(() => parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }], requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) } },
+    conditions: { asOf: "2026-10-28", externalProcessingConsent: true },
+  }))
+  // Pinned records are part of the request identity and must be well formed.
+  const pinned = parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: {
+      materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }],
+      requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) },
+      externalRecords: [{ recordId: "record-1", sha256: "b".repeat(64) }],
+    },
+    conditions: { asOf: "2026-10-28" },
+  })
+  assert.equal(taskRequestDigest(pinned), taskRequestDigest(parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: {
+      materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }],
+      requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) },
+      externalRecords: [{ recordId: "record-1", sha256: "b".repeat(64) }],
+    },
+    conditions: { asOf: "2026-10-28" },
+  })))
+  submissionError(() => parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }], requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) }, externalRecords: [{ recordId: "record-1", sha256: "not-a-digest" }] },
+    conditions: { asOf: "2026-10-28" },
+  }))
+  assert.equal(TASK_CATALOG_VERSION, 3)
 })
 
 test("A3a: unknown kinds and browser-supplied manifest/model/rules/executor are rejected", () => {
