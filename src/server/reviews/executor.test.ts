@@ -50,6 +50,36 @@ test("A4c executor: success saves one immutable machine result with fragment sou
   } finally { await fixture.close() }
 })
 
+test("A4c executor: each model exchange settles measured time instead of holding a 90s reservation", async () => {
+  const fixture = await setupReview()
+  try {
+    const reservations: number[] = []
+    const settlements: Array<{ call: number; timeMs: number }> = []
+    const runner: ProjectReviewRunner = async input => {
+      for (let call = 1; call <= 8; call++) {
+        await input.onBeforeCall({ callNumber: call })
+        await new Promise(resolve => setTimeout(resolve, 5))
+        await input.onExchange({ callNumber: call, request: {}, response: {} })
+      }
+      return successResult(input)
+    }
+    const outcome = await createProjectReviewExecutor(executorDependencies(fixture, { runner }))(
+      await fixture.claim(),
+      executorContext({
+        reserveCall: async callNumber => { reservations.push(callNumber) },
+        settleCall: async (callNumber, usage) => { settlements.push({ call: callNumber, timeMs: Number(usage?.timeMs ?? -1) }) },
+      }),
+    )
+    assert.equal(outcome.outcome, "success")
+    assert.deepEqual(reservations, [1, 2, 3, 4, 5, 6, 7, 8])
+    assert.equal(settlements.length, 8)
+    for (const [index, settlement] of settlements.entries()) {
+      assert.equal(settlement.call, index + 1)
+      assert.ok(settlement.timeMs >= 0 && settlement.timeMs < 89000)
+    }
+  } finally { await fixture.close() }
+})
+
 test("A4c executor: partial coverage is saved as a partial machine result, not as success or no-risk", async () => {
   const fixture = await setupReview({ coverage: { status: "partial", findings: [{ code: "embedded_image", location: "图片 1 处" }], pageCount: null, textLength: 30 } })
   try {

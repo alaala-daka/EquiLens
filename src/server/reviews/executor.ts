@@ -139,6 +139,10 @@ export function createProjectReviewExecutor(dependencies: ProjectReviewExecutorD
       if (remainingCalls <= 0) return failed("REVIEW_BUDGET_EXHAUSTED")
 
       let blocked: unknown
+      // Measure each model exchange so the 600s task budget reflects actual
+      // execution time instead of holding a 90s reservation per call; otherwise
+      // a 25-call review could never pass the cumulative time budget.
+      const callStarted = new Map<number, number>()
       const result = await dependencies.runner({
         paragraphs: loaded.paragraphs,
         complete: loaded.complete,
@@ -159,14 +163,23 @@ export function createProjectReviewExecutor(dependencies: ProjectReviewExecutorD
             const callNumber = job.callsUsed + reservation.callNumber
             if (callNumber > job.maxCalls) throw Object.assign(new Error("任务调用预算不允许本次外部请求。"), { code: "BUDGET_EXHAUSTED" })
             await context.reserveCall(callNumber, estimateTaskCall(job.kind, callNumber))
+            callStarted.set(reservation.callNumber, Date.now())
           } catch (failure) {
             blocked ??= failure
             throw failure
           }
         },
-        // Model exchanges are not persisted this round: 0007 has no exchange
-        // table and the executor must not write an ad-hoc retention surface.
-        onExchange: async () => {},
+        onExchange: async exchange => {
+          const value = exchange as { callNumber?: unknown } | null
+          const local = value && typeof value.callNumber === "number" && Number.isSafeInteger(value.callNumber) ? value.callNumber : null
+          if (local === null) return
+          const started = callStarted.get(local)
+          if (started === undefined) return
+          callStarted.delete(local)
+          // Cost usage is unknown here and stays conservatively reserved; only
+          // the measured wall time is settled back into the task time budget.
+          await context.settleCall(job.callsUsed + local, { timeMs: Math.max(0, Date.now() - started), costFen: null })
+        },
       })
       if (blocked) return blockedFailure(blocked)
       context.signal.throwIfAborted()
