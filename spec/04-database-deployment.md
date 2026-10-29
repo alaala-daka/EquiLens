@@ -79,6 +79,16 @@ GaussDB 的目标是集中式实例，版本、兼容模式和真实服务的往
 拟约定输入与文书成果为项目私有数据，进入项目删除与恢复清单。唯一约束沿用既有迁移已采用的 `UNIQUE`
 语法；重复键按既有 provider 兼容模式处理。
 
+第六轮迁移分配：C7 项目生命周期使用 0013（`equilens_project_deletions` 删除记录/墓碑，
+`equilens_project_reclamations` 对象回收记录；均只 CREATE TABLE/INDEX，条件更新断言一行，
+不假设 FK/CHECK）。项目生命周期运行时由显式 Node 生命周期启动，**启动不阻塞健康接口**，后台链在
+lifecycle ready 后才启动材料孤儿对象修复；生命周期就绪前项目业务入口（`requireProjectAccess`、
+`authorizeTaskExecution`、项目列表/创建）返回 503，健康接口可用且不表示业务就绪。删除日志目录
+`PROJECT_DELETION_JOURNAL_DIR`（SQLite 默认数据库旁，GaussDB 必须显式）；回收批大小
+`PROJECT_RECLAIM_BATCH`（默认 10、上限 100）；清扫间隔 `PROJECT_LIFECYCLE_INTERVAL_MS`
+（默认 3600000，最小 60000）。私有维护入口 `project-lifecycle`（inspect|reclaim|replay，
+离线恢复重放使用 `--offline-restored-database`），随保留工具构建以在无 tsx 的容器中运行。
+
 业务迁移验收：空库应用、重复启动、同号摘要不符、未知编号、失败回滚、既有匿名文档/版本不变及双 provider 首闭环分别留证。
 业务迁移与认证核心已有本地基础；登录 HTTP、项目功能及平台验收仍按各自记录判断，
 本段不表示已经运行或通过。
