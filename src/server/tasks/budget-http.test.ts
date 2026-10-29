@@ -6,6 +6,7 @@ import { BusinessError } from "../projects/errors"
 import { TaskError } from "./errors"
 import { createProjectBudgetHandlers, type ProjectBudgetDependencies } from "./budget-http"
 import type { ProjectBudgetView } from "./budget"
+import type { ProjectTaskAuthorizer } from "./service"
 
 const origin = "https://equilens.test"
 const projectId = "11111111-1111-4111-8111-111111111111"
@@ -18,8 +19,8 @@ const view: ProjectBudgetView = {
   registeredBy: "account-1", registeredAt: "2026-10-29T00:00:00.000Z", updatedAt: "2026-10-29T00:00:00.000Z", revision: 1,
 }
 
-function handlers(dependencies: Partial<ProjectBudgetDependencies> = {}) {
-  return createProjectBudgetHandlers(async () => ({ identity: async () => identity, authorize: async () => ({}) }), {
+function handlers(dependencies: Partial<ProjectBudgetDependencies> = {}, authorize: ProjectTaskAuthorizer = async () => ({})) {
+  return createProjectBudgetHandlers(async () => ({ identity: async () => identity, authorize }), {
     read: async () => view,
     register: async (_identity, _authorize, _projectId, costLimitFen) => ({ ...view, costLimitFen }),
     ...dependencies,
@@ -54,6 +55,14 @@ test("project budget GET returns the configured budget with private no-store", a
     assert.equal(response.status, 200)
     assert.equal(response.headers.get("cache-control"), "private, no-store")
     assert.deepEqual(await response.json(), { budget: view })
+  })
+})
+
+test("project budget GET requires manage authorization", async () => {
+  await withOrigin(async () => {
+    const response = await handlers({}, async () => { throw new BusinessError("FORBIDDEN", "无权访问该项目。") })
+      .GET(request(`/api/projects/${projectId}/budget`), context())
+    assert.equal(response.status, 403)
   })
 })
 

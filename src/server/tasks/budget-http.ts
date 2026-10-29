@@ -34,6 +34,8 @@ export function createProjectBudgetHandlers(
         const { id } = await context.params
         const services = await getServices()
         const identity = await services.identity(request)
+        // Reading the budget exposes cost limits, so it stays admin/manage-only.
+        await services.authorize(identity, id, "manage")
         const budget = await dependencies.read(identity, services.authorize, id)
         return NextResponse.json({ budget }, { headers })
       } catch (failure) { return taskFailure(failure) }

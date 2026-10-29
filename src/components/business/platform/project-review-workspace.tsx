@@ -38,6 +38,7 @@ import {
   isMaterialSelected,
   isReviewDraftDirty,
   materialAvailability,
+  mergeResultRows,
   mergeTaskView,
   nextSubmissionOperation,
   normalizeReviewRegion,
@@ -251,20 +252,20 @@ export function ProjectReviewWorkspace({ project, active, canEdit, canManage, bl
         hasPendingMaterials(materials) ? client.listMaterials(controller.signal) : Promise.resolve(null),
       ])
       if (!current() || controller.signal.aborted) return
-      let merged = tasks
-      for (const detail of details) merged = mergeTaskView(merged, detail)
-      setTasks(merged)
+      // Apply the poll to the latest state, never to the render-time snapshot.
+      setTasks(previous => details.reduce((merged, detail) => mergeTaskView(merged, detail), previous))
       if (materialRows) setMaterials(materialRows)
       setPollError("")
       const finished = details.filter(detail => !isActiveTask(detail))
       if (finished.length) {
         const rows = await client.listResults(controller.signal)
         if (!current() || controller.signal.aborted) return
-        setResults(rows)
+        setResults(previous => mergeResultRows(previous, rows))
         setSelection(previous => {
           if (previous.resultId && rows.some(row => row.resultId === previous.resultId)) return previous
-          const wanted = finished.find(task => task.id === previous.taskId) ?? finished[0]
-          const found = wanted ? resultForTask(rows, wanted) : null
+          // Only link the selected task's own result; never borrow another task's output.
+          const selectedFinished = finished.find(task => task.id === previous.taskId)
+          const found = selectedFinished ? resultForTask(rows, selectedFinished) : null
           return found ? { ...previous, resultId: found.resultId } : previous
         })
       }
@@ -486,7 +487,7 @@ export function ProjectReviewWorkspace({ project, active, canEdit, canManage, bl
           const availability = materialAvailability(material)
           const selected = isMaterialSelected(draft, material.id)
           return <TableRow key={material.id}>
-            <TableCell><input type="checkbox" aria-label={`选择 ${material.title}`} checked={selected} disabled={!availability.reviewable || busy === "submit" || (!selected && draft.materials.length >= 10)} onChange={() => updateDraft(toggleReviewMaterial(draft, material))} /></TableCell>
+            <TableCell><input type="checkbox" aria-label={`选择 ${material.title}`} checked={selected} disabled={busy === "submit" || (!selected && (!availability.reviewable || draft.materials.length >= 10))} onChange={() => updateDraft(toggleReviewMaterial(draft, material))} /></TableCell>
             <TableCell className="whitespace-normal">{material.title}<Badge variant="outline" className="ml-2">{material.format.toUpperCase()}</Badge></TableCell>
             <TableCell className="whitespace-normal break-all text-xs">{material.versionId}</TableCell>
             <TableCell>{parseStateLabel(material.parseState)}{!availability.reviewable && <p className="text-xs text-muted-foreground">{availability.reason}</p>}</TableCell>

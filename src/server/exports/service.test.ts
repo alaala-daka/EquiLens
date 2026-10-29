@@ -80,19 +80,22 @@ test("selected human revision, frozen state, template upgrade, failure protectio
   } finally { await db.close() }
 })
 
-test("a template that requires valid results refuses invalid exports at the service boundary", async () => {
+test("a template that blocks invalid results still exports valid and partial revisions", async () => {
   const db = await connectDatabase({ provider: "sqlite", path: ":memory:" })
   try {
     await db.transaction(async c => { for (const sql of statements) await c.query(sql) })
     const identity = { account: { id: randomUUID() } } as AuthIdentity
     const authorize: ResultAuthorizer = async (_,projectId,action) => ({ projectId,action,identity,role: "editor" })
-    const results = new ResultService(new ResultRepository(db),new ResultValidatorRegistry(new Map([["test",async value => ({ status: value === "bad" ? "invalid" : "valid",issues: value === "bad" ? [{ code: "MISSING",message: "待补充" }] : [] })]])))
+    const status = (value: unknown) => value === "bad" ? "invalid" : value === "partial" ? "partial" : "valid"
+    const results = new ResultService(new ResultRepository(db),new ResultValidatorRegistry(new Map([["test",async value => ({ status: status(value),issues: value === "bad" ? [{ code: "MISSING",message: "待补充" }] : [] })]])))
     const input = { projectId: randomUUID(),kind: "test",baseVersionId: "",operationId: "strict-1",reason: "创建",value: "bad",sources: [],dependencies: [{ kind: "material" as const,id: "m",versionId: "v1" }] }
     const invalid = await results.saveResultRevision(identity,authorize,input)
-    const templates = new ExportTemplateRegistry(new Map([["test", { version: "v1",paragraphs: value => [String(value)],requiresValidResult: true }]]))
+    const templates = new ExportTemplateRegistry(new Map([["test", { version: "v1",paragraphs: value => [String(value)],blocksInvalidResult: true }]]))
     const strict = new ExportService(new ExportRepository(db),results,createSyntheticObjectStore(),templates,async () => "2027-12-31T00:00:00.000Z")
     await assert.rejects(strict.createExport(identity,authorize,invalid),{ code: "INVALID_SOURCE" })
-    const valid = await results.saveResultRevision(identity,authorize,{ ...input,operationId: "strict-2",value: "good" })
+    const partial = await results.saveResultRevision(identity,authorize,{ ...input,operationId: "strict-2",value: "partial" })
+    assert.equal((await strict.createExport(identity,authorize,partial)).format,"docx")
+    const valid = await results.saveResultRevision(identity,authorize,{ ...input,operationId: "strict-3",value: "good" })
     assert.equal((await strict.createExport(identity,authorize,valid)).format,"docx")
   } finally { await db.close() }
 })

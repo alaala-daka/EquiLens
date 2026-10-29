@@ -15,14 +15,22 @@ const hash = (value: unknown) => createHash("sha256").update(canonicalJson(value
 const conflict = () => new BusinessError("CONFLICT", "成果版本已变化，请重新读取后保存。")
 const invalid = () => new BusinessError("INVALID_INPUT", "成果输入无效。")
 export class ResultService {
-  constructor(private readonly repository: ResultRepository, private readonly registry = new ResultValidatorRegistry()) {}
+  constructor(
+    private readonly repository: ResultRepository,
+    private readonly registry = new ResultValidatorRegistry(),
+    /** Kinds whose values may only be written by a server-owned task execution. */
+    private readonly machineOnlyKinds: ReadonlySet<string> = new Set(),
+  ) {}
   private async access(identity: AuthIdentity, authorize: ResultAuthorizer, projectId: string, action: ProjectAction) {
     const access = await authorize(identity, projectId, action)
     if (access.projectId !== projectId || (action !== "read" && access.role === "viewer")) throw new BusinessError("FORBIDDEN", "无权操作该成果。")
     return access
   }
   private async validation(connection: Connection, row: Row): Promise<ResultValidation> {
-    const checked = await this.registry.require(String(row.kind))(JSON.parse(String(row.value_json)))
+    const validator = this.registry.require(String(row.kind))
+    let checked: Pick<ResultValidation, "status" | "issues">
+    try { checked = await validator(JSON.parse(String(row.value_json))) }
+    catch { return { status: "invalid", issues: [{ code: "VALIDATOR_FAILED", message: "成果校验未完成。" }], versionId: String(row.id), checkedAt: new Date().toISOString() } }
     const issues = [...checked.issues]
     for (const source of JSON.parse(String(row.sources_json)) as ResultSource[]) {
       const fragment = (await connection.query("SELECT * FROM equilens_source_fragments WHERE project_id=$1 AND id=$2 AND snapshot_id=$3", [String(row.project_id), source.fragmentId, source.snapshotId])).rows[0]
@@ -42,6 +50,7 @@ export class ResultService {
     for (const source of input.sources) if (!source || typeof source.fragmentId !== "string" || typeof source.snapshotId !== "string" || typeof source.quote !== "string") throw invalid()
     for (const dependency of input.dependencies) if (!dependency || !["material","fact","ledger","result","rule","knowledge","template"].includes(dependency.kind) || typeof dependency.id !== "string" || typeof dependency.versionId !== "string") throw invalid()
     this.registry.require(input.kind)
+    if (!machine && this.machineOnlyKinds.has(input.kind)) throw new BusinessError("FORBIDDEN", "该成果类型只能由受控任务写入。")
     const requestHash = hash({ input, machine: machine ? { output: machine.output, taskId: machine.taskId, attempt: machine.attempt } : null })
     return this.repository.transaction(async connection => {
       let provenanceJson: string | null = null

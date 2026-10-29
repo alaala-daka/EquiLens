@@ -99,6 +99,13 @@ export function mergeTaskView(tasks: ProjectTaskView[], updated: ProjectTaskView
   return [...next].sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
 }
 
+/** Merge a refreshed result list without dropping results created after the request began. */
+export function mergeResultRows(previous: ProjectResultView[], rows: ProjectResultView[]): ProjectResultView[] {
+  const merged = new Map(previous.map(row => [row.resultId, row]))
+  for (const row of rows) merged.set(row.resultId, row)
+  return [...merged.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+}
+
 /** Tasks that finished in this refresh and may now own a saved machine result. */
 export function newlyFinishedTasks(previous: readonly ProjectTaskView[], next: readonly ProjectTaskView[]): ProjectTaskView[] {
   const before = new Map(previous.map(task => [task.id, task.state]))
@@ -165,17 +172,19 @@ export function isMaterialSelected(draft: ReviewDraft, materialId: string): bool
 
 /** Selection is version-bound: a re-parsed or re-uploaded material must be chosen again. */
 export function toggleReviewMaterial(draft: ReviewDraft, material: ProjectReviewMaterial): ReviewDraft {
-  if (!reviewableMaterial(material)) return draft
   const existing = draft.materials.find(item => item.id === material.id)
-  if (existing && existing.versionId === material.versionId && existing.sha256 === material.sha256) {
+  // Removal must always stay available, even if the material later became un-reviewable,
+  // otherwise a stale selection blocks submission with no way to clear it.
+  if (existing) {
+    if (reviewableMaterial(material) && (existing.versionId !== material.versionId || existing.sha256 !== material.sha256)) {
+      return { ...draft, materials: draft.materials.map(item => item.id === material.id ? reviewMaterialSelection(material) : item) }
+    }
     return { ...draft, materials: draft.materials.filter(item => item.id !== material.id) }
   }
+  if (!reviewableMaterial(material)) return draft
   // The frozen refs allow at most ten materials per task; never silently drop a selection.
-  if (!existing && draft.materials.length >= 10) return draft
-  return {
-    ...draft,
-    materials: [...draft.materials.filter(item => item.id !== material.id), reviewMaterialSelection(material)],
-  }
+  if (draft.materials.length >= 10) return draft
+  return { ...draft, materials: [...draft.materials, reviewMaterialSelection(material)] }
 }
 
 /** Restore a stored selection only where the identical material version is still reviewable. */

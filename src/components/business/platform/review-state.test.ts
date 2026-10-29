@@ -20,6 +20,7 @@ import {
   isReviewDraftDirty,
   isReviewScene,
   materialAvailability,
+  mergeResultRows,
   mergeTaskView,
   nextSubmissionOperation,
   newlyFinishedTasks,
@@ -355,4 +356,25 @@ test("B2a: budget amounts use integer fen arithmetic and keep negative remainder
     remainingFen: 297000, registeredBy: "account-1", registeredAt: "t", updatedAt: "t", revision: 1,
   })
   assert.deepEqual(display, { limit: "3,000.00 元", remaining: "2,970.00 元", committed: "30.00 元", reserved: "10.00 元", charged: "20.00 元" })
+})
+
+test("B2a: a selected material that became un-reviewable can still be deselected", () => {
+  const selected = { id: "material-1", versionId: "version-1", sha256: "b".repeat(64) }
+  const draft = { version: 1 as const, materials: [selected], scene: defaultReviewScene, region: "上海" }
+  const unavailable = { id: "material-1", title: "合同", fileName: "a.docx", format: "docx" as const, size: 1, sha256: "b".repeat(64), versionId: "version-1", createdAt: "t", parseTaskId: null, parseState: "failed" as const, snapshotId: null, coverage: null }
+  assert.equal(toggleReviewMaterial(draft, unavailable).materials.length, 0)
+})
+
+test("B2a: result merges keep newly created results and let refreshed rows win", () => {
+  const previous = [
+    { resultId: "result-a", versionId: "v1", createdAt: "2026-10-29T01:00:00.000Z" },
+    { resultId: "result-b", versionId: "v1", createdAt: "2026-10-29T02:00:00.000Z" },
+  ] as ProjectResultView[]
+  const refreshed = [
+    { resultId: "result-a", versionId: "v2", createdAt: "2026-10-29T01:00:00.000Z" },
+    { resultId: "result-c", versionId: "v1", createdAt: "2026-10-29T03:00:00.000Z" },
+  ] as ProjectResultView[]
+  const merged = mergeResultRows(previous, refreshed)
+  assert.deepEqual(merged.map(row => row.resultId), ["result-c", "result-b", "result-a"])
+  assert.equal(merged.find(row => row.resultId === "result-a")?.versionId, "v2")
 })

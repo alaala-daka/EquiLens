@@ -6,5 +6,5 @@ import { ResultRepository } from "./repository"
 import { productionResultValidators } from "./registry"
 import { ResultService } from "./service"
 export async function resultHttpServices() {
-  return { identity: requireAccount, authorize: requireProjectAccess, service: new ResultService(new ResultRepository(await applicationDatabase()), productionResultValidators()) }
+  return { identity: requireAccount, authorize: requireProjectAccess, service: new ResultService(new ResultRepository(await applicationDatabase()), productionResultValidators(), new Set(["contract-review"])) }
 }

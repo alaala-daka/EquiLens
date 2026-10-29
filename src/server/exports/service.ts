@@ -14,7 +14,7 @@ type Template = {
   version: string
   paragraphs(value: unknown): string[]
   /** Server-owned kinds whose export must not be produced from an invalid result. */
-  requiresValidResult?: boolean
+  blocksInvalidResult?: boolean
 }
 export class ExportTemplateRegistry {
   constructor(private readonly templates = new Map<string,Template>()) {}
@@ -45,11 +45,11 @@ export class ExportService {
     if (selected.sha256 !== ref.sha256) throw new BusinessError("CONFLICT","成果摘要已变化。")
     const template = this.templates.require(selected.kind)
     const validation = await this.results.validateResult(identity,authorize,ref)
-    if (template.requiresValidResult && validation.status !== "valid") throw new BusinessError("INVALID_SOURCE","成果校验未通过，无法导出。")
+    if (template.blocksInvalidResult && validation.status === "invalid") throw new BusinessError("INVALID_SOURCE","成果校验未通过，无法导出。")
     const approved = validation.status === "valid" && selected.review?.decision === "approved"
     const paragraphs = template.paragraphs(selected.value)
     if (!Array.isArray(paragraphs) || !paragraphs.length || paragraphs.some(p => typeof p !== "string")) throw new BusinessError("INVALID_INPUT","导出正文无效。")
-    const metadata = ["AI 辅助生成",`成果编号：${ref.resultId}`,`保存版本：${ref.versionId}`,approved ? "已复核" : "草稿 · 待复核",`校验：${validation.status}`,`复核：${selected.review?.decision ?? "pending"}`,`模板：${template.version}`,`渲染：${renderVersion}`,...validation.issues.map(issue => `未解决：${issue.code} ${issue.message}`),...selected.sources.map(source => `来源：${source.snapshotId}/${source.fragmentId} ${source.quote}`)]
+    const metadata = [selected.origin === "machine" ? "AI 辅助生成" : "人工修订成果",...(selected.provenance ? [`机器任务：${selected.provenance.taskId} 第 ${selected.provenance.attempt} 次`] : []),`成果编号：${ref.resultId}`,`保存版本：${ref.versionId}`,approved ? "已复核" : "草稿 · 待复核",`校验：${validation.status}`,`复核：${selected.review?.decision ?? "pending"}`,`模板：${template.version}`,`渲染：${renderVersion}`,...validation.issues.map(issue => `未解决：${issue.code} ${issue.message}`),...selected.sources.map(source => `来源：${source.snapshotId}/${source.fragmentId} ${source.quote}`)]
     const snapshot = { selected,validation,templateVersion: template.version,renderVersion,paragraphs,metadata }
     const bytes = renderDocx({ paragraphs,metadata }), sha256 = digest(bytes), exportId = randomUUID()
     const key = exportObjectKey({ projectId: ref.projectId,exportId,sha256 })
