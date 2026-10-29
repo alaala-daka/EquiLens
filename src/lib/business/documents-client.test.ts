@@ -47,6 +47,18 @@ for (const [status, code] of [[401, "SESSION_INVALID"], [403, "ACCESS_DENIED"], 
     assert.equal(invalid, status === 401 || status === 403 ? 1 : 0)
   })
 }
+test("storage and version failures surface their own copy instead of an access-permission message", async () => {
+  const unavailable = createProjectDocumentsClient({ projectId: "p", isCurrent: () => true, fetch: async () => Response.json({ error: { code: "SERVICE_UNAVAILABLE", message: "文档存储暂不可用，请稍后重试。" } }, { status: 503 }) })
+  await assert.rejects(unavailable.access.preflight("d", {}), error => error instanceof EditorAccessError
+    && error.code === "UNAVAILABLE" && error.retryable && error.message === "文档存储暂不可用，请稍后重试。")
+  const conflict = createProjectDocumentsClient({ projectId: "p", isCurrent: () => true, fetch: async () => Response.json({ error: { code: "CONFLICT", message: "文档版本已更改，请另存为新文档。" } }, { status: 409 }) })
+  await assert.rejects(conflict.access.preflight("d", {}), error => error instanceof EditorAccessError && error.message === "文档版本已更改，请另存为新文档。")
+  for (const [status, fragment] of [[503, "暂不可用"], [409, "版本"], [500, "失败"]] as const) {
+    const client = createProjectDocumentsClient({ projectId: "p", isCurrent: () => true, fetch: async () => new Response("", { status }) })
+    await assert.rejects(client.access.preflight("d", {}), error => error instanceof EditorAccessError
+      && error.message.includes(fragment) && !error.message.includes("访问权限"))
+  }
+})
 test("late response from old project is rejected before content request", async () => {
   let current = true
   const client = createProjectDocumentsClient({ projectId: "p", isCurrent: () => current, fetch: async () => { current = false; return json(view) } })

@@ -187,4 +187,4 @@ Windows 中文输入法候选选字、人工 Word 验收及平台恢复仍待验
 
 可选首次部署初始化见[预设超级管理员](docs/deployment.md#预设超级管理员)：显式成对秘密配置仅创建一次，完成后移除；角色守卫已提供，正式项目授权仍待接入，不接管匿名资料。
 
-开发合成材料联调：仅在 NODE_ENV=development 且 EQUILENS_SYNTHETIC_STORAGE=1 时启用共享内存私有对象存储。仅使用合成材料；进程重启丢失对象字节，数据库记录不能恢复这些字节。生产环境始终拒绝此开关，不代替真实 OBS 验证。
+开发合成材料联调：仅在 NODE_ENV=development 且 EQUILENS_SYNTHETIC_STORAGE=1 时启用文件型开发对象存储，默认写入 `data/dev-objects/`（可用 EQUILENS_DEV_OBJECT_STORE 覆盖）。仅使用合成材料；该目录不进入版本库，进程重启后对象字节仍然保留。它不实现 OBS 的桶权限、版本、生命周期或备份语义，生产环境始终拒绝此开关，不代替真实 OBS 验证。

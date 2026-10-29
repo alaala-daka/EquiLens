@@ -5,9 +5,11 @@ import { createHash } from "node:crypto"
  * under unguessable project keys and proxy reads after rechecking project
  * authorization. There is deliberately no public-URL/presign method here.
  *
- * The real OBS adapter is an external gap: only the interface, a synthetic
- * store and a fault-injection wrapper are implemented in this package. Do not
- * present the synthetic store as verified OBS behaviour.
+ * The real OBS adapter is an external gap: this package provides the
+ * interface, an in-memory store for tests and a fault-injection wrapper. The
+ * development-only filesystem adapter lives in ./file-store and does not
+ * implement OBS semantics either. Do not present either local adapter as
+ * verified OBS behaviour.
  */
 export type ObjectStoreErrorCode = "UNAVAILABLE" | "CONFLICT" | "INVALID_KEY" | "INVALID_INPUT"
 
