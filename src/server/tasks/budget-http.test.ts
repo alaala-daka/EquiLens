@@ -15,7 +15,7 @@ const identity: AuthIdentity = {
 }
 const view: ProjectBudgetView = {
   projectId, costLimitFen: 3000, costReservedFen: 0, costChargedFen: 0, remainingFen: 3000,
-  registeredBy: "account-1", registeredAt: "2026-10-29T00:00:00.000Z", updatedAt: "2026-10-29T00:00:00.000Z",
+  registeredBy: "account-1", registeredAt: "2026-10-29T00:00:00.000Z", updatedAt: "2026-10-29T00:00:00.000Z", revision: 1,
 }
 
 function handlers(dependencies: Partial<ProjectBudgetDependencies> = {}) {

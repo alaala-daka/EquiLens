@@ -3,7 +3,8 @@ import { applicationDatabase } from "../database/runtime"
 import { resultHttpServices } from "../results/access"
 import { privateObjectStoreRuntime } from "../storage/runtime"
 import { ExportRepository } from "./repository"
-import { ExportService, ExportTemplateRegistry } from "./service"
+import { ExportService } from "./service"
+import { productionExportTemplates } from "./template"
 
 export async function exportHttpServices() {
   const results = await resultHttpServices()
@@ -20,5 +21,5 @@ export async function exportHttpServices() {
     }
     return deadlines.every(Number.isFinite) ? new Date(Math.min(...deadlines)).toISOString() : null
   })
-  return { identity: results.identity,authorize: results.authorize,service: new ExportService(new ExportRepository(await applicationDatabase()),results.service,privateObjectStoreRuntime(),new ExportTemplateRegistry(),retention) }
+  return { identity: results.identity,authorize: results.authorize,service: new ExportService(new ExportRepository(await applicationDatabase()),results.service,privateObjectStoreRuntime(),productionExportTemplates(),retention) }
 }

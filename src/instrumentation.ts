@@ -7,6 +7,9 @@ export async function register() {
     startRetentionRuntime()
     const { startMaterialRuntime } = await import("./server/materials/runtime")
     startMaterialRuntime()
+    // Register the project review executor before the task runner can claim a task.
+    const { startReviewRuntime } = await import("./server/reviews/runtime")
+    startReviewRuntime()
     const { startTaskRunner } = await import("./server/tasks/runner")
     startTaskRunner()
   }

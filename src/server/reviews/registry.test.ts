@@ -1,0 +1,81 @@
+import assert from "node:assert/strict"
+import { test } from "node:test"
+import { contractReviewResultValidator } from "./registry"
+import { failedResult, invalidCitationResult, partialResult, successResult, validRunnerInput } from "./test-fixtures"
+
+test("A4c validator: a complete debug-mode machine result is valid", async () => {
+  const checked = await contractReviewResultValidator(successResult(validRunnerInput()))
+  assert.equal(checked.status, "valid")
+  assert.deepEqual(checked.issues, [])
+})
+
+test("A4c validator: partial coverage stays saved but is reported as partial, never valid/no-risk", async () => {
+  const checked = await contractReviewResultValidator(partialResult(validRunnerInput()))
+  assert.equal(checked.status, "partial")
+  assert.deepEqual(checked.issues, [])
+})
+
+test("A4c validator: published-mode and structurally tampered results are invalid", async () => {
+  const value = successResult(validRunnerInput())
+  const published = await contractReviewResultValidator({ ...value, mode: "published" })
+  assert.equal(published.status, "invalid")
+  assert.ok(published.issues.some(issue => issue.code === "UNSIGNED_BASIS"))
+  const version = await contractReviewResultValidator({ ...value, schemaVersion: 2 })
+  assert.equal(version.status, "invalid")
+  const missingInput = await contractReviewResultValidator({ ...value, input: undefined })
+  assert.equal(missingInput.status, "invalid")
+})
+
+test("A4c validator: the input text digest is rebuilt from the saved paragraphs", async () => {
+  const value = successResult(validRunnerInput())
+  const tampered = await contractReviewResultValidator({ ...value, input: { ...value.input, textSha256: "0".repeat(64) } })
+  assert.equal(tampered.status, "invalid")
+  assert.ok(tampered.issues.some(issue => issue.code === "INVALID_TEXT_HASH"))
+  const editedParagraphs = await contractReviewResultValidator({
+    ...value,
+    paragraphs: value.paragraphs.map(paragraph => paragraph.index === 0 ? { ...paragraph, text: "被篡改的正文段落" } : paragraph),
+  })
+  assert.equal(editedParagraphs.status, "invalid")
+})
+
+test("A4c validator: every finding quote must be verbatim in the declared paragraph", async () => {
+  const checked = await contractReviewResultValidator(invalidCitationResult(validRunnerInput()))
+  assert.equal(checked.status, "invalid")
+  assert.ok(checked.issues.some(issue => issue.code === "INVALID_CITATION"))
+  const value = successResult(validRunnerInput())
+  const citation = { ...value.findings[0].citations![0], paragraphIndex: 1 }
+  const mismatched = await contractReviewResultValidator({
+    ...value,
+    findings: [{ ...value.findings[0], citations: [citation] }],
+  })
+  assert.equal(mismatched.status, "invalid")
+  assert.ok(mismatched.issues.some(issue => issue.code === "INVALID_CITATION"))
+})
+
+test("A4c validator: success must not be claimed with incomplete input, open coverage or errors", async () => {
+  const value = successResult(validRunnerInput())
+  const incomplete = await contractReviewResultValidator({ ...value, input: { ...value.input, complete: false } })
+  assert.equal(incomplete.status, "invalid")
+  assert.ok(incomplete.issues.some(issue => issue.code === "COVERAGE_INCONSISTENT"))
+  const pendingCoverage = { ...value, coverage: value.coverage.map((item, index) => index === 0 ? { ...item, status: "待核实" as const } : item) }
+  const openCoverage = await contractReviewResultValidator(pendingCoverage)
+  assert.equal(openCoverage.status, "invalid")
+  assert.ok(openCoverage.issues.some(issue => issue.code === "COVERAGE_INCONSISTENT"))
+  const withError = { ...value, errors: [{ code: "AI_TIMEOUT", message: "模型请求超时。", ruleIds: [] }] }
+  const errorClaim = await contractReviewResultValidator(withError)
+  assert.equal(errorClaim.status, "invalid")
+  const failed = await contractReviewResultValidator(failedResult(validRunnerInput()))
+  assert.equal(failed.status, "invalid")
+  assert.ok(failed.issues.some(issue => issue.code === "RESULT_FAILED"))
+})
+
+test("A4c validator: coverage must contain all six required categories and a partial needs a definite conclusion", async () => {
+  const value = successResult(validRunnerInput())
+  const missingCategory = await contractReviewResultValidator({ ...value, coverage: value.coverage.slice(0, 5) })
+  assert.equal(missingCategory.status, "invalid")
+  assert.ok(missingCategory.issues.some(issue => issue.code === "INVALID_STRUCTURE"))
+  const placeholdersOnly = partialResult(validRunnerInput())
+  const checked = await contractReviewResultValidator({ ...placeholdersOnly, findings: placeholdersOnly.findings.filter(finding => finding.placeholder === true) })
+  assert.equal(checked.status, "invalid")
+  assert.ok(checked.issues.some(issue => issue.code === "COVERAGE_INCONSISTENT"))
+})
