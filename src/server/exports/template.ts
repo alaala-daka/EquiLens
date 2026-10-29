@@ -1,5 +1,6 @@
 import { CHECK_CATEGORIES, SEVERITIES } from "../../../tools/contract-review/src/types"
 import { BusinessError } from "../projects/errors"
+import { bidVerificationReportTemplate } from "../verification/export-template"
 import { ExportTemplateRegistry } from "./service"
 
 /**
@@ -128,5 +129,7 @@ export const contractReviewReportTemplate = {
 export function productionExportTemplates(): ExportTemplateRegistry {
   return new ExportTemplateRegistry(new Map([
     ["contract-review", contractReviewReportTemplate],
+    // C4 verification report (`bid-requirements` intentionally has no export template and keeps 503).
+    ["bid-verification", bidVerificationReportTemplate],
   ]))
 }

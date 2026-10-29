@@ -15,6 +15,12 @@ type Template = {
   paragraphs(value: unknown): string[]
   /** Server-owned kinds whose export must not be produced from an invalid result. */
   blocksInvalidResult?: boolean
+  /**
+   * Fixed provenance label for templates whose machine result is not AI-generated
+   * (for example the deterministic C4 comparison). Defaults to the historical
+   * "AI 辅助生成"/"人工修订成果" labels.
+   */
+  originNote?: string
 }
 export class ExportTemplateRegistry {
   constructor(private readonly templates = new Map<string,Template>()) {}
@@ -49,7 +55,7 @@ export class ExportService {
     const approved = validation.status === "valid" && selected.review?.decision === "approved"
     const paragraphs = template.paragraphs(selected.value)
     if (!Array.isArray(paragraphs) || !paragraphs.length || paragraphs.some(p => typeof p !== "string")) throw new BusinessError("INVALID_INPUT","导出正文无效。")
-    const metadata = [selected.origin === "machine" ? "AI 辅助生成" : "人工修订成果",...(selected.provenance ? [`机器任务：${selected.provenance.taskId} 第 ${selected.provenance.attempt} 次`] : []),`成果编号：${ref.resultId}`,`保存版本：${ref.versionId}`,approved ? "已复核" : "草稿 · 待复核",`校验：${validation.status}`,`复核：${selected.review?.decision ?? "pending"}`,`模板：${template.version}`,`渲染：${renderVersion}`,...validation.issues.map(issue => `未解决：${issue.code} ${issue.message}`),...selected.sources.map(source => `来源：${source.snapshotId}/${source.fragmentId} ${source.quote}`)]
+    const metadata = [template.originNote ?? (selected.origin === "machine" ? "AI 辅助生成" : "人工修订成果"),...(selected.provenance ? [`机器任务：${selected.provenance.taskId} 第 ${selected.provenance.attempt} 次`] : []),`成果编号：${ref.resultId}`,`保存版本：${ref.versionId}`,approved ? "已复核" : "草稿 · 待复核",`校验：${validation.status}`,`复核：${selected.review?.decision ?? "pending"}`,`模板：${template.version}`,`渲染：${renderVersion}`,...validation.issues.map(issue => `未解决：${issue.code} ${issue.message}`),...selected.sources.map(source => `来源：${source.snapshotId}/${source.fragmentId} ${source.quote}`)]
     const snapshot = { selected,validation,templateVersion: template.version,renderVersion,paragraphs,metadata }
     const bytes = renderDocx({ paragraphs,metadata }), sha256 = digest(bytes), exportId = randomUUID()
     const key = exportObjectKey({ projectId: ref.projectId,exportId,sha256 })

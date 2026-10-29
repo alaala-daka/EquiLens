@@ -1,8 +1,10 @@
 import { contractReviewResultValidator } from "../reviews/registry"
+import { bidRequirementSetValidator } from "../verification/requirements"
+import { bidVerificationResultValidator } from "../verification/validation"
 import { ResultValidatorRegistry, type ResultValidator } from "./validation"
 
 /**
- * A4c production result-validator registry.
+ * A4c/C4 production result-validator registry.
  *
  * Only server-owned business validators are registered here. Test fixtures
  * (including A4a/A4b synthetic "test" kinds) must never be added: they are
@@ -12,6 +14,8 @@ import { ResultValidatorRegistry, type ResultValidator } from "./validation"
 export function productionResultValidators(): ResultValidatorRegistry {
   const validators = new Map<string, ResultValidator>([
     ["contract-review", contractReviewResultValidator],
+    ["bid-requirements", bidRequirementSetValidator],
+    ["bid-verification", bidVerificationResultValidator],
   ])
   return new ResultValidatorRegistry(validators)
 }

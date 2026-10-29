@@ -350,6 +350,10 @@ projects/<projectId>/exports/<exportId>/<sha256>
 
 - 每个新迁移在 `migrations.test.ts` 增加 checksum 冻结；0004—0006 的既有 checksum 不变。
 - 若某包未进入本轮合并，对应编号留给下一轮，不顺延重排已写入的编号。
+- **后续重分配（2026-10-29 第四轮 W0）**：`migrateBusiness` 要求编号连续，而 0010/0011 从未注册；B 线未交付，
+  第四轮按[第四轮计划](2026-10-29-round-four-plan.md) §3 把 0010 分配给 C4 核验（OCR 运行、证照字段插入式历史、
+  外部核验记录）。B1a/B3a 在真正实施时取当时下一个连续编号并把运行时建表迁入迁移账本；本表上方两行的
+  0010/0011 预留在实际落地前不再占用编号。
 - 新迁移只使用两个 provider 已验证的语法（`SELECT` + 条件 `UPDATE`、简单 `ALTER TABLE ADD COLUMN`）；GaussDB 兼容性在 A5a 实测，不以 SQLite 推断。
 
 ### 4.9 Wave 0 必须先改规格

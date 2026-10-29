@@ -10,6 +10,11 @@ export async function register() {
     // Register the project review executor before the task runner can claim a task.
     const { startReviewRuntime } = await import("./server/reviews/runtime")
     startReviewRuntime()
+    // C4: certificate OCR capability + admission, then the deterministic bid executors.
+    const { startOcrRuntime } = await import("./server/verification/ocr-runtime")
+    startOcrRuntime()
+    const { startVerificationRuntime } = await import("./server/verification/runtime")
+    startVerificationRuntime()
     const { startTaskRunner } = await import("./server/tasks/runner")
     startTaskRunner()
   }
