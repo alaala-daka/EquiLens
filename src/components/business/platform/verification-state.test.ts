@@ -326,7 +326,13 @@ test("C4-UI: external record form validation requires sourced, concluded evidenc
   assert.equal(missing.issues.length, 8)
   const valid = validateExternalRecordForm({ requirementId: "REQ-1", subject: "投标人", certificateNo: "C1", source: "全国建筑市场监管公共服务平台", queriedAt: "2026-10-29T10:00", queryConditions: "按证号查询", conclusion: "matched", proofMaterialVersionId: "version-1" }, { requirementIds, proofVersionIds })
   assert.equal(valid.ready, true)
-  assert.equal(valid.value?.queriedAt, "2026-10-29T02:00:00.000Z")
+  // A datetime-local value without an offset is parsed in the runtime timezone. The
+  // expected value must follow that same rule, not assume UTC+8 (GitHub Actions runs UTC).
+  assert.equal(valid.value?.queriedAt, new Date("2026-10-29T10:00").toISOString())
+  const withOffset = validateExternalRecordForm({ requirementId: "REQ-1", subject: "投标人", certificateNo: "C1", source: "平台", queriedAt: "2026-10-29T10:00:00+08:00", queryConditions: "条件", conclusion: "matched", proofMaterialVersionId: "version-1" }, { requirementIds, proofVersionIds })
+  assert.equal(withOffset.value?.queriedAt, "2026-10-29T02:00:00.000Z")
+  const utc = validateExternalRecordForm({ requirementId: "REQ-1", subject: "投标人", certificateNo: "C1", source: "平台", queriedAt: "2026-10-29T02:00:00Z", queryConditions: "条件", conclusion: "matched", proofMaterialVersionId: "version-1" }, { requirementIds, proofVersionIds })
+  assert.equal(utc.value?.queriedAt, "2026-10-29T02:00:00.000Z")
   const wrongRequirement = validateExternalRecordForm({ requirementId: "REQ-9", subject: "投标人", certificateNo: "C1", source: "平台", queriedAt: "2026-10-29T10:00", queryConditions: "条件", conclusion: "matched", proofMaterialVersionId: "version-1" }, { requirementIds, proofVersionIds })
   assert.ok(wrongRequirement.issues.some(issue => issue.includes("要求")))
   const unknownProof = validateExternalRecordForm({ requirementId: "REQ-1", subject: "投标人", certificateNo: "C1", source: "平台", queriedAt: "2026-10-29T10:00", queryConditions: "条件", conclusion: "matched", proofMaterialVersionId: "version-9" }, { requirementIds, proofVersionIds })
