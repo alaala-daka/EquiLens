@@ -56,8 +56,8 @@ export class EvidenceRepository {
           [input.projectId, itemId])).rows[0]
         const previous = prior ? validItem(parse<EvidenceItem>(prior.payload)) : null
         if (options?.baseVersionId !== undefined && options.baseVersionId !== (previous?.versionId ?? "")) throw conflict()
-        const payload: EvidenceItem = { ...input, itemId, versionId,
-          supersedesVersionId: previous?.versionId ?? undefined, sha256: "", createdAt: new Date().toISOString() }
+        const payload: EvidenceItem = { ...input, itemId, versionId, sha256: "", createdAt: new Date().toISOString() }
+        if (previous) payload.supersedesVersionId = previous.versionId
         payload.sha256 = digest(withoutSha(payload))
         await connection.query("INSERT INTO equilens_evidence_items(id,item_id,version_id,project_id,contract_id,base_version_id,operation_id,request_hash,supersedes_version_id,sha256,payload,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
           [randomUUID(), itemId, payload.versionId, payload.projectId, payload.contractId ?? null, previous?.versionId ?? null, operationId, requestHash,

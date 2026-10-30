@@ -84,10 +84,7 @@ function pass(name: string, detail = ""): void {
   console.log(`PASS ${name}${detail ? ` · ${detail}` : ""}`)
 }
 
-function skip(name: string, reason: string): void {
-  notRun.push(`${name}: ${reason}`)
-  console.log(`NOT RUN ${name} · ${reason}`)
-}
+
 
 async function login(username: string, password: string): Promise<string> {
   const response = await fetch(`${args.base}/api/auth/login`, { method: "POST", headers: { origin, "content-type": "application/json" },
