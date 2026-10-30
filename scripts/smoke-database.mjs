@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -24,10 +24,17 @@ function optionValue(name) {
   return value;
 }
 function databasePath() {
-  return resolve(optionValue("--database") || process.env.SQLITE_PATH || "");
+  // No explicit path means "this host has no database file to inspect" (for example
+  // the CI container job, whose SQLite file lives on a Docker volume). Never fall
+  // back to resolve("") — that is the current directory and SQLite then fails on a
+  // directory with SQLITE_IOERR/SQLITE_CANTOPEN instead of skipping the offline check.
+  const explicit = optionValue("--database") || process.env.SQLITE_PATH;
+  return explicit ? resolve(explicit) : null;
 }
 function assertDatabaseIntegrity(path) {
-  assert.ok(path && existsSync(path), `数据库不存在：${path}`);
+  assert.ok(path, "未提供 --database 或 SQLITE_PATH，无法校验数据库完整性");
+  assert.ok(existsSync(path), `数据库不存在：${path}`);
+  assert.ok(statSync(path).isFile(), `数据库路径不是文件：${path}`);
   const database = new DatabaseSync(path, { readOnly: true });
   try {
     const integrity = database.prepare("PRAGMA integrity_check").all();
@@ -125,11 +132,18 @@ async function initialize() {
 if (verifyOnly) {
   assert.ok(checkpoint && checkpoint !== "--verify", "Verification needs a private checkpoint path");
   // A volume-like restart is only meaningful if the database on disk is intact too.
-  try {
-    const path = databasePath();
-    if (path && existsSync(path)) { assertDatabaseIntegrity(path); console.log("Database integrity_check + foreign_key_check passed across restart"); }
-  } catch (error) {
-    if (!(error instanceof Error && /数据库不存在/.test(error.message))) throw error;
+  // When the smoke runs against a remote/container database, this host has no
+  // --database/SQLITE_PATH to inspect; skip the offline check instead of guessing.
+  const path = databasePath();
+  if (path) {
+    try {
+      assertDatabaseIntegrity(path);
+      console.log("Database integrity_check + foreign_key_check passed across restart");
+    } catch (error) {
+      if (!(error instanceof Error && /数据库不存在/.test(error.message))) throw error;
+    }
+  } else {
+    console.log("No database path supplied (--database/SQLITE_PATH); skipping offline integrity check");
   }
   const saved = JSON.parse(readFileSync(checkpoint, "utf8"));
   assert.equal(saved.origin, origin);
