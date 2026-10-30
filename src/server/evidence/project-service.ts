@@ -138,6 +138,12 @@ export class EvidenceProjectService {
     } catch (failure) { evidenceError(failure) }
   }
 
+  /** 只读打开所选保存版本（Markdown 导出与页面使用同一版本，不重新生成）。 */
+  async report(identity: AuthIdentity, authorize: ResultAuthorizer, projectId: string, resultId: string, versionId?: string) {
+    await this.access(identity, authorize, projectId, "read")
+    return this.dependencies.results.get(identity, authorize, projectId, resultId, versionId)
+  }
+
   async saveReport(identity: AuthIdentity, authorize: ResultAuthorizer, projectId: string, request: SaveEvidenceReport & { resultId?: string }) {
     await this.access(identity, authorize, projectId, "edit")
     const parsed = saveEvidenceReportSchema.safeParse({ operationId: request.operationId, reason: request.reason, baseVersionId: request.baseVersionId, value: request.value })

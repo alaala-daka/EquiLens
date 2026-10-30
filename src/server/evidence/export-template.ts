@@ -1,5 +1,15 @@
 import { BusinessError } from "../projects/errors"
+import type { ResultView } from "../results/service"
+import { evidenceReportMarkdown } from "./report"
 import { parseEvidenceReportValue } from "./result-validator"
+
+/** 只读所选保存版本的 Markdown 正文（与 Word 同结构、同状态，不重新生成事实）。 */
+export function evidenceReportMarkdownFromView(view: ResultView): string {
+  const value = parseEvidenceReportValue(view.value)
+  if (!value) throw new BusinessError("INVALID_INPUT", "证据报告校验未通过。")
+  return evidenceReportMarkdown({ ...value, projectId: view.projectId, reportId: view.resultId, revisionId: view.versionId,
+    sha256: view.sha256, createdAt: view.createdAt, createdBy: view.createdBy, reviewStatus: "待复核" })
+}
 
 const yuan = (fen: string) => {
   const value = BigInt(fen), negative = value < BigInt(0), absolute = negative ? -value : value

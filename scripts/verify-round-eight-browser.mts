@@ -155,6 +155,13 @@ async function browserAcceptance(adminCookie: string, viewerCookie: string, expe
     assert.equal((await validated).status(), 200, "证据报告重新校验应成功")
     pass("证据报告可打开并重新校验")
     await page.screenshot({ path: join(args.screenshots, "evidence-report.png") })
+    const markdownDownload = page.waitForEvent("download", { timeout: 60_000 })
+    await page.getByRole("button", { name: "下载 Markdown" }).click()
+    const markdownTarget = join(args.screenshots, "evidence-report.md")
+    await (await markdownDownload).saveAs(markdownTarget)
+    const markdownBytes = await readFile(markdownTarget)
+    assert.ok(markdownBytes.toString("utf8").includes("# 证据整理报告"), "浏览器下载的 Markdown 应包含报告标题")
+    pass("浏览器下载证据报告 Markdown", `sha256 ${createHash("sha256").update(markdownBytes).digest("hex")}`)
 
     await page.getByRole("tab", { name: "催款函" }).click()
     await page.getByRole("row").filter({ hasText: "可复核草稿" }).getByRole("button", { name: "打开" }).first().click()
@@ -263,6 +270,15 @@ async function main(): Promise<void> {
   assert.equal(reportValue.status, "incomplete")
   assert.ok(reportValue.scopeNotes.some(note => note.includes("缺口")))
   pass("证据报告派生未完成状态", reportValue.scopeNotes.length + " 条范围说明")
+
+  const markdown = await fetch(`${args.base}/api/projects/${projectId}/evidence-reports/${report.resultId}/markdown?versionId=${report.versionId}`,
+    { headers: { origin, cookie: admin }, redirect: "error", cache: "no-store" })
+  assert.equal(markdown.status, 200, "证据报告 Markdown 导出应成功")
+  assert.match(markdown.headers.get("content-type") ?? "", /text\/markdown/)
+  const markdownText = await markdown.text()
+  assert.ok(markdownText.includes("# 证据整理报告"), "Markdown 应包含报告标题")
+  assert.ok(markdownText.includes("缺少付款凭证"), "Markdown 应保留缺证项")
+  pass("证据报告 Markdown 导出只读同一保存版本", `${markdownText.length} 字符`)
 
   expectError(await api(`/api/projects/${projectId}/results`, { cookie: admin, body: {
     projectId, kind: "evidence-report", baseVersionId: "", operationId: `r8-bypass-${stamp}`, reason: "浏览器绕过证据服务",

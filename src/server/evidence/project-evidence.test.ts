@@ -7,7 +7,7 @@ import { ResultService, type ResultAuthorizer } from "../results/service"
 import { ResultValidatorRegistry } from "../results/validation"
 import { EvidenceProjectService, saveEvidenceItemSchema, saveEvidenceReportSchema } from "./project-service"
 import { EvidenceRepository } from "./repository"
-import { evidenceReportExportTemplate } from "./export-template"
+import { evidenceReportExportTemplate, evidenceReportMarkdownFromView } from "./export-template"
 import { evidenceReportValidator, parseEvidenceReportValue } from "./result-validator"
 
 const quote = "合同价款按月度计量支付。"
@@ -83,6 +83,25 @@ test("AC-06/19/20: evidence report derives status, saves an immutable result and
     const lines = evidenceReportExportTemplate.paragraphs(revision.value)
     assert.ok(lines.some(line => line.includes("缺少计量单")))
     assert.ok(lines.some(line => line.includes("人工整理草稿")))
+  } finally { await f.close() }
+})
+
+test("AC-20: the saved evidence report exports the same version as Markdown for readers", async () => {
+  const f = await setupReview()
+  try {
+    const { evidence } = service(f)
+    const item = await evidence.saveItem(testIdentity, testAuthorizer, projectId, { operationId: "item-1", baseVersionId: "", reason: "整理合同依据", value: itemDraft(f) })
+    const saved = await evidence.saveReport(testIdentity, testAuthorizer, projectId, { operationId: "report-1", reason: "生成证据报告", baseVersionId: "",
+      value: { cutoff: "2026-10-30", itemVersionIds: [item.versionId],
+        timeline: [{ id: "t1", at: "2026-09-30", title: "计量核定", evidenceVersionIds: [item.versionId] }],
+        disputes: [], gaps: [{ id: "g1", description: "缺少付款凭证", status: "开放" }], suggestions: [] } })
+    const viewer: ResultAuthorizer = async (identity, id, action) => ({ projectId: id, action, role: "viewer", identity })
+    const view = await evidence.report(testIdentity, viewer, projectId, saved.resultId, saved.versionId)
+    const markdown = evidenceReportMarkdownFromView(view)
+    assert.ok(markdown.includes("# 证据整理报告"))
+    assert.ok(markdown.includes("核对截止日：2026-10-30"))
+    assert.ok(markdown.includes("缺少付款凭证"))
+    assert.ok(markdown.includes("计量核定"))
   } finally { await f.close() }
 })
 

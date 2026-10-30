@@ -5,6 +5,7 @@ import type { AuthIdentity } from "../auth/service"
 import { BusinessError, httpStatus, isBusinessError } from "../projects/errors"
 import type { ResultAuthorizer } from "../results/service"
 import { saveEvidenceItemSchema, saveEvidenceReportSchema, type EvidenceProjectService } from "./project-service"
+import { evidenceReportMarkdownFromView } from "./export-template"
 
 export type EvidenceHttpServices = { identity(request: NextRequest): Promise<AuthIdentity>; authorize: ResultAuthorizer; service: EvidenceProjectService }
 const headers = { "Cache-Control": "private, no-store" }
@@ -28,7 +29,7 @@ async function readBody(request: NextRequest): Promise<unknown> {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")) } catch { throw new BusinessError("INVALID_INPUT", "请求内容无效。") }
 }
 
-export function evidenceHandler(services: () => Promise<EvidenceHttpServices>, operation: "items" | "history" | "saveItem" | "saveReport" | "reviseReport") {
+export function evidenceHandler(services: () => Promise<EvidenceHttpServices>, operation: "items" | "history" | "saveItem" | "saveReport" | "reviseReport" | "markdown") {
   return async (request: NextRequest, context: { params: Promise<{ id: string; itemId?: string; resultId?: string }> }) => {
     try {
       const { id, itemId, resultId } = await context.params
@@ -43,6 +44,11 @@ export function evidenceHandler(services: () => Promise<EvidenceHttpServices>, o
         const parsed = saveEvidenceItemSchema.safeParse(await readBody(request))
         if (!parsed.success) throw new BusinessError("INVALID_INPUT", "证据项输入无效，请检查字段。")
         value = { item: await service.saveItem(identity, authorize, id, parsed.data) }
+      } else if (operation === "markdown") {
+        if (!resultId) throw new BusinessError("NOT_FOUND", "找不到该证据报告。")
+        const view = await service.report(identity, authorize, id, resultId, request.nextUrl.searchParams.get("versionId") ?? undefined)
+        return new NextResponse(evidenceReportMarkdownFromView(view), { headers: { ...headers, "Content-Type": "text/markdown; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="evidence-report.md"', "X-Content-Type-Options": "nosniff" } })
       } else {
         if (operation === "reviseReport" && !resultId) throw new BusinessError("NOT_FOUND", "找不到该证据报告。")
         const parsed = saveEvidenceReportSchema.safeParse(await readBody(request))

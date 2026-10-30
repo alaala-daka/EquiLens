@@ -889,6 +889,8 @@ sources/dependencies/machineOutput/provenance 沿用服务端上一版本，浏�
 仍需人工复核。保存与修订重跑引用校验并恢复整份待复核，基础版本过期返回冲突。
 `evidence-report-v1` Word 模板只读所选保存版本，正文与 Markdown 同结构，冲突、待核实与缺证项持续显示；
 `blocksInvalidResult: true`，无效引用或关键事项不能被复核按钮清除。
+`GET /api/projects/[id]/evidence-reports/[resultId]/markdown?versionId=` 以只读方式返回同一保存版本的 Markdown，
+正文与 Word 同结构，受项目读权限与 `no-store` 约束，不重新生成或补写事实。
 
 ### 8.2.9 项目催款函成果
 

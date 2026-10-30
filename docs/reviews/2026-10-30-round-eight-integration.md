@@ -21,14 +21,14 @@ Windows、Node.js v24.16.0、SQLite；全新临时库 `.superpowers/round8/app.s
 | 命令 | 结果 |
 | --- | --- |
 | `pnpm check`（eslint --max-warnings 0 + next typegen + tsc --noEmit） | exit 0 |
-| `pnpm test` | **1021 tests / 1019 pass / 2 Linux skip / 0 fail**（原始输出 `.superpowers/round8/test.log`） |
+| `pnpm test` | **1022 tests / 1020 pass / 2 Linux skip / 0 fail**（原始输出 `.superpowers/round8/test.log`） |
 | `pnpm build`（默认 Turbopack + prepare-standalone） | exit 0 |
 | `pnpm smoke`（standalone @3000） | 通过：health、登录页、样式表、静态资源 |
 | `git diff --check` | exit 0 |
 
 生产 standalone 在本机 HTTP 下认证仍按设计 fail-closed（需 HTTPS 源与真实对象存储），故 smoke 只覆盖健康检查与静态资源；业务路径在 dev 模式验收。
 
-## 4. 浏览器验收（`pnpm verify:r8`，Edge headless，19/19 通过，0 项未运行）
+## 4. 浏览器验收（`pnpm verify:r8`，Edge headless，21/21 通过，0 项未运行）
 
 | # | 检查项 |
 | --- | --- |
@@ -50,7 +50,9 @@ Windows、Node.js v24.16.0、SQLite；全新临时库 `.superpowers/round8/app.s
 | 16 | 催款函正文展示 500000.00 金额，**全页无发送入口** |
 | 17 | 催款函 Word 导出下载（sha256 `be62d8e9…`） |
 | 18 | 只读成员界面隐藏新增证据项与新建催款函 |
-| 19 | 无浏览器页面错误 |
+| 19 | 证据报告 Markdown 导出只读同一保存版本（`text/markdown`，930 字符，含缺证项） |
+| 20 | 浏览器下载证据报告 Markdown（sha256 `c9d7eb8f...`） |
+| 21 | 无浏览器页面错误 |
 
 截图与下载：`.superpowers/round8/browser/`。
 
@@ -60,7 +62,7 @@ Windows、Node.js v24.16.0、SQLite；全新临时库 `.superpowers/round8/app.s
 | --- | --- |
 | `6529649` | 规格与计划：§8.2.8/§8.2.9、spec/02 §5.2、spec/04 0015、round-eight 计划 |
 | `a01f85f` | 迁移 0015：证据项入账本（operation_id/request_hash/base_version_id、项目幂等）；`SourceRef` 支持项目材料锚点 |
-| （B4 服务） | 证据项服务/校验器/导出模板/四条路由；报告由服务端派生 `status/scopeNotes`，校验器重建比对 |
+| （B4 服务） | 证据项服务/校验器/Word 导出模板/四条路由 + 只读 Markdown 路由；报告由服务端派生 `status/scopeNotes`，校验器重建比对 |
 | （B4 界面） | 证据客户端与「证据整理」面板（证据项对话框、片段选择、事实关联、时间线/争点/缺证项、报告保存/重验/复核/导出） |
 | （B5 服务） | 催款函服务：重读款项/事实/证据版本、主体与金额校验、`collection-letter-v1` 确定性渲染、draft/ready、校验器与导出模板、两条路由（无发送） |
 | （B5 界面） | 催款函客户端与面板（选择款项/事实/证据版本、发函与送达计划、草稿正文、复核、导出） |

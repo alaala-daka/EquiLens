@@ -56,6 +56,23 @@ export function createProjectEvidenceClient(options: ProjectReviewsClientOptions
       if (result?.kind !== "evidence-report" || typeof result.versionId !== "string") throw new ProjectReviewError("FAILED", "证据报告响应无效。")
       return result
     },
+    /** 只读所选保存版本的 Markdown（与 Word 同版本、同状态）。 */
+    async downloadReportMarkdown(result: { resultId: string; versionId: string }, signal?: AbortSignal): Promise<Blob> {
+      check(signal)
+      const url = `${base}/evidence-reports/${encodeURIComponent(result.resultId)}/markdown?versionId=${encodeURIComponent(result.versionId)}`
+      let response: Response
+      try { response = await (options.fetch ?? fetch)(url, { signal, credentials: "same-origin", cache: "no-store" }) }
+      catch { check(signal); throw new ProjectReviewError("FAILED", "网络连接失败，请重试。") }
+      check(signal)
+      if (!response.ok) {
+        let body: unknown = null
+        try { body = await response.json() } catch { body = null }
+        const failure = reviewFailureFromResponse(response.status, body)
+        if (response.status === 401 || response.status === 403) options.onAccessInvalid?.(failure)
+        throw failure
+      }
+      return new Blob([await response.text()], { type: "text/markdown;charset=utf-8" })
+    },
     reportValue: (result: ProjectResultView | null): EvidenceReportValue | null => {
       const value = result?.value as EvidenceReportValue | undefined
       return value && value.schemaVersion === 1 && Array.isArray(value.items) ? value : null
