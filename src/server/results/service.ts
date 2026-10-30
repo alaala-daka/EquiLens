@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import type { ProjectAccess, ProjectAction, ResultRevisionRef, ResultReview, ResultValidation } from "../../lib/business/contracts"
 import type { AuthIdentity } from "../auth/service"
+import { quotesMatch } from "../../lib/business/verification-fields"
 import { BusinessError } from "../projects/errors"
 import type { Connection, Row } from "../database/connection"
 import { ResultRepository } from "./repository"
@@ -28,6 +29,8 @@ export class ResultService {
      * results/http.ts never forwards SaveResultOptions.
      */
     private readonly serverOwnedKinds: ReadonlySet<string> = new Set(),
+    private readonly existingOnlyKinds: ReadonlySet<string> = new Set(),
+    private readonly noReviewKinds: ReadonlySet<string> = new Set(),
   ) {}
   private async access(identity: AuthIdentity, authorize: ResultAuthorizer, projectId: string, action: ProjectAction) {
     const access = await authorize(identity, projectId, action)
@@ -42,9 +45,9 @@ export class ResultService {
     const issues = [...checked.issues]
     for (const source of JSON.parse(String(row.sources_json)) as ResultSource[]) {
       const fragment = (await connection.query("SELECT * FROM equilens_source_fragments WHERE project_id=$1 AND id=$2 AND snapshot_id=$3", [String(row.project_id), source.fragmentId, source.snapshotId])).rows[0]
-      if (!fragment || !String(fragment.text).includes(source.quote) || !source.quote.trim()) issues.push({ code: "INVALID_SOURCE", message: "来源引用无效。", ref: source.fragmentId })
+      if (!fragment || !quotesMatch(String(fragment.text), source.quote) || !source.quote.trim()) issues.push({ code: "INVALID_SOURCE", message: "来源引用无效。", ref: source.fragmentId })
     }
-    return { status: issues.length ? "invalid" : checked.status, issues, versionId: String(row.id), checkedAt: new Date().toISOString() }
+    return { status: issues.length > checked.issues.length ? "invalid" : checked.status, issues, versionId: String(row.id), checkedAt: new Date().toISOString() }
   }
   private async view(connection: Connection, row: Row): Promise<ResultView> {
     const dependencies = (await connection.query("SELECT dependency_kind,dependency_id,dependency_version_id FROM equilens_result_dependencies WHERE project_id=$1 AND result_id=$2 AND version_id=$3 ORDER BY dependency_kind,dependency_id,dependency_version_id", [String(row.project_id),String(row.result_id),String(row.id)])).rows.map(item => ({ kind: String(item.dependency_kind) as ResultDependency["kind"], id: String(item.dependency_id), versionId: String(item.dependency_version_id) }))
@@ -60,6 +63,7 @@ export class ResultService {
     for (const dependency of input.dependencies) if (!dependency || !["material","fact","ledger","result","rule","knowledge","template"].includes(dependency.kind) || typeof dependency.id !== "string" || typeof dependency.versionId !== "string") throw invalid()
     this.registry.require(input.kind)
     const serverOwned = options?.serverOwned === true && this.serverOwnedKinds.has(input.kind)
+    if (!machine && this.existingOnlyKinds.has(input.kind) && !input.resultId) throw new BusinessError("FORBIDDEN", "请先生成机器成果，再保存人工修订。")
     if (!machine && this.machineOnlyKinds.has(input.kind) && !serverOwned) throw new BusinessError("FORBIDDEN", "该成果类型只能由受控任务写入。")
     const requestHash = hash({ input, machine: machine ? { output: machine.output, taskId: machine.taskId, attempt: machine.attempt } : null, serverOwned })
     return this.repository.transaction(async connection => {
@@ -83,6 +87,18 @@ export class ResultService {
         if (previous.id !== input.baseVersionId || previous.kind !== input.kind) throw conflict()
         machineJson = previous.machine_json === null ? null : String(previous.machine_json)
         provenanceJson = previous.provenance_json === null ? null : String(previous.provenance_json)
+        if (!machine && this.existingOnlyKinds.has(input.kind)) {
+          const previousView = await this.view(connection, previous)
+          const projection = (value: unknown) => {
+            if (!value || typeof value !== "object" || Array.isArray(value)) throw invalid()
+            return Object.fromEntries(Object.entries(value).filter(([key]) => key !== "findingDecisions"))
+          }
+          if (canonicalJson(projection(input.value)) !== canonicalJson(projection(previousView.value)) ||
+            canonicalJson(input.value) === canonicalJson(previousView.value)) throw invalid()
+          if (input.sources.length && canonicalJson(input.sources) !== canonicalJson(previousView.sources) ||
+            input.dependencies.length && canonicalJson(input.dependencies) !== canonicalJson(previousView.dependencies)) throw invalid()
+          input = { ...input, sources: previousView.sources, dependencies: previousView.dependencies }
+        }
       } else if (input.baseVersionId !== "") throw conflict()
       const versionId = randomUUID(), createdAt = new Date().toISOString(), valueJson = canonicalJson(input.value)
       const row: Row = { id: versionId, project_id: input.projectId, result_id: resultId, kind: input.kind, sha256: hash(input.value), value_json: valueJson, machine_json: machineJson, provenance_json: provenanceJson, sources_json: canonicalJson(input.sources), origin: machine ? "machine" : "human", created_at: createdAt, created_by: access.identity.account.id, reason: input.reason }
@@ -121,6 +137,7 @@ export class ResultService {
     if (!["approved","rejected","changes_requested"].includes(input.decision) || typeof input.comment !== "string") throw invalid()
     return this.repository.transaction(async c => {
       const row = await this.repository.version(c,input.projectId,input.resultId,input.versionId)
+      if (this.noReviewKinds.has(String(row.kind))) throw new BusinessError("FORBIDDEN", "候选事实须先保存为项目事实，不能直接复核。")
       if (row.id !== row.current_version_id || row.sha256 !== input.sha256) throw conflict()
       const validation = await this.validation(c,row)
       if (input.decision === "approved" && validation.status !== "valid") throw new BusinessError("INVALID_SOURCE","成果校验未通过，无法批准。")

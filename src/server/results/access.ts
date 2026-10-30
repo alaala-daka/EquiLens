@@ -17,8 +17,10 @@ export async function resultHttpServices() {
       // may write a value. C4 requirement sets are machine candidates that a human
       // confirms through VerificationService.saveRequirementSet; C5 drafting results
       // are human input composed by the server-owned DraftingService.
-      new Set(["contract-review", "bid-requirements", "bid-verification", "specialty-subcontract", "supplementary-agreement"]),
-      new Set(["bid-requirements", "specialty-subcontract", "supplementary-agreement"]),
+      new Set(["fact-candidates", "payment-reconciliation", "bid-requirements", "bid-verification", "specialty-subcontract", "supplementary-agreement"]),
+      new Set(["payment-reconciliation", "bid-requirements", "specialty-subcontract", "supplementary-agreement"]),
+      new Set(["contract-review"]),
+      new Set(["fact-candidates"]),
     ),
   }
 }

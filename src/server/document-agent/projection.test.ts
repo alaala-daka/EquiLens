@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
+import { migrateBusiness } from "@/server/database/migrations"
 import { connectDatabase } from "@/server/database/connection"
 import { FactRepository } from "@/server/facts/repository"
 import { PaymentLedgerRepository } from "@/server/payments/repository"
@@ -14,7 +15,7 @@ async function setup() {
   const directory = await mkdtemp(join(tmpdir(), "equilens-projection-"))
   const database = await connectDatabase({ provider: "sqlite", path: join(directory, "store.sqlite") })
   const facts = new FactRepository(database), ledgers = new PaymentLedgerRepository(database)
-  await facts.initialize(); await ledgers.initialize()
+  await migrateBusiness(database); await ledgers.initialize()
   return { directory, database, facts, ledgers }
 }
 async function close(value: Awaited<ReturnType<typeof setup>>) { await value.database.close(); await rm(value.directory, { recursive: true }) }
@@ -37,6 +38,12 @@ test("AC-06/20: payment analysis projects facts and a ledger revision with exact
     assert.equal(ledger.calculation?.unpaidFen, "50000000")
     assert.equal(ledger.facts.length, 2)
     assert.equal(ledger.rows.every(row => (row.factVersionIds?.length ?? 0) === 1), true)
+    // Legacy anonymous projections keep the compatibility save() signature but must still
+    // write a non-empty, unique operation_id so 0014 idempotency keys never collide.
+    const keys = (await s.database.transaction(c => c.query("SELECT operation_id FROM equilens_fact_versions WHERE project_id=$1", ["project-a"]))).rows.map(row => String(row.operation_id))
+    assert.equal(keys.length, 2)
+    assert.ok(keys.every(key => key.startsWith("legacy:") && key.length > "legacy:".length))
+    assert.equal(new Set(keys).size, keys.length)
   } finally { await close(s) }
 })
 

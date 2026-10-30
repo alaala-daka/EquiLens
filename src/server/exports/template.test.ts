@@ -7,9 +7,9 @@ import { ExportRepository } from "./repository"
 import { ExportService } from "./service"
 import { partialResult, projectId, setupReview, successResult, testAuthorizer, testIdentity, validRunnerInput } from "../reviews/test-fixtures"
 
-test("A4c export templates: contract-review-report-v1 is registered and unknown kinds stay unavailable", () => {
+test("A4c export templates: contract-review-report-v2 is registered and unknown kinds stay unavailable", () => {
   const templates = productionExportTemplates()
-  assert.equal(templates.require("contract-review").version, "contract-review-report-v1")
+  assert.equal(templates.require("contract-review").version, "contract-review-report-v2")
   assert.throws(() => templates.require("test"), { code: "SERVICE_UNAVAILABLE" })
   assert.throws(() => templates.require("docx"), { code: "SERVICE_UNAVAILABLE" })
 })
@@ -57,7 +57,7 @@ test("A4c export: a saved contract-review result renders a downloadable versione
     assert.match(document, /项目合同审查报告/)
     assert.match(document, /AI 辅助生成/)
     assert.match(document, /依据尚未签核/)
-    assert.match(document, /contract-review-report-v1/)
+    assert.match(document, /contract-review-report-v2/)
     assert.match(document, /依据未签核/)
     const listed = await exports.list(testIdentity, testAuthorizer, projectId, saved.resultId)
     assert.equal(listed.length, 1)

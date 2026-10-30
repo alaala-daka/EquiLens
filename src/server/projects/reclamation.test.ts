@@ -95,6 +95,7 @@ async function seedProject(database: Database, base: number, options: { projectI
     await connection.query("INSERT INTO equilens_drafting_inputs(id,project_id,kind,current_version_id,created_at) VALUES($1,$2,$3,$4,$5)", [uuid(base + 23), projectId, "specialty-subcontract", uuid(base + 24), now])
     await connection.query("INSERT INTO equilens_drafting_input_versions(id,input_id,project_id,kind,version,base_version_id,operation_id,request_hash,sha256,payload_json,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)", [uuid(base + 24), uuid(base + 23), projectId, "specialty-subcontract", 1, "", `draft-${base}`, sha("6"), sha("7"), "{}", accountId, now])
   })
+  await new FactRepository(database).save(projectId, { projectId, field: "回收事实", nature: "人工陈述", selectedValue: "合成资料", sources: [], conflicts: [], confirmation: "未确认", support: "仅人工陈述", createdBy: accountId, reason: "回收验收" })
   if (options.withObjects === false) return { projectId, keys: [], store }
   return { projectId, keys, store }
 }
@@ -207,7 +208,7 @@ test("C7 reclamation: all project objects and scoped rows are removed, other pro
     const outcome = await reclaimProject(database, first.projectId, { journal, store, batch: 3 })
     assert.equal(outcome.state, "reclaimed")
     assert.ok(outcome.deletedObjects >= 5)
-    assert.ok(outcome.skippedTables.includes("equilens_fact_versions"))
+    assert.ok(!outcome.skippedTables.includes("equilens_fact_versions"))
     const saved = (await new ProjectRepository(database).deletionRecord(first.projectId)) as ProjectDeletionRecord
     assert.equal(saved.state, "reclaimed")
     assert.ok(saved.completedAt)

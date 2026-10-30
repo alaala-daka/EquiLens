@@ -4,8 +4,51 @@ import { connectDatabase } from "../database/connection"
 import { statements } from "./schema"
 import { ResultRepository } from "./repository"
 import { ResultService, type ResultAuthorizer, type SaveResultInput } from "./service"
-import { ResultValidatorRegistry } from "./validation"
+import { ResultValidatorRegistry, type ResultValidator } from "./validation"
 import type { AuthIdentity } from "../auth/service"
+
+test("B2b: only decisions can change; machine fields and dependencies stay immutable across human versions", async () => {
+  const db = await connectDatabase({ provider: "sqlite", path: ":memory:" })
+  try {
+    await db.transaction(async c => { for (const sql of statements) await c.query(sql) })
+    const identity = { account: { id: "account" } } as AuthIdentity
+    const authorize: ResultAuthorizer = async (_, projectId, action) => ({ projectId, action, role: "editor", identity })
+    const repository = new ResultRepository(db)
+    const registry = new ResultValidatorRegistry(new Map([["contract-review", async () => ({ status: "valid" as const, issues: [] })]]))
+    // Seed through the existing unrestricted test service; production's existing-only gate is tested below.
+    const base: SaveResultInput = { projectId: "p", kind: "contract-review", baseVersionId: "", operationId: "base", reason: "机器基线", value: { findings: [{ quote: "原文", kind: "发现问题" }], status: "success" }, sources: [], dependencies: [{ kind: "rule", id: "r", versionId: "v1" }] }
+    const first = await new ResultService(repository, registry).saveResultRevision(identity, authorize, base)
+    const service = new ResultService(repository, registry, new Set(), new Set(), new Set(["contract-review"]))
+    await assert.rejects(service.saveResultRevision(identity, authorize, { ...base, operationId: "forge" }), { code: "FORBIDDEN" })
+    const revise: SaveResultInput = { ...base, resultId: first.resultId, baseVersionId: first.versionId, operationId: "revise", dependencies: [], value: { ...base.value as object, findingDecisions: [{ findingIndex: 0, ruleId: "r", decision: "采纳", reason: "确认风险" }] } }
+    const second = await service.saveResultRevision(identity, authorize, revise)
+    assert.deepEqual(second.dependencies, first.dependencies)
+    assert.equal((await service.saveResultRevision(identity, authorize, revise)).versionId, second.versionId)
+    for (const value of [{ ...second.value as object, status: "failed" }, { findings: [], status: "success" }]) {
+      await assert.rejects(service.saveResultRevision(identity, authorize, { ...revise, operationId: "tamper", baseVersionId: second.versionId, value }), { code: "INVALID_INPUT" })
+    }
+    await assert.rejects(service.saveResultRevision(identity, authorize, { ...revise, operationId: "deps", baseVersionId: second.versionId, value: { ...second.value as object, findingDecisions: [] }, dependencies: [{ kind: "rule", id: "forged", versionId: "v1" }] }), { code: "INVALID_INPUT" })
+    assert.deepEqual((await service.get(identity, authorize, "p", first.resultId, first.versionId)).value, base.value)
+  } finally { await db.close() }
+})
+
+test("B1a/B3a: candidates cannot be reviewed and partial payment issues remain partial", async () => {
+  const db = await connectDatabase({ provider: "sqlite", path: ":memory:" })
+  try {
+    await db.transaction(async c => { for (const sql of statements) await c.query(sql) })
+    const identity = { account: { id: "account" } } as AuthIdentity
+    const authorize: ResultAuthorizer = async (_, projectId, action) => ({ projectId, action, role: "editor", identity })
+    const service = new ResultService(new ResultRepository(db), new ResultValidatorRegistry(new Map<string, ResultValidator>([
+      ["fact-candidates", async () => ({ status: "valid" as const, issues: [] })],
+      ["payment-reconciliation", async () => ({ status: "partial" as const, issues: [{ code: "PAYMENT_DRAFT", message: "待核对" }] })],
+    ])), new Set(), new Set(), new Set(), new Set(["fact-candidates"]))
+    for (const kind of ["fact-candidates", "payment-reconciliation"]) {
+      const saved = await service.saveResultRevision(identity, authorize, { projectId: "p", kind, baseVersionId: "", operationId: kind, reason: "准备", value: {}, sources: [], dependencies: [] })
+      assert.equal(saved.validation.status, kind === "fact-candidates" ? "valid" : "partial")
+      await assert.rejects(service.reviewResult(identity, authorize, { ...saved, decision: "approved", comment: "" }), { code: kind === "fact-candidates" ? "FORBIDDEN" : "INVALID_SOURCE" })
+    }
+  } finally { await db.close() }
+})
 test("immutable revisions, idempotency, review reset, stale and permissions", async () => {
   const db = await connectDatabase({ provider: "sqlite", path: ":memory:" })
   try {

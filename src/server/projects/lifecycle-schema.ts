@@ -129,7 +129,6 @@ export const PROJECT_SCOPED_TABLES: readonly string[] = [
 
 /** B-line runtime tables; absence is expected and recorded (B line not wired to production). */
 export const PROJECT_RUNTIME_TABLES: readonly string[] = [
-  "equilens_fact_versions",
   "equilens_payment_ledger_revisions",
   "equilens_evidence_items",
   "equilens_evidence_reports",
