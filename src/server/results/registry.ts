@@ -5,6 +5,7 @@ import { bidVerificationResultValidator } from "../verification/validation"
 import { ResultValidatorRegistry, type ResultValidator } from "./validation"
 import { factCandidatesValidator } from "../facts/result-validator"
 import { paymentReconciliationValidator } from "../payments/result-validator"
+import { evidenceReportValidator } from "../evidence/result-validator"
 
 /**
  * A4c/C4 production result-validator registry.
@@ -18,6 +19,7 @@ export function productionResultValidators(): ResultValidatorRegistry {
   const validators = new Map<string, ResultValidator>([
     ["fact-candidates", factCandidatesValidator],
     ["payment-reconciliation", paymentReconciliationValidator],
+    ["evidence-report", evidenceReportValidator],
     ["contract-review", contractReviewResultValidator],
     ["bid-requirements", bidRequirementSetValidator],
     ["bid-verification", bidVerificationResultValidator],

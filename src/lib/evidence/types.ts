@@ -33,9 +33,9 @@ export type SourceRef = {
 
 export type EvidenceLink =
   | { kind: "fact"; factId: string; factVersionId: string }
-  | { kind: "payment"; ledgerRevisionId: string; rowId: string }
+  | { kind: "payment"; ledgerRevisionId: string; rowId: string; resultId?: string }
   | { kind: "clause"; source: SourceRef }
-  | { kind: "dispute"; evidenceReportRevisionId: string; disputeId: string }
+  | { kind: "dispute"; evidenceReportRevisionId: string; disputeId: string; resultId?: string }
 
 export type EvidencePeriod = { start?: string; end?: string }
 
@@ -133,6 +133,48 @@ export type EvidenceReport = {
   createdBy: string
   sha256: string
   createdAt: string
+}
+
+/** 项目证据报告成果 value（第八轮）。状态与范围说明由服务端派生，浏览器不得提交。 */
+export type EvidenceReportValue = {
+  schemaVersion: 1
+  cutoff: string
+  contractId?: string
+  status: "draft" | "incomplete"
+  scopeNotes: string[]
+  items: EvidenceItem[]
+  timeline: TimelineEventInput[]
+  disputes: DisputeInput[]
+  gaps: EvidenceGapInput[]
+  suggestions: EvidenceSuggestionInput[]
+}
+
+/** 保存证据项：首次保存 baseVersionId 为空字符串，人工更正必须等于当前最新版本。 */
+export type EvidenceItemDraft = Omit<EvidenceItemInput, "projectId" | "createdBy">
+export type SaveEvidenceItem = {
+  operationId: string
+  itemId?: string
+  baseVersionId: string
+  reason: string
+  value: EvidenceItemDraft
+}
+
+/** 报告只引用已保存的证据项版本；状态、范围说明与报告条目由服务端组装。 */
+export type EvidenceReportDraft = {
+  cutoff: string
+  contractId?: string
+  itemVersionIds: string[]
+  timeline: TimelineEventInput[]
+  disputes: DisputeInput[]
+  gaps: EvidenceGapInput[]
+  suggestions: EvidenceSuggestionInput[]
+}
+
+export type SaveEvidenceReport = {
+  operationId: string
+  reason: string
+  baseVersionId: string
+  value: EvidenceReportDraft
 }
 
 export class EvidenceError extends Error {
