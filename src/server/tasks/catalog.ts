@@ -26,7 +26,7 @@ export const taskKinds = [
 ] as const
 export type TaskKind = (typeof taskKinds)[number]
 
-export const TASK_CATALOG_VERSION = 4
+export const TASK_CATALOG_VERSION = 5
 
 const identifier = z.string().trim().min(1).max(64)
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/)
@@ -61,8 +61,8 @@ const definitions: Record<TaskKind, TaskDefinition> = {
   "document-analysis": {
     maxCalls: 3,
     maxCostFen: 300,
-    refs: z.object({ document: versionRef }).strict(),
-    conditions: z.object({ asOf: day.optional() }).strict(),
+    refs: z.object({ materials: materialRefs.max(5) }).strict(),
+    conditions: z.object({ asOf: day.optional(), externalProcessingConsent: z.literal(true) }).strict(),
   },
   "payment-reconciliation": {
     maxCalls: 3,

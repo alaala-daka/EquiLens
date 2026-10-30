@@ -1,4 +1,4 @@
-import type { SourceRef } from "../facts/types"
+import type { SourceAnchor } from "../facts/types"
 
 export type LedgerRowNature = "计量" | "计付基数" | "净应付" | "付款" | "扣项" | "未到期" | "争议" | "材料余额"
 export type LedgerConfirmation = "未确认" | "已确认" | "待核实"
@@ -17,8 +17,10 @@ export type LedgerRow = {
   ratio?: string
   payer?: string
   payee?: string
+  /** Verified transaction/voucher identity scoped to payer and payee. */
+  transactionId?: string
   confirmation: LedgerConfirmation
-  source?: SourceRef
+  source?: SourceAnchor
   factVersionIds?: string[]
   /** 扣项必须声明是否已计入净应付；已计入的扣项不再从余额中扣一次。 */
   includedInNet?: boolean
@@ -26,6 +28,25 @@ export type LedgerRow = {
 }
 
 export type LedgerCalculation = { netDueFen: string; paidFen: string; unpaidFen: string; formula: string }
+
+export type PaymentReconciliationValue = {
+  schemaVersion: 1
+  cutoff: string
+  contractId?: string
+  rows: LedgerRow[]
+  facts: { factId: string; factVersionId: string }[]
+  calculation: LedgerCalculation | null
+  notes: string[]
+  status: "conditional" | "draft"
+}
+
+export type ProjectPaymentDraft = Pick<PaymentReconciliationValue, "cutoff" | "contractId" | "rows" | "facts">
+export type SaveProjectPayment = {
+  operationId: string
+  reason: string
+  baseVersionId?: string
+  value: ProjectPaymentDraft
+}
 
 export type LedgerInput = {
   projectId: string

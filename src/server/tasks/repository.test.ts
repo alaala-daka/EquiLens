@@ -75,7 +75,7 @@ test("A3a: operationId is scoped per account and project, not global", async () 
     const first = await s.repository.submit("account-1", "operation-shared", validRequest("document-analysis"))
     const otherProject = {
       kind: "document-analysis" as const, projectId: "project-2",
-      refs: { document: ref("document-1", "project-2") }, conditions: {},
+      refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }] }, conditions: { externalProcessingConsent: true },
     }
     const second = await s.repository.submit("account-1", "operation-shared", otherProject)
     assert.equal(first.created, true)

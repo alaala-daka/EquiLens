@@ -1,5 +1,10 @@
 # 数据库与单体部署
 
+第七轮迁移 0014 将 `equilens_fact_versions` 纳入迁移账本，增加 operation_id/request_hash 与项目操作
+唯一约束，实现事实幂等及乐观版本链；仅追加 CREATE TABLE/INDEX，0001—0013 不变。
+生产不再由事实仓储运行时建表；事实版本纳入必需的项目删除与恢复清单。
+其他环境存在旧运行时同名表时迁移失败并拒绝就绪，由离线维护迁移，不静默跳过或改写旧表。
+
 ## 合同审查任务增量
 
 独立 equilens_review_schema/tasks/artifacts/runner 迁移不改现有文档 schema，不重写文档与历史版本。

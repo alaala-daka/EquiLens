@@ -10,10 +10,7 @@ import type { AuthIdentity } from "@/server/auth/service"
  * - ProjectRole / ProjectAction / ProjectAccess
  * - BusinessErrorCode
  *
- * Still pending (do not invent compatible duplicates in business modules):
- * - 乙's saveFactRevision / calculateLedger handoff signatures
- * - C2 readMaterialVersion / readParseSnapshot / readSource signatures
- * - A2 editor access interface (owned by A2; C3 consumes the finishe file)
+ * Project facts/payments HTTP DTOs are exported below; controlled services own writes.
  *
  * This module is types only. It must not contain credentials, database rows,
  * model SDK types, or server-only runtime imports. Changing a frozen field
@@ -114,6 +111,19 @@ export type ResultReview = {
   reviewedBy: string
   reviewedAt: string
 }
+
+/** Human processing decisions extend the saved result value, never the machine ReviewResult. */
+export type FindingDecision = {
+  findingIndex: number
+  ruleId: string
+  decision: "采纳" | "驳回" | "修订"
+  reason: string
+  editedSuggestion?: string
+  editedImpact?: string
+}
+
+export type { SourceAnchor, ProjectFactDraft, ProjectFactVersion, SaveProjectFact } from "../facts/types"
+export type { PaymentReconciliationValue, ProjectPaymentDraft, SaveProjectPayment } from "../payments/types"
 
 export type ExportRef = ResultRevisionRef & {
   exportId: string
