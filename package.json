@@ -29,6 +29,7 @@
     "verify:c4": "tsx scripts/verify-bid-verification.mts",
     "verify:r5": "tsx scripts/verify-round-five-browser.mts",
     "verify:r7": "tsx scripts/verify-round-seven-browser.mts",
+    "verify:r8": "tsx scripts/verify-round-eight-browser.mts",
     "knowledge:maintain": "tsx scripts/knowledge-maintenance.mts",
     "maintain:lifecycle": "tsx scripts/project-lifecycle.mts"
   },
