@@ -2,10 +2,10 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   buildTaskManifest, encodeManifest, manifestHash, maxCallsFor, parseOperationId, parseTaskRequest,
-  taskKinds, taskRequestDigest, type TaskKind,
+  TASK_CATALOG_VERSION, taskKinds, taskRequestDigest, type TaskKind,
 } from "./catalog"
 import { TaskError } from "./errors"
-import { otherProjectId, validRequest } from "./test-fixtures"
+import { otherProjectId, reviewConditions, validRequest } from "./test-fixtures"
 
 function submissionError(work: () => unknown) {
   try { work() } catch (failure) {
@@ -20,14 +20,93 @@ function submissionError(work: () => unknown) {
 test("A3a: every controlled task kind has a server-fixed schema", () => {
   assert.deepEqual([...taskKinds], [
     "contract-review", "document-analysis", "payment-reconciliation", "evidence-organization",
-    "collection-letter", "material-parse", "bid-verification", "result-export",
+    "collection-letter", "material-parse", "bid-requirements", "certificate-ocr", "bid-verification", "result-export",
   ])
+  const expectedCalls: Record<TaskKind, number> = {
+    "contract-review": 25, "document-analysis": 3, "payment-reconciliation": 3, "evidence-organization": 3,
+    "collection-letter": 3, "material-parse": 0, "bid-requirements": 2, "certificate-ocr": 2,
+    "bid-verification": 0, "result-export": 0,
+  }
   for (const kind of taskKinds) {
     const parsed = parseTaskRequest(validRequest(kind))
     assert.equal(parsed.kind, kind)
     assert.equal(parsed.projectId, "project-1")
-    assert.equal(maxCallsFor(kind), kind === "contract-review" ? 25 : kind === "document-analysis" || kind === "payment-reconciliation" || kind === "evidence-organization" || kind === "collection-letter" ? 3 : kind === "bid-verification" ? 2 : 0)
+    assert.equal(maxCallsFor(kind), expectedCalls[kind])
   }
+})
+
+test("C4: bid task schemas pin records/asOf/one-image and reject the superseded shape", () => {
+  // The old two-call single bid-verification shape must not be accepted any more.
+  submissionError(() => parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }] },
+    conditions: { asOf: "2026-10-28" },
+  }))
+  // Comparison requires an explicit as-of point and a pinned requirement set.
+  submissionError(() => parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }], requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) } },
+    conditions: {},
+  }))
+  // Certificate OCR is exactly one image version per task.
+  submissionError(() => parseTaskRequest({
+    kind: "certificate-ocr", projectId: "project-1",
+    refs: { materials: [{ materialVersionId: "a", sha256: "a".repeat(64) }, { materialVersionId: "b", sha256: "a".repeat(64) }] },
+    conditions: { certificateKind: "enterprise_license", externalProcessingConsent: true },
+  }))
+  // A deterministic comparison must not accept outbound-processing fields.
+  submissionError(() => parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }], requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) } },
+    conditions: { asOf: "2026-10-28", externalProcessingConsent: true },
+  }))
+  // Pinned records are part of the request identity and must be well formed.
+  const pinned = parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: {
+      materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }],
+      requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) },
+      externalRecords: [{ recordId: "record-1", sha256: "b".repeat(64) }],
+    },
+    conditions: { asOf: "2026-10-28" },
+  })
+  assert.equal(taskRequestDigest(pinned), taskRequestDigest(parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: {
+      materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }],
+      requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) },
+      externalRecords: [{ recordId: "record-1", sha256: "b".repeat(64) }],
+    },
+    conditions: { asOf: "2026-10-28" },
+  })))
+  submissionError(() => parseTaskRequest({
+    kind: "bid-verification", projectId: "project-1",
+    refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }], requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) }, externalRecords: [{ recordId: "record-1", sha256: "not-a-digest" }] },
+    conditions: { asOf: "2026-10-28" },
+  }))
+  assert.equal(TASK_CATALOG_VERSION, 4)
+})
+
+test("R5: server-resolved publications are pinned into the manifest and never accepted from the browser", () => {
+  const request = parseTaskRequest(validRequest("contract-review"))
+  const pin = {
+    rules: [{ id: "rule-pack", versionId: "v1", sha256: "a".repeat(64) }],
+    knowledge: [],
+    templates: [],
+  }
+  const manifest = buildTaskManifest(request, "account-1", "2026-10-29T00:00:00.000Z", pin)
+  assert.deepEqual(manifest.publications, pin)
+  assert.equal(encodeManifest(manifest), encodeManifest({ ...manifest, publications: { ...pin } }))
+  const debugManifest = buildTaskManifest(request, "account-1", "2026-10-29T00:00:00.000Z")
+  assert.equal("publications" in debugManifest, false)
+  // Browser input cannot claim a published basis; only the server resolver may add it.
+  submissionError(() => parseTaskRequest({ ...validRequest("contract-review"), publications: pin }))
+  submissionError(() => parseTaskRequest({
+    ...validRequest("contract-review"),
+    conditions: { ...reviewConditions, publications: pin },
+  }))
+  // Idempotency stays keyed on the browser request, so a pin change never creates a new identity.
+  assert.equal(taskRequestDigest(request), taskRequestDigest(parseTaskRequest(validRequest("contract-review"))))
 })
 
 test("A3a: unknown kinds and browser-supplied manifest/model/rules/executor are rejected", () => {
@@ -37,20 +116,22 @@ test("A3a: unknown kinds and browser-supplied manifest/model/rules/executor are 
   }
   submissionError(() => parseTaskRequest({
     ...validRequest("contract-review"),
-    refs: { document: { projectId: "project-1", id: "document-1", versionId: "document-1-version" }, rules: "全文" },
+    refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }], rules: "全文" },
   }))
   submissionError(() => parseTaskRequest({
     ...validRequest("contract-review"),
-    conditions: { asOf: "2026-10-28", model: "https://model.invalid/v1" },
+    conditions: { ...reviewConditions, model: "https://model.invalid/v1" },
   }))
 })
 
 test("A3a: references from another project and malformed values are rejected", () => {
   submissionError(() => parseTaskRequest({
-    kind: "contract-review", projectId: "project-1",
+    kind: "document-analysis", projectId: "project-1",
     refs: { document: { projectId: otherProjectId, id: "document-1", versionId: "document-1-version" } },
     conditions: {},
   }))
+  submissionError(() => parseTaskRequest({ ...validRequest("contract-review"), refs: { materials: [{ materialVersionId: "material-1", sha256: "not-a-digest" }] } }))
+  submissionError(() => parseTaskRequest({ ...validRequest("contract-review"), conditions: { ...reviewConditions, externalProcessingConsent: false } }))
   submissionError(() => parseTaskRequest({ ...validRequest("material-parse"), refs: { materials: [{ materialVersionId: "m", sha256: "not-a-digest" }] } }))
   submissionError(() => parseTaskRequest({ ...validRequest("payment-reconciliation"), conditions: {} }))
   submissionError(() => parseTaskRequest({ kind: "result-export", projectId: "project-1", refs: { result: { projectId: "project-1", id: "r", versionId: "v" } }, conditions: { format: "pdf" } }))
@@ -62,8 +143,8 @@ test("A3a: operationId format is fixed and rejects missing/browser-selected ids"
 })
 
 test("A3a: request digest ignores key order and manifest is server-built and immutable", () => {
-  const ordered = parseTaskRequest({ kind: "contract-review", projectId: "project-1", refs: { document: { projectId: "project-1", id: "document-1", versionId: "document-1-version" } }, conditions: {} })
-  const reordered = parseTaskRequest({ conditions: {}, projectId: "project-1", refs: { document: { versionId: "document-1-version", id: "document-1", projectId: "project-1" } }, kind: "contract-review" })
+  const ordered = parseTaskRequest(validRequest("contract-review"))
+  const reordered = parseTaskRequest({ conditions: { region: "上海", scene: "auto", role: "专业分包人", unreviewedMaterialsConsent: true, externalProcessingConsent: true }, projectId: "project-1", refs: { materials: [{ sha256: "a".repeat(64), materialVersionId: "material-1" }] }, kind: "contract-review" })
   assert.equal(taskRequestDigest(ordered), taskRequestDigest(reordered))
   const manifest = buildTaskManifest(ordered, "account-1", "2026-10-28T00:00:00.000Z")
   assert.equal(manifest.version, 1)
@@ -75,7 +156,7 @@ test("A3a: request digest ignores key order and manifest is server-built and imm
   assert.equal(manifestHash(encoded), manifestHash(encodeManifest(manifest)))
   assert.equal(encoded.includes("executor"), false)
   // A changed input changes the digest, which the repository treats as a conflict.
-  const changed = parseTaskRequest({ ...validRequest("contract-review"), conditions: { asOf: "2026-10-29" } })
+  const changed = parseTaskRequest({ ...validRequest("contract-review"), conditions: { ...reviewConditions, asOf: "2026-10-29" } })
   assert.notEqual(taskRequestDigest(ordered), taskRequestDigest(changed))
 })
 

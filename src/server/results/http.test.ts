@@ -35,7 +35,7 @@ test("result HTTP enforces private scope, authorization, strict writes and safe 
     assert.equal(response.status,200)
     assert.equal(response.headers.get("cache-control"),"private, no-store")
     const result = await response.json()
-    for (const extra of [{ unknown: "field" },{ provenance: {} },{ projectId: "other" },{ origin: "machine" },{ machineOutput: {} }]) assert.equal((await invoke("save",{ ...input,...extra })).status,400)
+    for (const extra of [{ unknown: "field" },{ provenance: {} },{ projectId: "other" },{ origin: "machine" },{ machineOutput: {} },{ serverOwned: true }]) assert.equal((await invoke("save",{ ...input,...extra })).status,400)
     assert.equal((await invoke("save",{ ...input,resultId: "other" },{ resultId: result.resultId })).status,400)
     assert.equal((await invoke("save",input,{ origin: "https://foreign.example" })).status,403)
     assert.equal((await invoke("save",undefined,{ raw: "{" })).status,400)

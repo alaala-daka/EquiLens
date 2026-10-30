@@ -1,6 +1,7 @@
 import type { AuthIdentity } from "../auth/service"
 import { isAuthError } from "../auth/errors"
 import { BusinessError, httpStatus } from "../projects/errors"
+import type { VerificationFieldService } from "../verification/ocr-repository"
 import type { MaterialService } from "./service"
 import type { QueuedMaterialService } from "./queued"
 
@@ -9,6 +10,8 @@ export type MaterialHttpDependencies = {
   origin: () => string
   reads: MaterialService
   writes: QueuedMaterialService
+  /** C4-OCR manual certificate fields (insert-only history, same-version verbatim source). */
+  fields: VerificationFieldService
 }
 type Params = { id: string; materialId?: string; versionId?: string; snapshotId?: string; fragmentId?: string }
 export type MaterialContext = { params: Promise<Params> }
@@ -16,6 +19,24 @@ const headers = { "Cache-Control": "private, no-store" }
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers })
 const bad = () => new BusinessError("INVALID_INPUT", "请求内容无效。")
 const maxBody = 21 * 1024 * 1024
+const maxFieldBody = 64 * 1024
+
+/** Bounded JSON body reader for the fields route; Content-Length is never trusted. */
+async function fieldBody(request: Request): Promise<unknown> {
+  const declared = Number(request.headers.get("content-length"))
+  if (!Number.isFinite(declared) || declared < 0 || declared > maxFieldBody) throw bad()
+  const reader = request.body?.getReader()
+  if (!reader) throw bad()
+  const chunks: Uint8Array[] = []; let size = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.length
+    if (size > maxFieldBody) { await reader.cancel(); throw new BusinessError("LIMIT_EXCEEDED", "字段登记内容过大。") }
+    chunks.push(value)
+  }
+  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")) } catch { throw bad() }
+}
 
 export function createMaterialHandlers(load: () => Promise<MaterialHttpDependencies>) {
   function route(action: (deps: MaterialHttpDependencies, identity: AuthIdentity, p: Params, request: Request) => Promise<Response>, write = false) {
@@ -96,5 +117,11 @@ export function createMaterialHandlers(load: () => Promise<MaterialHttpDependenc
       if (typeof input?.operationId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,99}$/.test(input.operationId)) throw bad()
       return json(await d.writes.reparse(i, p.id, p.materialId ?? "", input.operationId), 202)
     }, true),
+    fields: route(async (d, i, p) => json(await d.fields.list(i, {
+      projectId: p.id, materialId: p.materialId ?? "", versionId: p.versionId ?? "",
+    }))),
+    saveFields: route(async (d, i, p, request) => json(await d.fields.register(i, {
+      projectId: p.id, materialId: p.materialId ?? "", versionId: p.versionId ?? "",
+    }, await fieldBody(request))), true),
   }
 }

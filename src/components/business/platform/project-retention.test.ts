@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { retainProject, workspaceRoute } from "./project-retention"
+import { retainProject, workspaceRoute, workspaceSurface } from "./project-retention"
 import { createUnsavedRegistry } from "../../../lib/documents/unsaved-registry"
 
 test("router keeps retained project mounted after 401 instead of rendering anonymous workspace", () => {
@@ -9,6 +9,15 @@ test("router keeps retained project mounted after 401 instead of rendering anony
   }
   assert.equal(workspaceRoute("anonymous", null), "anonymous")
   assert.equal(workspaceRoute("loading", null), "loading")
+})
+
+test("signed-in users keep the anonymous workspace reachable after choosing it", () => {
+  const project = { id: "p" }
+  assert.equal(workspaceSurface(false, "ready", project), "project")
+  assert.equal(workspaceSurface(true, "ready", project), "anonymous")
+  assert.equal(workspaceSurface(true, "anonymous", null), "anonymous")
+  assert.equal(workspaceSurface(false, "anonymous", null), "anonymous")
+  assert.equal(workspaceSurface(false, "loading", null), "loading")
 })
 
 test("focus refresh retains workspace identity on downgrade, removal and network failure", () => {

@@ -3,6 +3,10 @@ import { statements as materialStatements } from "../materials/schema"
 import { statements as projectStatements } from "../projects/schema"
 import { statements as taskStatements } from "../tasks/schema"
 import { statements as resultStatements } from "../results/schema"
+import { statements as verificationStatements } from "../verification/schema"
+import { statements as knowledgeStatements } from "../knowledge/schema"
+import { statements as draftingStatements } from "../templates/schema"
+import { statements as projectLifecycleStatements } from "../projects/lifecycle-schema"
 import { uploadIntentStatements } from "../materials/schema"
 import { documentStatements } from "../materials/document-schema"
 import type { Database } from "./connection"
@@ -20,7 +24,7 @@ export const businessMigrations: readonly BusinessMigration[] = [{ id: "0001", s
 ] }, { id: "0003", statements: [
   "ALTER TABLE equilens_auth_accounts ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'member'",
   "CREATE TABLE equilens_auth_bootstrap (id INTEGER PRIMARY KEY)",
-] }, { id: "0004", statements: projectStatements }, { id: "0005", statements: taskStatements }, { id: "0006", statements: materialStatements }, { id: "0007", statements: resultStatements }, { id: "0008", statements: uploadIntentStatements }, { id: "0009", statements: documentStatements }]
+] }, { id: "0004", statements: projectStatements }, { id: "0005", statements: taskStatements }, { id: "0006", statements: materialStatements }, { id: "0007", statements: resultStatements }, { id: "0008", statements: uploadIntentStatements }, { id: "0009", statements: documentStatements }, { id: "0010", statements: verificationStatements }, { id: "0011", statements: knowledgeStatements }, { id: "0012", statements: draftingStatements }, { id: "0013", statements: projectLifecycleStatements }]
 
 /** Explicit initialization only; never runs on module import. */
 export async function migrateBusiness(db: Database, migrations = businessMigrations) {

@@ -17,6 +17,9 @@ export function createMaterialExecutor(deps: { repository: MaterialRepository; s
     if (!version || version.sha256 !== ref.sha256) throw new Error("INVALID_SOURCE")
     const material = await deps.repository.findMaterial(job.projectId, version.materialId)
     if (!material || material.status !== "active" || !material.processingAuthorized) throw new Error("INVALID_SOURCE")
+    // Defensive: images are accepted only for certificate OCR and never have a
+    // material-parse task; a stray task must fail instead of parsing image bytes.
+    if (material.format === "image") throw new Error("INVALID_SOURCE")
     await context.refreshAccess()
     const checkRetention = async () => {
       const current = await deps.repository.findMaterial(job.projectId, material.id)

@@ -33,7 +33,7 @@ type Context = { params: Promise<{ id: string }> }
 const maxBodyBytes = 256 * 1024
 const idPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 
-function taskFailure(failure: unknown) {
+export function taskFailure(failure: unknown) {
   const headers = { "Cache-Control": "private, no-store" }
   if (isTaskError(failure)) {
     return NextResponse.json({ error: { code: failure.code, message: failure.message } }, { status: failure.status, headers })

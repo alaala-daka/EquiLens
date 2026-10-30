@@ -26,6 +26,9 @@ export function startMaterialRuntime() {
       const result = await repository.uploadIntents().repair({
         store: privateObjectStoreRuntime(),
         isReferenced: intent => repository.objectReferenced(intent.objectKey),
+        // Certificate images are parse-less terminal intents; recovery must never
+        // re-enqueue material-parse for them.
+        isParseRequired: async intent => (await repository.findMaterial(intent.projectId, intent.materialId))?.format !== "image",
         enqueueParse: async intent => recoverAuthorizedMaterial(
           () => authorizeTaskExecution({ accountId: intent.accountId, projectId: intent.projectId, action: "edit" }), async () => {
 

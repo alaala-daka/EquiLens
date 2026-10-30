@@ -54,7 +54,11 @@ export class UploadIntents {
     await this.db.transaction(c => c.query("UPDATE equilens_material_upload_intents SET state=$1,updated_at=$2 WHERE id=$3 AND state=$4", [state, this.now().toISOString(), id, previous]))
   }
   async open(limit: number): Promise<UploadIntent[]> {
-    const result = await this.db.transaction(c => c.query("SELECT * FROM equilens_material_upload_intents WHERE state NOT IN ('aborted') AND (state <> 'committed' OR parse_task_id IS NULL) ORDER BY updated_at,id LIMIT $1", [Math.max(1, Math.min(100, Math.trunc(limit)))]))
+    // Image originals are accepted without a material-parse task and commit as a
+    // terminal parse-less intent. They must never be re-enqueued into
+    // material-parse by recovery, so the committed parse-less image intents are
+    // excluded here as well as guarded inside repair().
+    const result = await this.db.transaction(c => c.query("SELECT i.* FROM equilens_material_upload_intents i LEFT JOIN equilens_material_versions v ON v.id=i.version_id WHERE i.state NOT IN ('aborted') AND (i.state <> 'committed' OR i.parse_task_id IS NULL) AND NOT (i.state='committed' AND i.parse_task_id IS NULL AND COALESCE(v.content_type,'') IN ('image/png','image/jpeg')) ORDER BY i.updated_at,i.id LIMIT $1", [Math.max(1, Math.min(100, Math.trunc(limit)))]))
     return result.rows.map(record)
   }
 
@@ -64,6 +68,12 @@ export class UploadIntents {
     isReferenced: (intent: UploadIntent) => Promise<boolean>
     /** Must reauthorize account/project, then submit using versionId as idempotency key. */
     enqueueParse?: (intent: UploadIntent) => Promise<string>
+    /**
+     * False for stored versions that have no parse step (certificate images):
+     * recovery then commits the intent as terminal instead of submitting a
+     * material-parse task that could never succeed.
+     */
+    isParseRequired?: (intent: UploadIntent) => Promise<boolean>
   }, options: { limit?: number; expiryMs?: number } = {}): Promise<{ resolved: number; remaining: number }> {
     const expiryMs = options.expiryMs ?? 600000
     if (!Number.isFinite(expiryMs) || expiryMs < 0) throw new Error("Invalid upload expiry")
@@ -75,6 +85,12 @@ export class UploadIntents {
         if (await deps.isReferenced(intent)) {
           // Referenced originals follow the material deletion lifecycle; never submit expired inputs.
           if (expired(intent)) { await this.committed(intent.id); continue }
+          if (deps.isParseRequired && !await deps.isParseRequired(intent)) {
+            // Parse-less stored version (image): terminal commit, no material-parse task.
+            await this.committed(intent.id)
+            resolved++
+            continue
+          }
           const task = intent.parseTaskId ?? (deps.enqueueParse ? await deps.enqueueParse(intent) : undefined)
           await this.committed(intent.id, task)
           if (task) resolved++

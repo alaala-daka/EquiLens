@@ -134,6 +134,17 @@ export function createProjectHandlers(getServices: Services) {
         })
       },
     },
+    deletion: {
+      /** Redacted deletion status; never returns project content (spec/01 §10.5). */
+      async GET(request: Request, context: ProjectContext): Promise<Response> {
+        return handle(async () => {
+          const deps = await getServices()
+          const identity = await deps.requireAccount(request)
+          const { id } = await context.params
+          return json({ deletion: await deps.service.deletionState(identity, id) })
+        })
+      },
+    },
     members: {
       async GET(request: Request, context: ProjectContext): Promise<Response> {
         return handle(async () => {

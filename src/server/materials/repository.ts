@@ -8,7 +8,7 @@ import type {
 } from "./types"
 
 const sourceKinds: readonly MaterialSourceKind[] = ["synthetic", "authorized"]
-const formats: readonly MaterialFormat[] = ["docx", "pdf"]
+const formats: readonly MaterialFormat[] = ["docx", "pdf", "image"]
 const coverageStatuses: readonly CoverageStatus[] = ["available", "partial", "failed"]
 const statuses = ["active", "deleted"] as const
 
@@ -253,6 +253,21 @@ export class MaterialRepository {
   async findFragment(projectId: string, snapshotId: string, fragmentId: string): Promise<SourceFragmentRecord | null> {
     const { rows } = await this.database.transaction(connection =>
       connection.query("SELECT * FROM equilens_source_fragments WHERE project_id=$1 AND snapshot_id=$2 AND id=$3", [projectId, snapshotId, fragmentId]))
+    return rows.length ? fragmentRecord(rows[0]) : null
+  }
+
+  /**
+   * Find a fragment that belongs to an exact material version (any immutable
+   * snapshot of that version). Manual certificate fields may only cite a
+   * fragment of the same version (spec 01 §9.3); a fragment of another version
+   * is indistinguishable from a missing one.
+   */
+  async findFragmentForVersion(projectId: string, versionId: string, fragmentId: string): Promise<SourceFragmentRecord | null> {
+    const { rows } = await this.database.transaction(connection =>
+      connection.query(
+        "SELECT f.* FROM equilens_source_fragments f JOIN equilens_parse_snapshots s ON s.id=f.snapshot_id WHERE s.project_id=$1 AND s.version_id=$2 AND f.id=$3 AND f.project_id=s.project_id",
+        [projectId, versionId, fragmentId],
+      ))
     return rows.length ? fragmentRecord(rows[0]) : null
   }
 

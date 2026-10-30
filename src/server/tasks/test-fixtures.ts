@@ -17,10 +17,28 @@ function material(id: string) {
   return { materialVersionId: id, sha256: "a".repeat(64) }
 }
 
+export const reviewConditions = {
+  scene: "auto" as const,
+  role: "专业分包人" as const,
+  region: "上海",
+  externalProcessingConsent: true as const,
+  unreviewedMaterialsConsent: true,
+}
+
+export function reviewRequest(project = projectId) {
+  return {
+    kind: "contract-review" as const,
+    projectId: project,
+    refs: { materials: [material("material-1")] },
+    conditions: { ...reviewConditions },
+  }
+}
+
 /** A syntactically valid submission for each controlled kind. */
 export function validRequest(kind: TaskKind): TaskRequest {
   switch (kind) {
     case "contract-review":
+      return reviewRequest()
     case "document-analysis":
       return { kind, projectId, refs: { document: ref("document-1") }, conditions: {} }
     case "payment-reconciliation":
@@ -31,8 +49,23 @@ export function validRequest(kind: TaskKind): TaskRequest {
       return { kind, projectId, refs: { facts: [ref("facts-1")], ledger: ref("ledger-1") }, conditions: { asOf: "2026-10-28" } }
     case "material-parse":
       return { kind, projectId, refs: { materials: [material("material-1")] }, conditions: {} }
+    case "bid-requirements":
+      return { kind, projectId, refs: { materials: [material("material-1")] }, conditions: { externalProcessingConsent: true } }
+    case "certificate-ocr":
+      return {
+        kind, projectId,
+        refs: { materials: [material("material-image-1")] },
+        conditions: { certificateKind: "enterprise_license", externalProcessingConsent: true },
+      }
     case "bid-verification":
-      return { kind, projectId, refs: { materials: [material("material-1")] }, conditions: { asOf: "2026-10-28" } }
+      return {
+        kind, projectId,
+        refs: {
+          materials: [material("material-1")],
+          requirementSet: { id: "requirements-1", versionId: "requirements-version-1", sha256: "a".repeat(64) },
+        },
+        conditions: { asOf: "2026-10-28" },
+      }
     case "result-export":
       return { kind, projectId, refs: { result: ref("result-1") }, conditions: { format: "docx" } }
   }

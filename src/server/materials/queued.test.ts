@@ -9,7 +9,7 @@ test("C2a: unavailable parser rejects before private object storage", async () =
   const service = new QueuedMaterialService({
     repository: {} as never, store: { put: async () => { writes++; throw new Error() }, get: async () => null, delete: async () => {} },
     requireProjectAccess: async () => ({}) as never, readProject: async () => ({ retentionUntil: "2027-12-31" }),
-    available: () => false, preflight: async () => { throw new Error("must not run") }, enqueue: async () => "task",
+    available: () => false, ocrAvailable: () => false, preflight: async () => { throw new Error("must not run") }, enqueue: async () => "task",
   })
   await assert.rejects(service.upload({ account: { id: "synthetic" } } as never, "11111111-1111-4111-8111-111111111111", {}, new Uint8Array([1])), (error: unknown) => error instanceof BusinessError && error.code === "SERVICE_UNAVAILABLE")
   assert.equal(writes, 0)
@@ -24,7 +24,7 @@ test("C2a: one hanging store does not retain admission of other successful reque
   const service = new QueuedMaterialService({ repository: repository as never,
     store: { put: async input => { if (input.bytes[4] === 1) { started(); await hold } return { key: input.key, sha256: createHash("sha256").update(input.bytes).digest("hex"), size: input.bytes.length } }, get: async () => null, delete: async () => {} },
     requireProjectAccess: async () => ({}) as never, readProject: async () => ({ retentionUntil: "2027-12-31" }),
-    available: () => true, preflight: async () => {}, enqueue: async () => "task", now: () => new Date("2026-10-29"),
+    available: () => true, ocrAvailable: () => false, preflight: async () => {}, enqueue: async () => "task", now: () => new Date("2026-10-29"),
   })
   const identity = { account: { id: "store-isolation" } } as never
   const body = { title: "合成材料", fileName: "test.docx", sourceKind: "synthetic", sourceReference: "合成授权", processingAuthorized: true, purpose: "合同审查", retentionUntil: "2027-01-01" }
@@ -42,7 +42,7 @@ test("C2a: blocked requests have bounded admission and no waiting queue", async 
   const service = new QueuedMaterialService({
     repository: {} as never, store: {} as never,
     requireProjectAccess: async () => { await blocked; throw new BusinessError("FORBIDDEN", "无权访问该项目。") },
-    readProject: async () => null, available: () => true, preflight: async () => {}, enqueue: async () => "task",
+    readProject: async () => null, available: () => true, ocrAvailable: () => false, preflight: async () => {}, enqueue: async () => "task",
   })
   const identity = { account: { id: "bounded-test" } } as never
   const admitted = Array.from({ length: 4 }, (_, i) => service.upload(identity, `project-${i}`, {}, new Uint8Array([i + 1])).catch(error => error))

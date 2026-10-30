@@ -74,7 +74,7 @@ test("C2b SQLite queued upload to claimed task to immutable parsed sources", asy
     await db.transaction(async c => { await c.query("CREATE TABLE equilens_projects(id TEXT PRIMARY KEY)"); await c.query("INSERT INTO equilens_projects VALUES($1)", [projectId]) })
     let checks = 0
     const authorize = async () => { checks++; return {} as never }
-    const service = new QueuedMaterialService({ repository, store, requireProjectAccess: authorize, readProject: async () => ({ retentionUntil: "2099-12-31" }), available: () => true, preflight: async () => {}, enqueue: async (_, v, operation) => (await tasks.submit(owner, operation, { kind: "material-parse", projectId, refs: { materials: [{ materialVersionId: v.id, sha256: v.sha256 }] }, conditions: {} })).task.id })
+    const service = new QueuedMaterialService({ repository, store, requireProjectAccess: authorize, readProject: async () => ({ retentionUntil: "2099-12-31" }), available: () => true, ocrAvailable: () => false, preflight: async () => {}, enqueue: async (_, v, operation) => (await tasks.submit(owner, operation, { kind: "material-parse", projectId, refs: { materials: [{ materialVersionId: v.id, sha256: v.sha256 }] }, conditions: {} })).task.id })
     const text = "BT (Synthetic contract amount) Tj ET"
     const objects = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>", `<< /Length ${text.length + 2} >>\nstream\n${text}\nendstream`]
     const bytes = Buffer.from("%PDF-1.4\n" + objects.map((body, i) => `${i+1} 0 obj\n${body}\nendobj\n`).join("") + "trailer\n<< /Root 1 0 R >>\n%%EOF\n")

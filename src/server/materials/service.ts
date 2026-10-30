@@ -114,6 +114,7 @@ export class MaterialService {
     await this.authorize(identity, projectId, "edit")
     const material = await this.deps.repository.findMaterial(projectId, materialId)
     if (!material || material.status !== "active") throw new BusinessError("NOT_FOUND", "找不到该材料。")
+    if (material.format === "image") throw new BusinessError("INVALID_SOURCE", "图片材料不进入文档解析。")
     const version = await this.deps.repository.latestVersion(projectId, materialId)
     if (!version) throw new BusinessError("NOT_FOUND", "找不到该材料的原件版本。")
     let bytes: Uint8Array
@@ -169,7 +170,8 @@ export class MaterialService {
     const material = await this.deps.repository.findMaterial(projectId, snapshot.materialId)
     const version = await this.deps.repository.findVersion(projectId, snapshot.materialId, snapshot.versionId)
     if (!material || material.status !== "active" || !version) throw new BusinessError("NOT_FOUND", "找不到该解析快照。")
-    return { snapshot, material, version }
+    const fragments = await this.deps.repository.fragments(snapshot.id)
+    return { snapshot, material, version, fragments }
   }
 
   async readSource(identity: AuthIdentity, ref: { projectId?: unknown; snapshotId?: unknown; fragmentId?: unknown }): Promise<SourceReadResult> {
@@ -198,6 +200,12 @@ export class MaterialService {
       store: this.deps.store,
       isReferenced: intent => this.deps.repository.objectReferenced(intent.objectKey),
       enqueueParse: this.deps.enqueueParse,
+      // Images have no parse step; recovery must commit their intent instead of
+      // re-enqueuing material-parse for a version that can never be parsed.
+      isParseRequired: async intent => {
+        const material = await this.deps.repository.findMaterial(intent.projectId, intent.materialId)
+        return material?.format !== "image"
+      },
     }, { limit })
     const residues = await this.deps.repository.openResidues(Math.max(1, Math.min(100, Math.trunc(limit))))
     let resolved = 0

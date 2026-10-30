@@ -1,13 +1,45 @@
 import { EditorAccessError } from "../documents/editor-access"
 
 export type MaterialSummary = {
-  id: string; title: string; format: "docx" | "pdf"; versionId: string
+  id: string; title: string; format: "docx" | "pdf" | "image"; versionId: string
   parseTaskId: string | null; parseState: string | null; snapshotId: string | null
   coverage: null | { status: "available" | "partial" | "failed"; textLength: number; pageCount: number | null; findings: { code: string; location: string }[] }
 }
 export type MaterialUpload = {
   title: string; sourceKind: "synthetic" | "authorized"; sourceReference: string
   purpose: string; retentionUntil: string; processingAuthorized: boolean
+}
+
+/** Immutable fragment of one parse snapshot; source picker for manual requirements/fields. */
+export type SnapshotFragment = {
+  id: string
+  kind: "paragraph" | "table"
+  order: number
+  page: number | null
+  paragraph: number | null
+  headingPath: string[]
+  tableIndex: number | null
+  row: number | null
+  column: number | null
+  text: string
+}
+
+/** GET …/materials/[materialId]/snapshots/[snapshotId] payload (round-five fragment read). */
+export type MaterialSnapshotRead = {
+  snapshot: {
+    id: string
+    projectId: string
+    materialId: string
+    versionId: string
+    revision: number
+    parser: string
+    parserVersion: string
+    coverage: MaterialSummary["coverage"]
+    createdAt: string
+  }
+  material: { id: string; projectId: string; title: string; format: MaterialSummary["format"]; status: "active" | "deleted" }
+  version: { id: string; projectId: string; materialId: string; sha256: string; size: number; contentType: string; createdAt: string }
+  fragments: SnapshotFragment[]
 }
 
 export function createProjectMaterialsClient(options: {
@@ -50,13 +82,20 @@ export function createProjectMaterialsClient(options: {
       const body = new FormData()
       body.set("file", file)
       body.set("metadata", JSON.stringify({ ...input, fileName: file.name }))
-      return json<{ parseTaskId: string }>("", signal, body)
+      return json<{ parseTaskId: string | null }>("", signal, body)
     },
     async content(material: MaterialSummary, signal?: AbortSignal) {
       const response = await request(`/${encodeURIComponent(material.id)}/versions/${encodeURIComponent(material.versionId)}/content`, signal)
       const blob = await response.blob()
       check(signal)
       return blob
+    },
+    /** Read one immutable parse snapshot including its document-order fragments. */
+    async snapshot(materialId: string, snapshotId: string, signal?: AbortSignal) {
+      const value = await json<MaterialSnapshotRead>(`/${encodeURIComponent(materialId)}/snapshots/${encodeURIComponent(snapshotId)}`, signal)
+      check(signal)
+      if (!value || !Array.isArray(value.fragments)) throw new EditorAccessError("FAILED", "材料快照读取失败，请重试。")
+      return value
     },
   }
 }

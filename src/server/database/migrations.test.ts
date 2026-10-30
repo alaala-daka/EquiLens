@@ -45,7 +45,7 @@ test("DB-01: original 0001 checksum and upgrade history remain immutable", async
   } finally { await db.close() }
 })
 
-test("DB-01: frozen 0004-0006 checksums prevent silent migration drift", async () => {
+test("DB-01: frozen 0004-0013 checksums prevent silent migration drift", async () => {
   const { createHash } = await import("node:crypto")
   const expected: Record<string, string> = {
     "0004": "e5cd6fdbc6534c3586f1bd5ffecdc3f0306d76c78a231181e3c599e5175cc185",
@@ -54,6 +54,10 @@ test("DB-01: frozen 0004-0006 checksums prevent silent migration drift", async (
     "0007": "e8ba3f8045d08bf2e195380882d060b50d887555870557d40686f0080d3dece9",
     "0008": "096250a9eab4a2c83dbb5fb71b9c2020e0333e352a8de050571bf3bbab319931",
     "0009": "4c089b83ade96dc63d45cb3a81bdbf24e80dd28a30aeabbe581dc2b989dffd59",
+    "0010": "3ad73b6d9013d5d21183e30fca67742a8c5baefe4b6c1c0d591736e91b45aed8",
+    "0011": "846cb0abee7b1282024d34e5c5f98405b0db5d5a443bbc4b24ba334505ccb64e",
+    "0012": "a3550648bf78ff0fc40e30eea4b00406d72d16661dda673fba799dfe8b27ee36",
+    "0013": "6f2de175b2f34dc2c0f2fa476e280d4985c609ea176031de881de6d92f2cad00",
   }
   for (const [id, digest] of Object.entries(expected)) {
     const migration = businessMigrations.find(row => row.id === id)

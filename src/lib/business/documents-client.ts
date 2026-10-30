@@ -6,10 +6,18 @@ export type ProjectDocument = {
   createdAt: string; updatedAt: string; materialId: string; materialVersionId: string
   copiedFrom: null | { documentId: string; versionId: string }
 }
+
 export type ProjectDocumentView = {
   document: ProjectDocument
   version: { id: string; documentId: string; parentId: string | null; sha256: string; createdAt: string; editorVersion: string }
   canEdit: boolean
+}
+
+const errorMessages: Record<number, string> = {
+  401: "登录状态已失效，请重新登录。",
+  403: "无权访问此文档。",
+  409: "文档版本已更新，请刷新后重试。",
+  503: "文档存储暂不可用，请稍后重试。",
 }
 
 export function createProjectDocumentsClient(options: {
@@ -42,7 +50,17 @@ export function createProjectDocumentsClient(options: {
     if (!response.ok) {
       const code = response.status === 401 ? "SESSION_INVALID" : response.status === 403 ? "ACCESS_DENIED"
         : response.status === 409 ? "CONFLICT" : response.status === 503 ? "UNAVAILABLE" : "FAILED"
-      const failure = new EditorAccessError(code, "文档操作失败，请重新确认访问权限。")
+      let message = errorMessages[response.status] ?? "文档操作失败，请重试。"
+      try {
+        const value = await response.json() as { error?: unknown }
+        const serverMessage = typeof value.error === "string" ? value.error
+          : typeof value.error === "object" && value.error !== null ? (value.error as { message?: unknown }).message : undefined
+        if (typeof serverMessage === "string" && serverMessage.trim()) message = serverMessage
+      } catch {
+        // Non-JSON failure bodies keep the status-specific message.
+      }
+      check(signal)
+      const failure = new EditorAccessError(code, message)
       if (code === "SESSION_INVALID" || code === "ACCESS_DENIED") options.onAccessInvalid?.(failure)
       throw failure
     }
