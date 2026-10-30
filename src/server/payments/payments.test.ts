@@ -21,7 +21,7 @@ function rows(): LedgerRow[] {
     { rowId: "due", nature: "净应付", amountFen: "80000000", taxBasis: "含税", basis: "本期", periodStart: "2026-10-01", periodEnd: "2026-10-31",
       dueDate: "2026-10-31", conditionMet: true, payer: "甲", payee: "乙", confirmation: "已确认", source: source() },
     { rowId: "paid", nature: "付款", amountFen: "30000000", taxBasis: "含税", basis: "本期", periodStart: "2026-10-01", periodEnd: "2026-10-31",
-      eventDate: "2026-10-30", payer: "甲", payee: "乙", confirmation: "已确认", source: source() },
+      eventDate: "2026-10-30", payer: "甲", payee: "乙", transactionId: "bank-001", confirmation: "已确认", source: source() },
   ]
 }
 function input(): LedgerInput { return { projectId: "project-a", contractId: "contract-1", cutoff: "2026-10-31", rows: rows(), facts: [], createdBy: "复核人甲", reason: "初始核对" } }
