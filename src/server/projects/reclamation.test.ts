@@ -17,6 +17,8 @@ import {
 } from "./reclamation"
 import { ProjectRepository } from "./repository"
 import { applyProjectSchema } from "./schema"
+import * as reclamation from "./reclamation"
+import { createProjectLifecycleRuntime, initializeProjectLifecycle, sweepProjectLifecycle } from "./lifecycle"
 
 const accountId = "00000000-0000-4000-8000-000000000001"
 const sha = (value: string) => value.repeat(64).slice(0, 64)
@@ -111,6 +113,63 @@ async function setupDatabase(): Promise<Database> {
   await applyProjectLifecycleSchema(database)
   return database
 }
+
+test("C7 recovery: startup resumes interrupted reclamation without repeating cleared objects or online takeover", async () => {
+  const database = await setupDatabase()
+  try {
+    const seeded = await seedProject(database, 8000)
+    const repository = new ProjectRepository(database)
+    await repository.delete(seeded.projectId, accountId)
+    const journal = memoryJournal()
+    let deletes = 0
+    const store = { ...seeded.store, async delete(key: string) { deletes++; await seeded.store.delete(key) } }
+    // Model a process crash after one object deletion and its durable checkpoint.
+    await database.transaction(async connection => {
+      await connection.query("UPDATE equilens_project_deletions SET state='reclaiming' WHERE project_id=$1", [seeded.projectId])
+      await connection.query("INSERT INTO equilens_project_reclamations(id,project_id,object_key,state,attempts,created_at,updated_at,cleared_at) VALUES($1,$2,$3,'cleared',1,$4,$5,$6)", [uuid(8099), seeded.projectId, seeded.keys[0], "2026-10-20T00:00:00.000Z", "2026-10-20T00:00:00.000Z", "2026-10-20T00:00:00.000Z"])
+    })
+    await seeded.store.delete(seeded.keys[0])
+    assert.equal((await reclaimProject(database, seeded.projectId, { journal, store })).state, "pending")
+    assert.equal(deletes, 0)
+    const blockedJournal = { ...journal, async appendIntent() { throw new Error("journal unavailable") } }
+    assert.equal((await reclaimProject(database, seeded.projectId, { journal: blockedJournal, store })).state, "pending")
+    assert.equal((await repository.deletionRecord(seeded.projectId))?.state, "reclaiming", "a caller without the claim cannot fail another execution")
+    assert.equal(await reclamation.recoverInterruptedProjectReclamations(database), 1)
+    assert.equal((await reclaimProject(database, seeded.projectId, { journal: blockedJournal, store })).error, "JOURNAL_UNAVAILABLE")
+    assert.equal(deletes, 0)
+    await database.transaction(connection => connection.query("UPDATE equilens_project_deletions SET state='reclaiming' WHERE project_id=$1", [seeded.projectId]))
+    const context = { database, journal, store, batch: 10, now: () => new Date("2026-10-20T00:00:00.000Z") }
+    const runtime = createProjectLifecycleRuntime({ initialize: () => initializeProjectLifecycle(context), sweep: () => sweepProjectLifecycle(context), schedule: () => () => {} })
+    try {
+      runtime.start()
+      await runtime.ready()
+      assert.equal((await repository.deletionRecord(seeded.projectId))?.state, "reclaimed")
+    } finally { await runtime.stop() }
+    assert.equal(deletes, seeded.keys.length - 1)
+    assert.equal(await reclamation.recoverInterruptedProjectReclamations(database), 0)
+  } finally { await database.close() }
+})
+
+test("C7 lifecycle: periodic sweeps reconcile a bounded backlog of more than 100 recordless deleted projects", async () => {
+  const database = await setupDatabase()
+  try {
+    const repository = new ProjectRepository(database)
+    await database.transaction(async connection => {
+      await connection.query("INSERT INTO equilens_auth_accounts(id,username,password_hash,enabled,revision,role) VALUES($1,'legacy-owner','x',1,1,'member')", [accountId])
+      for (let index = 0; index < 101; index++) {
+        await connection.query("INSERT INTO equilens_projects(id,name,source,source_reference,purpose,retention_until,status,created_by,created_at,updated_at,deleted_at,revision) VALUES($1,'legacy','synthetic','test','test','2099-12-31','deleted',$2,$3,$4,$5,1)", [uuid(9000 + index), accountId, "2026-10-20T00:00:00.000Z", "2026-10-20T00:00:00.000Z", "2026-10-20T00:00:00.000Z"])
+      }
+    })
+    const context = { database, journal: memoryJournal(), store: createSyntheticObjectStore(), now: () => new Date("2026-10-20T00:00:00.000Z"), batch: 10 }
+    await sweepProjectLifecycle(context)
+    assert.equal((await repository.listRecordlessDeleted()).length, 1)
+    assert.equal(context.journal.intents.length, 100)
+    await sweepProjectLifecycle(context)
+    assert.equal((await repository.listRecordlessDeleted()).length, 0)
+    assert.equal(context.journal.intents.length, 101)
+    assert.equal((await repository.deletionRecord(uuid(9100)))?.state, "reclaimed")
+  } finally { await database.close() }
+})
 
 function countRows(database: Database, table: string, projectId: string): Promise<number> {
   return database.transaction(async connection => Number((await connection.query(`SELECT COUNT(*) AS count FROM ${table} WHERE project_id=$1`, [projectId])).rows[0]?.count ?? 0))

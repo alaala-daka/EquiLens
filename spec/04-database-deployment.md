@@ -88,6 +88,9 @@ lifecycle ready 后才启动材料孤儿对象修复；生命周期就绪前项�
 `PROJECT_RECLAIM_BATCH`（默认 10、上限 100）；清扫间隔 `PROJECT_LIFECYCLE_INTERVAL_MS`
 （默认 3600000，最小 60000）。私有维护入口 `project-lifecycle`（inspect|reclaim|replay，
 离线恢复重放使用 `--offline-restored-database`），随保留工具构建以在无 tsx 的容器中运行。
+默认只读 replay 也必须执行与 apply 相同的日志结构及全批数据库冲突校验，但不修改项目、删除记录或对象。
+只读维护连接不创建 schema、不切换 SQLite 日志模式；缺少离线确认的 apply 在打开写连接前拒绝。
+中断的回收状态只在单实例启动或显式确认离线恢复时解除；小时清扫持续推进历史无记录删除项目。
 删除日志与匿名删除日志共用持久化助手：文件内容 fsync + 原子 rename 后逐级 fsync 目录；Windows 本地无法
 fsync 目录（EPERM/EISDIR），该平台按“目录 fsync 不支持”记录为平台缺项（不中断本地验收），Linux/生产必须
 使用真实逐级目录 fsync；Linux 专用持久性测试不得以 Windows 结果充当通过。

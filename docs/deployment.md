@@ -28,6 +28,9 @@ EquiLens 是一个 Next.js 应用，镜像使用 Node.js 24，目标平台为 `l
   还需对象版本保护或等效独立备份。
 - 备份必须在停止写入（quiesced）后取得；恢复使用**新**数据库/对象/日志路径，先核验摘要与删除日志重放，
   再启动服务。恢复后清除过期租约与旧执行令牌，不信任旧进程；旧备份不得让已删项目复活。
+- 恢复必须提供存在的最新日志目录（无意图时为空目录），保留备份已有意图并完成离线重放。
+  `--use-restored` 仅用于启动服务后的只读验证，不能清租约、注入任务或重放日志。
+  完整备份按数据库持久引用核对原件、历史文档和已完成导出；缺失对象或摘要不符时失败。
 - 恢复步骤、完整备份集工具（`scripts/backup-objects.mjs`、`scripts/restore-verify.mjs`、
   `scripts/seed-restore-project.mts`）与删除/保留边界见[运维说明](operations.md#完整项目备份集与恢复演练a5)。
 - 卷必须同时覆盖数据库、`PROJECT_DELETION_JOURNAL_DIR` 与（仅开发配置下的）`EQUILENS_DEV_OBJECT_STORE`；

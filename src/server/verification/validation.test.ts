@@ -56,9 +56,9 @@ function fieldValue(fieldKey: VerificationFieldKey, valueText: string, options: 
     label: fieldKey,
     valueText,
     normalizedValue: normalizeFieldValue(fieldKey, valueText),
-    origin: options.origin ?? "manual",
-    sourceSnapshotId: null,
-    sourceFragmentId: null,
+    origin: options.origin ?? "material_text",
+    sourceSnapshotId: "snapshot-certificate",
+    sourceFragmentId: "fragment-certificate",
     ocrRunId: null,
     confidence: options.confidence ?? null,
     revision: 1,
@@ -148,7 +148,7 @@ test("validation: a 待确认 requirement makes the result partial (saveable, ex
 test("validation: date requirements with asOfRule=task_as_of and no fixed date are valid (task asOf baseline)", async () => {
   const value = buildValue({
     requirements: [requirement({ field: "expiry_date", operator: "on_or_after", value: null, asOfRule: "task_as_of" })],
-    fieldValues: [fieldValue("expiry_date", "2028-12-31")],
+    fieldValues: [fieldValue("subject_name", bidder), fieldValue("expiry_date", "2028-12-31")],
   })
   assert.equal(value.items[0].materialCheck, "满足材料要求")
   const result = await validate(value)
@@ -296,7 +296,7 @@ test("validation: status/coverage/unfinished consistency and evidence presence a
   missingWithEvidence.items[0].evidence = [{
     fieldKey: "certificate_number", valueText: "(沪)JZ安许证字[2026]000001",
     normalizedValue: normalizeFieldValue("certificate_number", "(沪)JZ安许证字[2026]000001"),
-    origin: "manual", confidence: null, subjectKey: "enterprise", materialVersionId,
+    origin: "material_text", confidence: null, subjectKey: "enterprise", materialVersionId,
   }]
   assert.equal((await validate(missingWithEvidence)).status, "invalid")
 })

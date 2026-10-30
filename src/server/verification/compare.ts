@@ -117,6 +117,14 @@ function isLowConfidence(value: Evidence): boolean {
   return value.origin === "ocr" && value.confidence !== null && value.confidence < MIN_OCR_CONFIDENCE
 }
 
+function isUnconfirmed(value: Evidence): boolean {
+  return value.origin === "manual" || isLowConfidence(value)
+}
+
+function certificateKey(value: Evidence): string {
+  return `${value.materialVersionId}\u0000${value.subjectKey}`
+}
+
 /** A condition is usable only with a shared-vocabulary field and a known operator. */
 function validCondition(condition: RequirementCondition): boolean {
   if (!condition || typeof condition !== "object") return false
@@ -170,15 +178,16 @@ type ConditionOutcome = "satisfied" | "violated" | "missing" | "unconfirmed"
  * - a high-confidence matching value satisfies;
  * - otherwise, if only low-confidence OCR evidence would satisfy, the outcome is
  *   unconfirmed (字段待核实), never satisfied and never a hard conflict;
- * - a usable (high-confidence/manual) value that fails is a conflict;
+ * - a material-supported value that fails is a conflict;
+ * - unsupported manual statements stay unconfirmed;
  * - no value at all is missing.
  */
 function evaluateCondition(condition: RequirementCondition, evidence: Evidence[]): ConditionOutcome {
   const matching = evidence.filter(value => value.fieldKey === condition.field)
   if (!matching.length) return "missing"
-  if (matching.some(value => !isLowConfidence(value) && compareNormalized(condition, value.normalizedValue))) return "satisfied"
-  if (matching.some(value => isLowConfidence(value) && compareNormalized(condition, value.normalizedValue))) return "unconfirmed"
-  if (matching.some(value => !isLowConfidence(value))) return "violated"
+  if (matching.some(value => !isUnconfirmed(value) && compareNormalized(condition, value.normalizedValue))) return "satisfied"
+  if (matching.some(value => isUnconfirmed(value) && compareNormalized(condition, value.normalizedValue))) return "unconfirmed"
+  if (matching.some(value => !isUnconfirmed(value))) return "violated"
   return "unconfirmed"
 }
 
@@ -256,7 +265,7 @@ function missingDetail(conditions: RequirementCondition[]): string {
 }
 
 function unconfirmedDetail(conditions: RequirementCondition[]): string {
-  return `材料检查：待确认（${[...new Set(conditions.map(label))].join("、")} OCR 识别置信度不足，字段待核实）。`
+  return `材料检查：待确认（${[...new Set(conditions.map(label))].join("、")}缺少材料支持、OCR 识别置信度不足或证照关联不明确，字段待核实）。`
 }
 
 function violatedDetail(conditions: RequirementCondition[], evidence: Evidence[], asOf: string): string {
@@ -270,7 +279,7 @@ function violatedDetail(conditions: RequirementCondition[], evidence: Evidence[]
 
 type MaterialEvaluation = { status: MaterialCheckStatus; detail: string; evidence: Evidence[] }
 
-function evaluateMaterial(requirement: RequirementSnapshot, evidence: Evidence[], asOf: string): MaterialEvaluation {
+function evaluateScopedMaterial(requirement: RequirementSnapshot, evidence: Evidence[], asOf: string): MaterialEvaluation {
   const scope = evidence.filter(value => fieldsOf(requirement).includes(value.fieldKey))
   if (requirement.addendumState === "conflict") {
     return { status: "待确认", detail: "材料检查：待确认（补遗与原招标文件冲突，须人工确认适用版本）。", evidence: uniqueEvidence(scope) }
@@ -330,11 +339,49 @@ function evaluateMaterial(requirement: RequirementSnapshot, evidence: Evidence[]
   return { status: violatedClassification(violated), detail: violatedDetail(violated, evidence, asOf), evidence: uniqueEvidence(scope) }
 }
 
+/** A category key such as enterprise/person is not a real subject identity.
+ * Evaluate each certificate separately and bind its supported name to the
+ * obligation subject. Never combine independent certificate versions.
+ */
+function evaluateMaterial(requirement: RequirementSnapshot, evidence: Evidence[], asOf: string): MaterialEvaluation {
+  const relevant = evidence.filter(value => fieldsOf(requirement).includes(value.fieldKey))
+  const unresolved = !relevant.length || !conditionsOf(requirement, asOf) || requirement.addendumState === "conflict"
+  if (unresolved) {
+    const fallback = evaluateScopedMaterial(requirement, evidence, asOf)
+    const identifiers = evidence.filter(value => (IDENTIFIER_FIELDS as readonly string[]).includes(value.fieldKey))
+    return { ...fallback, evidence: uniqueEvidence([...fallback.evidence, ...identifiers]) }
+  }
+  const subject = normalizeFieldValue("subject_name", requirement.subject)
+  const keys = [...new Set(relevant.map(certificateKey))].sort(codeUnitCompare)
+  const evaluations: MaterialEvaluation[] = []
+  for (const key of keys) {
+    const own = evidence.filter(value => certificateKey(value) === key)
+    const names = own.filter(value => value.fieldKey === "subject_name" || value.fieldKey === "holder_name")
+    const supported = names.filter(value => !isUnconfirmed(value))
+    const bound = subject && supported.some(value => value.normalizedValue === subject)
+    if (!bound || supported.some(value => value.normalizedValue !== subject)) {
+      evaluations.push({
+        status: supported.length ? "字段冲突" : "待确认",
+        detail: supported.length ? "材料检查：字段冲突（证照主体与要求义务主体不一致）。" : `${unconfirmedDetail(conditionsOf(requirement, asOf)!)}缺少可核对的证照主体。`,
+        evidence: uniqueEvidence(own),
+      })
+      continue
+    }
+    const evaluated = evaluateScopedMaterial(requirement, own, asOf)
+    evaluations.push({ ...evaluated, evidence: uniqueEvidence([...evaluated.evidence, ...own.filter(value => (IDENTIFIER_FIELDS as readonly string[]).includes(value.fieldKey))]) })
+  }
+  for (const status of ["满足材料要求", "待确认", "日期不满足", "字段冲突", "材料缺失"] as const) {
+    const matched = evaluations.filter(value => value.status === status)
+    if (matched.length) return { ...matched[0], evidence: uniqueEvidence(matched.flatMap(value => value.evidence)) }
+  }
+  return evaluateScopedMaterial(requirement, [], asOf)
+}
+
 export function recordMatchesEvidence(record: ExternalRecordSnapshot, evidence: Evidence[]): boolean {
   const subject = normalizeFieldValue("subject_name", record.subject)
   const number = normalizeFieldValue("certificate_number", record.certificateNo)
   if (!subject || !number) return false
-  // Subject name and certificate number must belong to the SAME compared subject;
+  // Subject name and certificate number must belong to the SAME certificate and subject;
   // a name from one certificate plus a number from another is not a match.
   const bySubject = new Map<string, { names: string[]; numbers: string[] }>()
   const entry = (subjectKey: string) => {
@@ -343,9 +390,10 @@ export function recordMatchesEvidence(record: ExternalRecordSnapshot, evidence: 
     return existing
   }
   for (const value of evidence) {
-    if (value.fieldKey === "subject_name" || value.fieldKey === "holder_name") entry(value.subjectKey).names.push(value.normalizedValue)
+    if (isUnconfirmed(value)) continue
+    if (value.fieldKey === "subject_name" || value.fieldKey === "holder_name") entry(certificateKey(value)).names.push(value.normalizedValue)
     if (value.fieldKey === "certificate_number" || value.fieldKey === "unified_social_credit_code" || value.fieldKey === "holder_id_number") {
-      entry(value.subjectKey).numbers.push(value.normalizedValue)
+      entry(certificateKey(value)).numbers.push(value.normalizedValue)
     }
   }
   for (const group of bySubject.values()) {
@@ -431,13 +479,11 @@ function unfinishedOf(items: VerificationItem[]): VerificationUnfinished[] {
 export function compareRequirements(input: CompareInput): CompareOutput {
   const evidence = normalizedList(input.fieldValues)
   const records = Array.isArray(input.records) ? input.records : []
-  // Subject/certificate identifiers are always embedded with every item so an
-  // external-record match (and the validator re-derivation) can prove that the
-  // queried subject is the compared material subject.
-  const identifiers = evidence.filter(value => (IDENTIFIER_FIELDS as readonly string[]).includes(value.fieldKey))
+  // Each evaluation carries only its certificate's identifiers so external
+  // records cannot match a different certificate elsewhere in the input.
   const items: VerificationItem[] = input.requirements.map(requirement => {
     const material = evaluateMaterial(requirement, evidence, input.asOf)
-    const itemEvidence = uniqueEvidence([...material.evidence, ...identifiers])
+    const itemEvidence = material.evidence
     const externalCheck = mapExternalCheck(requirement.requirementId, requirement.subject, itemEvidence, records)
     const detail = `${material.detail}外部真实性：${externalCheck}（${externalReason[externalCheck]}）。`.slice(0, MAX_DETAIL)
     return {

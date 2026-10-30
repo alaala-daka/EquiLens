@@ -31,6 +31,8 @@ import { spawnSync } from "node:child_process"
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import { DatabaseSync } from "node:sqlite"
+import { fileURLToPath } from "node:url"
+import { verifyBackupReferences } from "./backup-references.mjs"
 
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex")
 const sha256File = path => sha256(readFileSync(path))
@@ -65,9 +67,11 @@ const journalTarget = options.journal ? resolve(String(options.journal)) : (useR
 const base = typeof options.base === "string" ? options.base.replace(/\/+$/, "") : null
 const username = typeof options.username === "string" ? options.username : "a5owner"
 const password = typeof options.password === "string" ? options.password : (process.env.A5_SEED_PASSWORD ?? "a5-restore-pass-123")
-const replayCli = typeof options["replay-cli"] === "string" ? resolve(String(options["replay-cli"])) : null
+const replayCli = useRestored ? null : (typeof options["replay-cli"] === "string" ? resolve(String(options["replay-cli"])) : fileURLToPath(new URL("./project-lifecycle.mts", import.meta.url)))
 const expectNoop = options["expect-noop"] === true
 const injectStaleAttempt = options["inject-stale-attempt"] === true
+if (useRestored && ["inject-stale-attempt", "replay-cli", "replay-args", "replay", "offline-restored-database"].some(key => key in options)) fail("--use-restored 仅允许只读验证，不能注入任务或重放日志")
+if (!useRestored && (typeof options["journal-source"] !== "string" || !existsSync(resolve(options["journal-source"])) || !statSync(resolve(options["journal-source"])).isDirectory())) fail("离线恢复必须显式提供存在的 --journal-source 最新删除日志目录（无意图时使用空目录）")
 if (!setRoot || !existsSync(setRoot)) fail("必须提供存在的 --set（backup-objects 输出目录）")
 if (!databasePath) fail("必须提供 --database（新恢复库路径）")
 if (!objectsRoot) fail("必须提供 --objects（新恢复对象目录）")
@@ -106,6 +110,7 @@ try {
   if (integrity.length !== 1 || integrity[0]?.integrity_check !== "ok") fail(`备份数据库 integrity_check 失败：${JSON.stringify(integrity)}`)
   const ledger = backupCheck.prepare("SELECT id,checksum FROM equilens_business_migrations ORDER BY id").all().map(row => ({ id: String(row.id), checksum: String(row.checksum) }))
   assert.deepEqual(ledger, manifest.migrationLedger, "备份库迁移账本与 manifest 不一致")
+  verifyBackupReferences(backupCheck, manifest.objects)
 } finally { backupCheck.close() }
 pass("backup set manifest/database sha256 + integrity_check + migration ledger")
 
@@ -172,6 +177,26 @@ if (journalSource && existsSync(journalSource)) {
   }
 }
 pass(`deletion journal source verified (${journalFiles.length} files, present=${journalSource ? existsSync(journalSource) : false})`)
+for (const file of manifest.journal.files) {
+  const latest = journalFiles.find(entry => entry.name === file.name)
+  if (!latest || latest.sha256 !== file.sha256) fail(`最新删除日志缺少或改变备份已有意图：${file.name}`)
+}
+
+function lifecycleCommand(targetDatabase, targetJournal, apply) {
+  if (!replayCli || !existsSync(replayCli)) fail("删除重放 CLI 不存在")
+  const tsxCli = fileURLToPath(new URL("../node_modules/tsx/dist/cli.mjs", import.meta.url))
+  const typed = /\.[cm]?ts$/.test(replayCli)
+  const args = ["replay", "--journal", targetJournal, ...(apply ? ["--apply", "--offline-restored-database"] : [])]
+  return spawnSync(process.execPath, [...(typed ? [tsxCli, replayCli] : [replayCli]), ...args], {
+    cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8", timeout: 120000,
+    env: { ...process.env, DATABASE_PROVIDER: "sqlite", SQLITE_PATH: targetDatabase, PROJECT_DELETION_JOURNAL_DIR: targetJournal,
+      NODE_ENV: "development", EQUILENS_SYNTHETIC_STORAGE: "1", EQUILENS_DEV_OBJECT_STORE: objectsRoot },
+  })
+}
+if (!useRestored) {
+  const preflight = lifecycleCommand(backupDatabase, journalSource, false)
+  if (preflight.status !== 0) fail("删除日志离线预检失败；未开始恢复")
+}
 
 // ---------------------------------------------------------------------------
 // 2) Restore to new paths (or verify an already-restored root) with digest checks
@@ -239,53 +264,55 @@ if (!useRestored) {
 // ---------------------------------------------------------------------------
 // 3) Stale lease / old execution token / in-flight attempt cleanup
 // ---------------------------------------------------------------------------
-const restored = new DatabaseSync(databasePath)
-const tableExists = name => restored.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").all(name).length > 0
-const columns = table => restored.prepare(`PRAGMA table_info(${table})`).all().map(row => String(row.name))
-let injectedTaskId = null
-try {
-  const checkpoint = checkpointData
-  if (injectStaleAttempt && tableExists("equilens_tasks")) {
-    const anyTask = restored.prepare("SELECT id FROM equilens_tasks ORDER BY id LIMIT 1").get()
-    if (!anyTask) fail("--inject-stale-attempt 需要至少一条任务行")
-    const id = "ffffffff-ffff-4fff-8fff-ffffffffffff"
-    restored.exec("DROP TABLE IF EXISTS a5_stale_task_fixture")
-    restored.exec("CREATE TABLE a5_stale_task_fixture AS SELECT * FROM equilens_tasks WHERE id='" + String(anyTask.id) + "'")
-    restored.prepare("UPDATE a5_stale_task_fixture SET id=?, state='running', stage='claimed', execution_token='stale-execution-token', lease_until='2099-01-01T00:00:00.000Z', operation_id='a5-stale-injection-' || id").run(id)
-    const cols = columns("equilens_tasks").map(column => `"${column}"`).join(",")
-    restored.exec(`INSERT INTO equilens_tasks(${cols}) SELECT ${cols} FROM a5_stale_task_fixture`)
-    restored.exec("DROP TABLE a5_stale_task_fixture")
-    injectedTaskId = id
-    pass("planted one synthetic running attempt with a stale lease/token")
+if (!useRestored) {
+  const restored = new DatabaseSync(databasePath)
+  const tableExists = name => restored.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").all(name).length > 0
+  const columns = table => restored.prepare(`PRAGMA table_info(${table})`).all().map(row => String(row.name))
+  let injectedTaskId = null
+  try {
+    const checkpoint = checkpointData
+    if (injectStaleAttempt && tableExists("equilens_tasks")) {
+      const anyTask = restored.prepare("SELECT id FROM equilens_tasks ORDER BY id LIMIT 1").get()
+      if (!anyTask) fail("--inject-stale-attempt 需要至少一条任务行")
+      const id = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+      restored.exec("DROP TABLE IF EXISTS a5_stale_task_fixture")
+      restored.exec("CREATE TABLE a5_stale_task_fixture AS SELECT * FROM equilens_tasks WHERE id='" + String(anyTask.id) + "'")
+      restored.prepare("UPDATE a5_stale_task_fixture SET id=?, state='running', stage='claimed', execution_token='stale-execution-token', lease_until='2099-01-01T00:00:00.000Z', operation_id='a5-stale-injection-' || id").run(id)
+      const cols = columns("equilens_tasks").map(column => `"${column}"`).join(",")
+      restored.exec(`INSERT INTO equilens_tasks(${cols}) SELECT ${cols} FROM a5_stale_task_fixture`)
+      restored.exec("DROP TABLE a5_stale_task_fixture")
+      injectedTaskId = id
+      pass("planted one synthetic running attempt with a stale lease/token")
+    }
+    const running = tableExists("equilens_tasks")
+      ? Number(restored.prepare("SELECT COUNT(*) AS n FROM equilens_tasks WHERE state='running'").get().n)
+      : 0
+    if (tableExists("equilens_tasks")) {
+      restored.prepare("UPDATE equilens_tasks SET state='queued', stage='recovered', execution_token=NULL, lease_until=NULL, updated_at=? WHERE state='running'").run(new Date().toISOString())
+    }
+    if (tableExists("equilens_task_runner")) {
+      restored.prepare("UPDATE equilens_task_runner SET token=NULL, lease_until=NULL WHERE token IS NOT NULL OR lease_until IS NOT NULL").run()
+    }
+    const stillRunning = tableExists("equilens_tasks")
+      ? Number(restored.prepare("SELECT COUNT(*) AS n FROM equilens_tasks WHERE state='running' OR execution_token IS NOT NULL").get().n)
+      : 0
+    const runnerTokens = tableExists("equilens_task_runner")
+      ? Number(restored.prepare("SELECT COUNT(*) AS n FROM equilens_task_runner WHERE token IS NOT NULL OR lease_until IS NOT NULL").get().n)
+      : 0
+    assert.equal(stillRunning, 0, "恢复后不得保留 running 任务或旧执行令牌")
+    assert.equal(runnerTokens, 0, "恢复后不得保留 全局执行租约令牌")
+    pass(`cleared ${running} in-flight attempt(s) + stale runner lease/token; in-flight tasks re-queued as recovered`)
+    if (checkpoint) {
+      const kept = checkpoint.project.id
+      const materialCount = tableExists("equilens_material_versions")
+        ? Number(restored.prepare("SELECT COUNT(*) AS n FROM equilens_material_versions WHERE project_id=?").get(kept).n) : 0
+      assert.ok(materialCount >= 2, "恢复后保留项目缺少材料版本")
+      pass("kept project data rows present after restore")
+    }
+  } finally {
+    if (injectedTaskId) restored.prepare("DELETE FROM equilens_tasks WHERE id=?").run(injectedTaskId)
+    restored.close()
   }
-  const running = tableExists("equilens_tasks")
-    ? Number(restored.prepare("SELECT COUNT(*) AS n FROM equilens_tasks WHERE state='running'").get().n)
-    : 0
-  if (tableExists("equilens_tasks")) {
-    restored.prepare("UPDATE equilens_tasks SET state='queued', stage='recovered', execution_token=NULL, lease_until=NULL, updated_at=? WHERE state='running'").run(new Date().toISOString())
-  }
-  if (tableExists("equilens_task_runner")) {
-    restored.prepare("UPDATE equilens_task_runner SET token=NULL, lease_until=NULL WHERE token IS NOT NULL OR lease_until IS NOT NULL").run()
-  }
-  const stillRunning = tableExists("equilens_tasks")
-    ? Number(restored.prepare("SELECT COUNT(*) AS n FROM equilens_tasks WHERE state='running' OR execution_token IS NOT NULL").get().n)
-    : 0
-  const runnerTokens = tableExists("equilens_task_runner")
-    ? Number(restored.prepare("SELECT COUNT(*) AS n FROM equilens_task_runner WHERE token IS NOT NULL OR lease_until IS NOT NULL").get().n)
-    : 0
-  assert.equal(stillRunning, 0, "恢复后不得保留 running 任务或旧执行令牌")
-  assert.equal(runnerTokens, 0, "恢复后不得保留 全局执行租约令牌")
-  pass(`cleared ${running} in-flight attempt(s) + stale runner lease/token; in-flight tasks re-queued as recovered`)
-  if (checkpoint) {
-    const kept = checkpoint.project.id
-    const materialCount = tableExists("equilens_material_versions")
-      ? Number(restored.prepare("SELECT COUNT(*) AS n FROM equilens_material_versions WHERE project_id=?").get(kept).n) : 0
-    assert.ok(materialCount >= 2, "恢复后保留项目缺少材料版本")
-    pass("kept project data rows present after restore")
-  }
-} finally {
-  if (injectedTaskId) restored.prepare("DELETE FROM equilens_tasks WHERE id=?").run(injectedTaskId)
-  restored.close()
 }
 
 // ---------------------------------------------------------------------------
@@ -293,29 +320,8 @@ try {
 // ---------------------------------------------------------------------------
 let replayResult = null
 if (replayCli && existsSync(replayCli)) {
-  const args = ["replay", "--apply", "--offline-restored-database"]
-  if (typeof options["replay-args"] === "string") args.push(...String(options["replay-args"]).split(" ").filter(Boolean))
   const begin = performance.now()
-  // .mts CLIs need the repo's tsx loader; .mjs CLIs run directly with Node.
-  const isTypeScriptCli = replayCli.endsWith(".mts") || replayCli.endsWith(".ts")
-  const tsxCli = join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs")
-  const command = isTypeScriptCli && existsSync(tsxCli) ? tsxCli : replayCli
-  const commandArgs = isTypeScriptCli && existsSync(tsxCli) ? [replayCli, ...args] : args
-  const child = spawnSync(process.execPath, [command, ...commandArgs], {
-    cwd: dirname(replayCli), encoding: "utf8",
-    env: {
-      ...process.env,
-      DATABASE_PROVIDER: "sqlite",
-      SQLITE_PATH: databasePath,
-      PROJECT_DELETION_JOURNAL_DIR: journalTarget,
-      // The C7 replay reclaims objects through the configured private store; for
-      // the local drill that is the same development file object store.
-      NODE_ENV: process.env.NODE_ENV ?? "development",
-      EQUILENS_SYNTHETIC_STORAGE: process.env.EQUILENS_SYNTHETIC_STORAGE ?? "1",
-      EQUILENS_DEV_OBJECT_STORE: objectsRoot,
-    },
-    timeout: 120000,
-  })
+  const child = lifecycleCommand(databasePath, journalTarget, true)
   replayResult = { exitCode: child.status, signal: child.signal, stdout: String(child.stdout ?? "").trim().slice(-4000), stderr: String(child.stderr ?? "").trim().slice(-4000), ms: Number((performance.now() - begin).toFixed(2)) }
   measurements.push({ scenario: "deletion-replay", ms: replayResult.ms })
   if (replayResult.exitCode !== 0) fail(`删除日志重放失败（exit ${replayResult.exitCode}）：${replayResult.stderr || replayResult.stdout}`)

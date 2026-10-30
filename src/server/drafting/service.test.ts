@@ -4,6 +4,7 @@ import { NextRequest } from "next/server"
 import { BusinessError } from "../projects/errors"
 import { resultHandler } from "../results/http"
 import { draftingTemplates, missingFields } from "../templates/catalog"
+import { DraftingService } from "./service"
 import { setupDrafting, specialtyFields, supplementaryFields, testAuthorizer, testIdentity, projectId } from "./drafting-test-fixtures"
 
 test("C5 input: save creates one immutable proposed-input version with template pin and no draft yet", async () => {
@@ -37,6 +38,9 @@ test("C5 input: operation ids are idempotent, stale bases conflict and versions 
     const second = await fixture.saveInput("specialty-subcontract-v1", specialtyFields({ "project.name": "二期项目" }), { operationId: "op-input-2", inputId: first.input.inputId, baseVersionId: first.input.versionId })
     assert.equal(second.input.version, 2)
     assert.equal(second.input.values["project.name"], "二期项目")
+    const repeatedUpdate = await fixture.saveInput("specialty-subcontract-v1", specialtyFields({ "project.name": "二期项目" }), { operationId: "op-input-2", inputId: first.input.inputId, baseVersionId: first.input.versionId })
+    assert.equal(repeatedUpdate.input.versionId, second.input.versionId)
+    await assert.rejects(fixture.saveInput("specialty-subcontract-v1", specialtyFields(), { operationId: "op-input-2", inputId: first.input.inputId, baseVersionId: first.input.versionId }), { code: "CONFLICT" })
     await assert.rejects(fixture.saveInput("specialty-subcontract-v1", specialtyFields(), { operationId: "op-input-3", inputId: first.input.inputId, baseVersionId: first.input.versionId }), { code: "CONFLICT" })
     const oldVersion = await fixture.repository.version(projectId, first.input.inputId, first.input.versionId)
     assert.ok(oldVersion)
@@ -45,6 +49,33 @@ test("C5 input: operation ids are idempotent, stale bases conflict and versions 
     assert.deepEqual(history.map(record => record.version), [2, 1])
   } finally { await fixture.close() }
 })
+
+for (const change of ["expired", "deleted", "revoked", "digest"] as const) {
+  test(`C5 original contract: generate and revise recheck ${change} material while preserving input history`, async () => {
+    const fixture = await setupDrafting()
+    let now = new Date("2026-10-29T00:00:00Z")
+    const service = new DraftingService({ repository: fixture.repository, materials: fixture.materials, results: fixture.results, readProjectRetention: async () => fixture.projectRetention, now: () => now })
+    try {
+      const material = await fixture.addMaterial(["原合同"], { retentionUntil: "2026-10-29" })
+      const saved = await fixture.saveInput("supplementary-agreement-v1", supplementaryFields(), { originalContract: { kind: "material", materialId: material.materialId, versionId: material.versionId } })
+      const input = { projectId, inputId: saved.input.inputId, versionId: saved.input.versionId, sha256: saved.input.sha256, operationId: "op-valid-original", reason: "生成草稿" }
+      const draft = await service.generateDraft(testIdentity, testAuthorizer, input)
+      const revised = await service.reviseDraft(testIdentity, testAuthorizer, { ...input, resultId: draft.resultId, baseVersionId: draft.versionId, operationId: "op-valid-revise" })
+      if (change === "expired") now = new Date("2026-10-30T00:00:00Z")
+      else await fixture.database.transaction(async connection => {
+        if (change === "deleted") await connection.query("UPDATE equilens_materials SET status='deleted' WHERE id=$1", [material.materialId])
+        if (change === "revoked") await connection.query("UPDATE equilens_materials SET processing_authorized=0 WHERE id=$1", [material.materialId])
+        if (change === "digest") await connection.query("UPDATE equilens_material_versions SET sha256=$1 WHERE id=$2", ["0".repeat(64), material.versionId])
+      })
+      const expected = { code: change === "expired" ? "INVALID_SOURCE" : change === "digest" ? "CONFLICT" : "INVALID_INPUT" }
+      await assert.rejects(service.generateDraft(testIdentity, testAuthorizer, { ...input, operationId: "op-invalid-original" }), expected)
+      await assert.rejects(service.reviseDraft(testIdentity, testAuthorizer, { ...input, resultId: draft.resultId, baseVersionId: revised.versionId, operationId: "op-invalid-revise" }), expected)
+      assert.equal((await fixture.repository.version(projectId, saved.input.inputId, saved.input.versionId))?.sha256, saved.input.sha256)
+      assert.equal((await fixture.results.get(testIdentity, testAuthorizer, projectId, draft.resultId, draft.versionId)).versionId, draft.versionId)
+      assert.equal((await fixture.results.list(testIdentity, testAuthorizer, projectId)).length, 1)
+    } finally { await fixture.close() }
+  })
+}
 
 test("C5 input: cross-project inputs and field allowlists are rejected", async () => {
   const fixture = await setupDrafting()

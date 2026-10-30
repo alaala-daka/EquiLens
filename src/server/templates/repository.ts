@@ -155,11 +155,22 @@ export class DraftingInputRepository {
   /**
    * Append one immutable version. Existing input: the caller must pin the
    * current version; a stale base is CONFLICT. New input: create the series and
-   * its version 1 atomically. Duplicate operation ids surface as a unique
-   * violation for the service layer to resolve idempotently.
+   * its version 1 atomically. Resolve retries before checking the current base;
+   * concurrent duplicate inserts still surface as a unique violation.
    */
   async append(input: AppendDraftingInputVersion): Promise<DraftingInputVersionRecord> {
     return this.database.transaction(async connection => {
+      const duplicate = (await connection.query(
+        `SELECT ${VERSION_COLUMNS} FROM equilens_drafting_input_versions WHERE project_id=$1 AND operation_id=$2`,
+        [input.projectId, input.operationId],
+      )).rows[0]
+      if (duplicate) {
+        const existing = versionRecord(duplicate)
+        if (existing.requestHash !== input.requestHash || (input.inputId && existing.inputId !== input.inputId)) {
+          throw new BusinessError("CONFLICT", "该提交标识已用于不同的拟约定输入。")
+        }
+        return existing
+      }
       const clock = this.clock()
       let inputId = input.inputId
       let nextVersion = 1

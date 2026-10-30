@@ -194,6 +194,18 @@ async function beginReclaim(database: Database, projectId: string): Promise<bool
   return transitionDeletion(database, "UPDATE equilens_project_deletions SET state='reclaiming' WHERE project_id=$1 AND state IN ('requested','failed')", [projectId])
 }
 
+/**
+ * Recover claims owned by the previous process, only before lifecycle readiness
+ * or during explicitly offline restore. Never call from an online retry: a
+ * concurrent reclaiming operation still owns its claim until it finishes.
+ * Object checkpoints are retained so recovery only retries pending objects.
+ */
+export async function recoverInterruptedProjectReclamations(database: Database): Promise<number> {
+  return database.transaction(async connection => (await connection.query(
+    "UPDATE equilens_project_deletions SET state='failed',attempts=attempts+1,last_error='INTERRUPTED' WHERE state='reclaiming'",
+  )).changes)
+}
+
 async function failReclaim(database: Database, projectId: string, error: string): Promise<boolean> {
   return transitionDeletion(database,
     "UPDATE equilens_project_deletions SET state='failed',attempts=attempts+1,last_error=$1 WHERE project_id=$2 AND state='reclaiming'",
@@ -270,8 +282,9 @@ export async function reclaimProject(database: Database, projectId: string, depe
   try {
     await dependencies.journal.appendIntent(intentFromRecord(record, project))
   } catch {
-    if (record.state === "reclaiming") await failReclaim(database, projectId, "JOURNAL_UNAVAILABLE")
-    return { state: record.state === "reclaiming" ? "failed" : "pending", attempts: record.attempts, deletedObjects: 0, skippedTables: [], error: "JOURNAL_UNAVAILABLE" }
+    // This caller has not acquired a claim yet. A concurrent owner must keep
+    // its state even when our independent journal check fails.
+    return { state: "pending", attempts: record.attempts, deletedObjects: 0, skippedTables: [], error: "JOURNAL_UNAVAILABLE" }
   }
 
   // 2) Conditional state transition requested/failed → reclaiming.
@@ -366,6 +379,20 @@ export type ReplayOutcome = {
   skippedTables: string[]
 }
 
+/** Same whole-batch preflight for read-only maintenance and actual replay. */
+export async function validateProjectDeletionReplay(database: Database, intents: ProjectDeletionIntent[]): Promise<void> {
+  validateProjectDeletionIntents(intents)
+  for (const intent of intents) {
+    const existing = await readDeletionRecord(database, intent.projectId)
+    if (existing) {
+      const conflict = existing.intentId !== intent.id || existing.reason !== intent.reason ||
+        existing.requestedBy !== intent.requestedBy || existing.requestedAt !== intent.requestedAt ||
+        (existing.retentionUntil !== null && existing.retentionUntil !== intent.retentionUntil)
+      if (conflict) throw new Error("Conflicting project deletion record")
+    }
+  }
+}
+
 /**
  * Offline-restore / startup replay of the durable deletion journal.
  *
@@ -384,20 +411,10 @@ export async function replayProjectDeletionIntents(
   intents: ProjectDeletionIntent[],
   dependencies: Omit<ReclaimDependencies, "journal"> & { reclaim?: boolean },
 ): Promise<ReplayOutcome> {
-  validateProjectDeletionIntents(intents)
+  await validateProjectDeletionReplay(database, intents)
   const now = dependencies.now ?? (() => new Date())
   const repository = new ProjectRepository(database, now)
   const outcomes: ReplayOutcome = { projects: intents.length, revoked: 0, tombstones: 0, reclaimed: 0, pending: 0, skippedTables: [] }
-  // Pre-validate all project/record conflicts against the restored database.
-  for (const intent of intents) {
-    const existing = await readDeletionRecord(database, intent.projectId)
-    if (existing) {
-      const conflict = existing.intentId !== intent.id || existing.reason !== intent.reason ||
-        existing.requestedBy !== intent.requestedBy || existing.requestedAt !== intent.requestedAt ||
-        (existing.retentionUntil !== null && existing.retentionUntil !== intent.retentionUntil)
-      if (conflict) throw new Error("Conflicting project deletion record")
-    }
-  }
   for (const intent of intents) {
     const project = await repository.findAny(intent.projectId)
     if (!project) {

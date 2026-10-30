@@ -20,8 +20,10 @@ import {
   projectReclaimBatch,
   reclaimPendingProjects,
   reclaimProject,
+  recoverInterruptedProjectReclamations,
   reconcileRecordlessDeletedProjects,
   replayProjectDeletionIntents,
+  validateProjectDeletionReplay,
   type ReclaimDependencies,
 } from "./reclamation"
 import { ProjectRepository } from "./repository"
@@ -196,6 +198,33 @@ function reclaimDependencies(context: ProjectLifecycleContext): ReclaimDependenc
   return { journal: context.journal, store: context.store, now: context.now, batch: context.batch }
 }
 
+/** One bounded periodic pass, including legacy deletions left by earlier passes. */
+export async function sweepProjectLifecycle(current: ProjectLifecycleContext): Promise<void> {
+  await reconcileRecordlessDeletedProjects(current.database, current.journal, { ...reclaimDependencies(current), actor: "system:reconcile" })
+  const repository = new ProjectRepository(current.database, current.now)
+  const expired = await repository.listExpiredAuthorized(current.now(), current.batch)
+  for (const project of expired) {
+    try {
+      const { record } = await repository.delete(project.id, "system:retention", "retention-expired")
+      await current.journal.appendIntent(journalIntentForRecord(record, project))
+      await reclaimProject(current.database, project.id, reclaimDependencies(current))
+    } catch {
+      console.error("Project retention deletion incomplete")
+    }
+  }
+  await reclaimPendingProjects(current.database, reclaimDependencies(current), current.batch)
+}
+
+/** Run only before this process accepts project requests or starts reclaim workers. */
+export async function initializeProjectLifecycle(current: ProjectLifecycleContext): Promise<void> {
+  const intents = await current.journal.readIntents()
+  await validateProjectDeletionReplay(current.database, intents)
+  await recoverInterruptedProjectReclamations(current.database)
+  if (intents.length) await replayProjectDeletionIntents(current.database, current.journal, intents, reclaimDependencies(current))
+  await reconcileRecordlessDeletedProjects(current.database, current.journal, { ...reclaimDependencies(current), actor: "system:reconcile" })
+  await reclaimPendingProjects(current.database, reclaimDependencies(current), current.batch)
+}
+
 /**
  * Production wiring: database/journal/object-store resolution happens inside the
  * background initialize, so nothing connects on import and startup stays
@@ -223,27 +252,11 @@ export function startProjectLifecycleRuntime(env: Record<string, string | undefi
       const current = await context()
       // Journal replay precedes project visibility: restored deleted projects are
       // revoked (never re-activated) before any business request can see them.
-      const intents = await current.journal.readIntents()
-      if (intents.length) await replayProjectDeletionIntents(current.database, current.journal, intents, reclaimDependencies(current))
-      await reconcileRecordlessDeletedProjects(current.database, current.journal, { ...reclaimDependencies(current), actor: "system:reconcile" })
-      await reclaimPendingProjects(current.database, reclaimDependencies(current), current.batch)
+      await initializeProjectLifecycle(current)
     },
     sweep: async () => {
       const current = await context()
-      const repository = new ProjectRepository(current.database, current.now)
-      const expired = await repository.listExpiredAuthorized(current.now(), current.batch)
-      for (const project of expired) {
-        try {
-          // Revocation + requested record first; access stays revoked even if the
-          // journal or object store later fails (retried by the next sweep).
-          const { record } = await repository.delete(project.id, "system:retention", "retention-expired")
-          await current.journal.appendIntent(journalIntentForRecord(record, project))
-          await reclaimProject(current.database, project.id, reclaimDependencies(current))
-        } catch {
-          console.error("Project retention deletion incomplete")
-        }
-      }
-      await reclaimPendingProjects(current.database, reclaimDependencies(current), current.batch)
+      await sweepProjectLifecycle(current)
     },
     schedule: (tick, ms) => { const timer = setInterval(tick, ms); timer.unref(); return () => clearInterval(timer) },
   })

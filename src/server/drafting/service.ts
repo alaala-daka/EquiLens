@@ -295,6 +295,16 @@ export class DraftingService {
     if (!version) statusError("NOT_FOUND", "找不到该拟约定输入版本。")
     if (version.sha256 !== input.sha256) statusError("CONFLICT", "拟约定输入版本摘要已变化，请重新读取。")
     const template = this.templateForPayload(version.payload)
+    const original = version.payload.originalContract
+    if (original) {
+      const resolved = await this.resolveOriginalContract(input.identity, input.authorize, input.projectId, template,
+        original.kind === "material"
+          ? { kind: "material", materialId: original.id, versionId: original.versionId }
+          : { kind: "result", resultId: original.id, versionId: original.versionId })
+      if (!resolved || resolved.sha256 !== original.sha256) statusError("CONFLICT", "原合同版本摘要已变化，请重新保存拟约定输入。")
+    } else {
+      await this.resolveOriginalContract(input.identity, input.authorize, input.projectId, template, null)
+    }
     const values = valuesFromPayload(version.payload)
     const render = renderDraft({
       template,

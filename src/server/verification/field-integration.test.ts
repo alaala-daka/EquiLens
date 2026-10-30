@@ -74,7 +74,7 @@ test("field integration: C4-OCR repository → comparison uses only current OCR 
   } finally { await fixture.close() }
 })
 
-test("field integration: a human correction supersedes the OCR original in comparisons while the original stays in history", async () => {
+test("field integration: unsupported human corrections stay pending while OCR originals stay in history", async () => {
   const { fixture, certificate, requirementSet } = await prepared()
   const ocr = new OcrRepository(fixture.database, () => new Date("2026-10-29T00:00:00.000Z"))
   try {
@@ -85,7 +85,7 @@ test("field integration: a human correction supersedes the OCR original in compa
     await ocr.insertFields([{
       projectId, materialId: certificate.materialId, versionId: certificate.versionId, subjectKey: "enterprise",
       fieldKey: "subject_name", valueText: "海联机电安装有限公司", origin: "manual",
-      sourceSnapshotId: certificate.snapshotId, sourceFragmentId: certificate.fragments[0]?.id ?? null,
+      sourceSnapshotId: null, sourceFragmentId: null,
       reason: "人工核对营业执照原件后更正", createdBy: accountId, idempotencyKey: "manual-correction-1",
     }])
     const current = await ocr.values(projectId, [certificate.versionId])
@@ -99,17 +99,17 @@ test("field integration: a human correction supersedes the OCR original in compa
     assert.equal(subjectHistory.length, 2)
     assert.ok(subjectHistory.some(record => record.valueText === "华建机电安装有限公司"))
     assert.ok(subjectHistory.some(record => record.supersededAt !== null))
-    // The comparison now sees the corrected (conflicting) value and never passes the requirement.
+    // The correction has no verified material origin and cannot establish a pass or a hard conflict.
     const job = await fixture.submitVerificationTask({
       requirementSet: { id: requirementSet.resultId, versionId: requirementSet.versionId, sha256: requirementSet.sha256 },
       materials: [{ materialVersionId: certificate.versionId, sha256: certificate.sha256 }],
     })
     const outcome = await createBidVerificationExecutor(fixture.executorDependencies({ fieldSource: ocr }))(job, executorContext())
-    assert.equal(outcome.outcome, "success")
+    assert.equal(outcome.outcome, "partial")
     await fixture.finishJob(job, outcome)
     const view = await fixture.results.get(testIdentity, testAuthorizer, projectId, (JSON.parse(String(outcome.resultSummary)) as { resultId: string }).resultId)
     const value = view.value as BidVerificationValue
-    assert.equal(value.items[0].materialCheck, "字段冲突")
+    assert.equal(value.items[0].materialCheck, "待确认")
     const evidence = value.items[0].evidence.find(entry => entry.fieldKey === "subject_name")
     assert.ok(evidence)
     assert.equal(evidence.origin, "manual")

@@ -104,6 +104,71 @@ const certificate = () => [
   field("expiry_date", "2028-12-31"),
 ]
 
+test("AC-04/19: unsupported manual statements remain pending", () => {
+  const target = requirement({ field: "certificate_kind", value: "安全生产许可证" })
+  const output = run([target], [field("subject_name", bidder), field("certificate_kind", "安全生产许可证", { origin: "manual" })])
+  assert.equal(output.items[0].materialCheck, "待确认")
+  assert.equal(output.status, "partial")
+})
+
+test("AC-04: a matching field on another company's certificate cannot satisfy the requirement", () => {
+  const target = requirement({ field: "certificate_kind", value: "安全生产许可证" })
+  const output = run([target], [field("subject_name", "乙公司"), field("certificate_kind", "安全生产许可证")])
+  assert.equal(output.items[0].materialCheck, "字段冲突")
+  const unknown = run([target], [field("certificate_kind", "安全生产许可证")])
+  assert.equal(unknown.items[0].materialCheck, "待确认")
+})
+
+test("AC-04: an expired license cannot borrow the expiry date of a different certificate", () => {
+  const target = requirement({ field: null, operator: null, value: null, group: { operator: "and", conditions: [
+    { field: "certificate_kind", operator: "eq", value: "安全生产许可证" },
+    { field: "expiry_date", operator: "on_or_after", value: asOf },
+  ] } })
+  const fields = [
+    field("subject_name", bidder, { versionId: "license" }),
+    field("certificate_kind", "安全生产许可证", { versionId: "license" }),
+    field("expiry_date", "2020-01-01", { versionId: "license" }),
+    field("subject_name", bidder, { versionId: "other" }),
+    field("certificate_kind", "营业执照", { versionId: "other" }),
+    field("expiry_date", "2030-01-01", { versionId: "other" }),
+  ]
+  assert.notEqual(run([target], fields).items[0].materialCheck, "满足材料要求")
+  assert.equal(run([target], fields.slice(0, 3).map(value => value.fieldKey === "expiry_date" ? { ...value, valueText: "2030-01-01" } : value)).items[0].materialCheck, "满足材料要求")
+})
+
+test("AC-04: OR alternatives still require a supported matching subject", () => {
+  const target = requirement({ field: null, operator: null, value: null, group: { operator: "or", conditions: [
+    { field: "certificate_level", operator: "eq", value: "一级" },
+    { field: "certificate_level", operator: "eq", value: "二级" },
+  ] } })
+  assert.equal(run([target], [field("subject_name", "乙公司"), field("certificate_level", "一级")]).items[0].materialCheck, "字段冲突")
+  assert.equal(run([target], [field("subject_name", bidder), field("certificate_level", "一级", { origin: "manual" })]).items[0].materialCheck, "待确认")
+  assert.equal(run([target], [field("subject_name", bidder), field("certificate_level", "二级")]).items[0].materialCheck, "满足材料要求")
+})
+
+test("AC-04: external records cannot mix certificate identifiers from different versions", () => {
+  const target = requirement({ field: "certificate_kind", value: "安全生产许可证" })
+  const fields = [
+    field("subject_name", bidder, { versionId: "license" }),
+    field("certificate_kind", "安全生产许可证", { versionId: "license" }),
+    field("certificate_number", "A-1", { versionId: "license" }),
+    field("subject_name", bidder, { versionId: "other" }),
+    field("certificate_number", "B-2", { versionId: "other" }),
+  ]
+  assert.equal(run([target], fields, [record(target.requirementId, { certificateNo: "B-2" })]).items[0].externalCheck, "记录冲突")
+  assert.equal(run([target], fields, [record(target.requirementId, { certificateNo: "A-1" })]).items[0].externalCheck, "人工查询记录匹配")
+  // Both certificates may qualify independently; a query for either one is valid.
+  const bothQualify = [...fields, field("certificate_kind", "安全生产许可证", { versionId: "other" })]
+  assert.equal(run([target], bothQualify, [record(target.requirementId, { certificateNo: "B-2" })]).items[0].externalCheck, "人工查询记录匹配")
+})
+
+test("AC-04: missing expiry evidence does not discard an independent certificate query", () => {
+  const target = requirement({ field: "expiry_date", operator: "on_or_after", value: asOf })
+  const result = run([target], [field("subject_name", bidder), field("certificate_number", "A-1")], [record(target.requirementId, { certificateNo: "A-1" })])
+  assert.equal(result.items[0].materialCheck, "材料缺失")
+  assert.equal(result.items[0].externalCheck, "人工查询记录匹配")
+})
+
 test("compare: a satisfied requirement is 满足材料要求, keeps external 未核验 and reports coverage", () => {
   const target = requirement()
   const output = run([target], certificate())
@@ -150,7 +215,7 @@ test("compare: subject and certificate-number mismatches are field conflicts and
 test("compare: date requirements use the explicit asOf day and report 日期不满足", () => {
   const before = requirement({ requirementId: "req-expiry-before", field: "expiry_date", operator: "on_or_after", value: "2027-12-31" })
   const satisfied = requirement({ requirementId: "req-expiry-after", field: "expiry_date", operator: "on_or_after", value: "2025-01-01" })
-  const output = run([before, satisfied], [field("expiry_date", "2026-06-30")])
+  const output = run([before, satisfied], [field("subject_name", bidder), field("expiry_date", "2026-06-30")])
   const failed = byId(output.items, before.requirementId)
   assert.equal(failed.materialCheck, "日期不满足")
   assert.match(failed.detail, /2026-10-29/)
@@ -167,21 +232,21 @@ test("compare: asOfRule=task_as_of with no fixed date compares the field date ag
     requirementId: "req-asof-expired", field: "expiry_date", operator: "on_or_after",
     value: null, asOfRule: "task_as_of",
   })
-  const satisfiedOutput = run([validAtAsOf], [field("expiry_date", "2028-12-31")])
+  const satisfiedOutput = run([validAtAsOf], [field("subject_name", bidder), field("expiry_date", "2028-12-31")])
   assert.equal(byId(satisfiedOutput.items, validAtAsOf.requirementId).materialCheck, "满足材料要求")
-  const expiredOutput = run([expiredBeforeAsOf], [field("expiry_date", "2025-01-01")])
+  const expiredOutput = run([expiredBeforeAsOf], [field("subject_name", bidder), field("expiry_date", "2025-01-01")])
   const expired = byId(expiredOutput.items, expiredBeforeAsOf.requirementId)
   assert.equal(expired.materialCheck, "日期不满足")
   assert.match(expired.detail, /判定日期 2026-10-29/)
   // A fixed date always wins over the task asOf; not_applicable with no fixed
   // date cannot be expressed and therefore falls to 待确认.
   const fixed = requirement({ requirementId: "req-fixed", field: "expiry_date", operator: "on_or_after", value: "2027-12-31" })
-  assert.equal(byId(run([fixed], [field("expiry_date", "2028-12-31")]).items, "req-fixed").materialCheck, "满足材料要求")
+  assert.equal(byId(run([fixed], [field("subject_name", bidder), field("expiry_date", "2028-12-31")]).items, "req-fixed").materialCheck, "满足材料要求")
   const notApplicable = requirement({
     requirementId: "req-not-applicable", field: "expiry_date", operator: "on_or_after",
     value: null, asOfRule: "not_applicable",
   })
-  assert.equal(byId(run([notApplicable], [field("expiry_date", "2028-12-31")]).items, "req-not-applicable").materialCheck, "待确认")
+  assert.equal(byId(run([notApplicable], [field("subject_name", bidder), field("expiry_date", "2028-12-31")]).items, "req-not-applicable").materialCheck, "待确认")
 })
 
 test("compare: single-level AND requires all conditions on the same subject; OR accepts any condition", () => {
@@ -194,7 +259,7 @@ test("compare: single-level AND requires all conditions on the same subject; OR 
     ] },
   })
   const orRequirement = requirement({
-    requirementId: "req-or",
+    requirementId: "req-or", subject: "张三",
     field: null, operator: null, value: null,
     group: { operator: "or", conditions: [
       { field: "certificate_level", operator: "eq", value: "一级" },
@@ -206,6 +271,7 @@ test("compare: single-level AND requires all conditions on the same subject; OR 
     field("unified_social_credit_code", "91310000MA1FL0XX2A", { subjectKey: "enterprise" }),
     field("subject_name", "华建机电安装有限公司上海分公司", { subjectKey: "branch" }),
     field("unified_social_credit_code", "91310000MA1FL0XX2B", { subjectKey: "branch" }),
+    field("holder_name", "张三", { subjectKey: "person:zhang" }),
     field("certificate_level", "二级", { subjectKey: "person:zhang" }),
   ]
   const satisfied = run([andRequirement, orRequirement], evidence)
@@ -217,7 +283,7 @@ test("compare: single-level AND requires all conditions on the same subject; OR 
     field("unified_social_credit_code", "91310000MA1FL0XX2A", { subjectKey: "enterprise" }),
   ])
   assert.equal(byId(mixed.items, "req-and").materialCheck, "待确认")
-  const unsatisfiedOr = run([orRequirement], [field("certificate_level", "三级", { subjectKey: "person:zhang" })])
+  const unsatisfiedOr = run([orRequirement], [field("holder_name", "张三", { subjectKey: "person:zhang" }), field("certificate_level", "三级", { subjectKey: "person:zhang" })])
   assert.equal(byId(unsatisfiedOr.items, "req-or").materialCheck, "字段冲突")
   const missingOr = run([orRequirement], [])
   assert.equal(byId(missingOr.items, "req-or").materialCheck, "材料缺失")
@@ -264,15 +330,15 @@ test("compare: low-confidence OCR evidence is 字段待核实 and never satisfie
     assert.match(item.detail, /字段待核实/)
     assert.equal(output.status, "partial")
   }
-  // At/above the threshold, or manual evidence, satisfies.
+  // At/above the OCR threshold satisfies; unsupported manual values remain pending.
   assert.equal(byId(run([target], [field("subject_name", bidder, { origin: "ocr", confidence: MIN_OCR_CONFIDENCE })]).items, "req-low").materialCheck, "满足材料要求")
   assert.equal(byId(run([target], [field("subject_name", bidder, { origin: "ocr", confidence: 90 })]).items, "req-low").materialCheck, "满足材料要求")
   // A low-confidence value that would be "wrong" is still 待核实, not a hard conflict.
   const wrong = run([target], [field("subject_name", "海联机电安装有限公司", { origin: "ocr", confidence: 40 })])
   assert.equal(byId(wrong.items, "req-low").materialCheck, "待确认")
-  // A trustworthy value that fails is a conflict; a trustworthy pass wins over low-confidence noise.
+  // Unsupported statements stay pending; a supported pass wins over low-confidence noise.
   const conflict = run([target], [field("subject_name", "海联机电安装有限公司", { origin: "manual" })])
-  assert.equal(byId(conflict.items, "req-low").materialCheck, "字段冲突")
+  assert.equal(byId(conflict.items, "req-low").materialCheck, "待确认")
   const mixed = run([target], [
     field("subject_name", "海联机电安装有限公司", { origin: "ocr", confidence: 30 }),
     field("subject_name", bidder, { origin: "ocr", confidence: 95 }),

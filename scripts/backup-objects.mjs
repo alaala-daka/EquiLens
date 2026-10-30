@@ -32,6 +32,7 @@ import { createHash } from "node:crypto"
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import { DatabaseSync } from "node:sqlite"
+import { verifyBackupReferences } from "./backup-references.mjs"
 
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex")
 const sha256File = path => sha256(readFileSync(path))
@@ -157,6 +158,8 @@ for (const file of objectFiles) {
   if (copiedNewline <= 0 || sha256(copied.subarray(copiedNewline + 1)) !== payloadSha) fail(`对象复制校验失败：${key}`)
   objectEntries.push({ key, sha256: payloadSha, size: payload.byteLength })
 }
+const referenceCheck = new DatabaseSync(databaseCopy, { readOnly: true })
+try { verifyBackupReferences(referenceCheck, objectEntries) } finally { referenceCheck.close() }
 
 // 4) Latest private deletion journal (metadata only; may not exist yet).
 const journalEntries = []

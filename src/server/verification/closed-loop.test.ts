@@ -63,7 +63,7 @@ async function runTask(
 }
 
 async function preparedLoop() {
-  const fixture = await setupVerification()
+  const fixture = await setupVerification({ fragments: ["投标人应具有有效的营业执照，并具备安全生产许可证。", "华建机电安装有限公司的安全生产许可证有效期不得早于2027-12-31。"] })
   const tender = fixture.materials[0]
   const certificate = fixture.materials[1]
   fixture.addFields(certificate, [
@@ -78,7 +78,7 @@ async function preparedLoop() {
     requirementId: "req-2",
     quote: tender.fragments[1].text,
     source: { snapshotId: tender.snapshotId, fragmentId: tender.fragments[1].id },
-    subject: "项目负责人",
+    subject: "华建机电安装有限公司",
     field: "expiry_date" as const,
     operator: "on_or_after" as const,
     value: "2027-12-31",

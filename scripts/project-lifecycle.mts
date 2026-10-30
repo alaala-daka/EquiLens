@@ -9,7 +9,9 @@ import {
   projectReclaimBatch,
   reclaimPendingProjects,
   reclaimProject,
+  recoverInterruptedProjectReclamations,
   replayProjectDeletionIntents,
+  validateProjectDeletionReplay,
 } from "../src/server/projects/reclamation"
 import { projectDeletionJournalDirectory } from "../src/server/projects/lifecycle"
 
@@ -56,6 +58,9 @@ async function main() {
       options.set(flag, value)
     }
   }
+  if (command === "replay" && options.get("--apply") === true && options.get("--offline-restored-database") !== true) {
+    throw new UsageError("Offline restored database confirmation required")
+  }
   if (!process.env.DATABASE_PROVIDER) throw new UsageError("Explicit database provider required")
   const config = databaseConfig()
   if (config.provider === "sqlite" && !process.env.SQLITE_PATH) throw new UsageError("Explicit SQLite path required")
@@ -63,7 +68,7 @@ async function main() {
     const path = resolve(config.path)
     if (!(await lstat(path)).isFile()) throw new UsageError("Existing database required")
   }
-  const database = await connectDatabase(config)
+  const database = await connectDatabase(config, { readOnly: options.get("--apply") !== true })
   try {
     if (command === "inspect") {
       const inspection = await inspectProjectLifecycle(database)
@@ -110,14 +115,15 @@ async function main() {
       return
     }
     // replay
-    if (apply && options.get("--offline-restored-database") !== true) throw new UsageError("Offline restored database confirmation required")
     const intents = await journal.readIntents()
+    await validateProjectDeletionReplay(database, intents)
     if (!apply) {
       // Validation-only: journal + restored database deletion records must agree.
       const inspection = await inspectProjectLifecycle(database)
       console.log(JSON.stringify({ projects: intents.length, applied: false, existingRecords: inspection.deletions.length }))
       return
     }
+    await recoverInterruptedProjectReclamations(database)
     const outcome = await replayProjectDeletionIntents(database, journal, intents, { store, now, batch })
     console.log(JSON.stringify({ ...outcome, applied: true }))
     if (outcome.pending) process.exitCode = 1

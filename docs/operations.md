@@ -61,18 +61,27 @@ node scripts/backup-objects.mjs --database <现库路径> --objects <dev-objects
 ```powershell
 node scripts/restore-verify.mjs --set <备份目录> --checkpoint <checkpoint.json> `
   --database <新库路径> --objects <新对象目录> --journal <新日志目录> `
-  --journal-source <最新删除日志目录> [--replay-cli scripts/project-lifecycle.mts] `
-  [--base http://127.0.0.1:3000]
+  --journal-source <最新删除日志目录>
 ```
 
 脚本校验备份集 manifest/数据库摘要/integrity_check/迁移账本、对象清单完整覆盖与逐字节摘要、复制到新路径
 并再次校验，然后把恢复库中 `running` 在途任务改为 `recovered` 排队并清除旧执行令牌与租约（不信任旧进程），
-可选调用 C7 `replay --offline-restored-database` 重放删除日志；随后核对已删项目墓碑/删除记录、所有含
+强制调用 C7 `replay --offline-restored-database` 重放删除日志；随后核对已删项目墓碑/删除记录、所有含
 `project_id` 表的行清理、删除项目对象键清理、保留项目数据与对象存在。给出 `--base` 时再按纯 HTTP 验证：
 登录、原件字节+sha256、解析来源逐字、成果/复核、导出下载 sha256、任务/预算历史、已删项目拒绝访问且列表不可见
 （对非成员统一 403、不暴露存在性；超级管理员等路径按 404 语义）与 no-store。
 `--use-restored` 用于验证已经启动服务的恢复根目录（数据库文件摘要因 WAL/会话写入变化时改为校验
 integrity_check 与冻结迁移账本）。
+该模式的直接数据库检查只读打开数据库，保留合法在途任务及租约，禁止与 `--replay-cli`、`--replay-args`、
+`--inject-stale-attempt` 等写入选项合用。在线 HTTP 验证须在离线恢复成功、启动服务后另行执行；
+HTTP 登录按正常认证流程创建会话，不重置业务任务或租约。
+离线恢复必须显式提供存在的最新日志源目录；确无删除意图时使用空目录。最新日志必须包含备份内每个既有意图，
+文件内容不得改变。脚本先完整预检日志结构和数据库冲突，再复制、清理旧执行令牌并执行离线重放；任何一步失败均不得启动服务。
+备份与恢复还按数据库核对材料原件、项目文档历史版本及已完成导出的对象引用、摘要和已登记大小；
+丢失对象、选错对象目录或摘要不符均拒绝完整备份/恢复。未完成上传和导出意图不要求对象已经存在。
+应用重启或明确离线重放会恢复上个进程中断的回收领取，保留逐对象清理检查点；普通在线重试不抢占当前执行。
+历史已删除但缺删除记录的项目由后续有界清扫持续补登记。维护 CLI 的默认 replay 只读预检也会拒绝数据库冲突，
+不初始化 schema 或改变备份库日志模式；实际应用重放仍须 `--apply --offline-restored-database`。
 
 **4. 迁移账本与卷式重启**
 

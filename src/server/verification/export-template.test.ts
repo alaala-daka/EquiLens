@@ -38,8 +38,8 @@ function requirement(overrides: Partial<RequirementSnapshot> = {}): RequirementS
 function fieldValue(fieldKey: "subject_name" | "unified_social_credit_code", valueText: string): VerificationFieldValue {
   return {
     materialId: "certificate-material", versionId: materialVersionId, subjectKey: "enterprise", fieldKey, label: fieldKey,
-    valueText, normalizedValue: normalizeFieldValue(fieldKey, valueText), origin: "manual", sourceSnapshotId: null,
-    sourceFragmentId: null, ocrRunId: null, confidence: null, revision: 1, updatedAt: "2026-10-29T00:00:00.000Z",
+    valueText, normalizedValue: normalizeFieldValue(fieldKey, valueText), origin: "material_text", sourceSnapshotId: "snapshot-certificate",
+    sourceFragmentId: "fragment-certificate", ocrRunId: null, confidence: null, revision: 1, updatedAt: "2026-10-29T00:00:00.000Z",
   }
 }
 
