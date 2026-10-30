@@ -22,6 +22,15 @@ const invalidCredentials = () => new AuthError("INVALID_CREDENTIALS", "账号或
 export class AuthService {
   constructor(private readonly db: Database, private readonly now: () => number = Date.now) {}
 
+  /** Current enabled principal only; does not create, renew or require a session. */
+  async account(id: string): Promise<Account | null> {
+    const { rows } = await this.db.transaction(c => c.query("SELECT id,username,role FROM equilens_auth_accounts WHERE id=$1 AND enabled=1", [id]))
+    if (!rows.length) return null
+    const row = rows[0]
+    if (row.role !== "member" && row.role !== "superadmin") throw new Error("Invalid stored account role")
+    return { id: String(row.id), username: String(row.username), role: row.role }
+  }
+
   async bootstrapAdmin(rawUsername: string, password: string): Promise<void> {
     const name = username(rawUsername)
     if (typeof password !== "string" || !validPassword(password)) throw new AuthError("INVALID_INPUT", "密码长度须为 12—128 个字符。")

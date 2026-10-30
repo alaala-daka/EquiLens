@@ -4,13 +4,13 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "scripts": {
-    "dev": "node scripts/build-docx-validator.mjs && node scripts/build-retention-tools.mjs && next dev",
-    "build": "node scripts/build-docx-validator.mjs && node scripts/build-retention-tools.mjs && next build && node scripts/prepare-standalone.mjs",
+    "dev": "node scripts/build-docx-validator.mjs && node scripts/build-material-parser.mjs && node scripts/build-retention-tools.mjs && next dev",
+    "build": "node scripts/build-docx-validator.mjs && node scripts/build-material-parser.mjs && node scripts/build-retention-tools.mjs && next build && node scripts/prepare-standalone.mjs",
     "start": "node .next/standalone/server.js",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "next typegen && tsc --noEmit",
     "check": "pnpm lint && pnpm typecheck",
-    "test": "node scripts/build-docx-validator.mjs && node scripts/build-retention-tools.mjs && tsx --test src/lib/auth/*.test.ts src/lib/business/*.test.ts src/lib/documents/*.test.ts src/lib/contract-reviews/*.test.ts src/server/database/*.test.ts src/server/auth/*.test.ts src/server/projects/*.test.ts src/server/tasks/*.test.ts src/server/materials/*.test.ts src/server/storage/*.test.ts src/server/documents/*.test.ts src/server/ai/*.test.ts src/server/facts/*.test.ts src/server/payments/*.test.ts src/server/evidence/*.test.ts src/server/document-agent/*.test.ts src/server/contract-review/tasks/*.test.ts tools/contract-review/tests/*.test.ts",
+    "test": "node scripts/build-docx-validator.mjs && node scripts/build-material-parser.mjs && node scripts/build-retention-tools.mjs && tsx --test src/components/business/platform/*.test.ts src/lib/auth/*.test.ts src/lib/business/*.test.ts src/lib/documents/*.test.ts src/lib/contract-reviews/*.test.ts src/server/database/*.test.ts src/server/auth/*.test.ts src/server/projects/*.test.ts src/server/tasks/*.test.ts src/server/results/*.test.ts src/server/exports/*.test.ts src/server/reviews/*.test.ts src/server/verification/*.test.ts src/server/knowledge/*.test.ts src/server/templates/*.test.ts src/server/drafting/*.test.ts src/server/materials/*.test.ts src/server/storage/*.test.ts src/server/documents/*.test.ts src/server/ai/*.test.ts src/server/facts/*.test.ts src/server/payments/*.test.ts src/server/evidence/*.test.ts src/server/document-agent/*.test.ts src/server/contract-review/tasks/*.test.ts tools/contract-review/tests/*.test.ts",
     "prepare:contract": "node scripts/build-docx-validator.mjs",
     "test:contract": "pnpm prepare:contract && tsx --test tools/contract-review/tests/*.test.ts",
     "review:contract": "pnpm prepare:contract && tsx tools/contract-review/src/cli.ts",
@@ -25,7 +25,11 @@
     "roundtrip:engine": "tsx scripts/roundtrip/engine-roundtrip.mts",
     "roundtrip:word": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/roundtrip/verify-word.ps1",
     "roundtrip": "pnpm fixtures:structures && pnpm roundtrip:engine && pnpm roundtrip:word",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "verify:c4": "tsx scripts/verify-bid-verification.mts",
+    "verify:r5": "tsx scripts/verify-round-five-browser.mts",
+    "knowledge:maintain": "tsx scripts/knowledge-maintenance.mts",
+    "maintain:lifecycle": "tsx scripts/project-lifecycle.mts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "3.0.75",

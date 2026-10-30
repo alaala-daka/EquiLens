@@ -13,6 +13,22 @@ export const MATERIAL_LIMITS = {
   maxFindings: 100,
 } as const
 
+/**
+ * Certificate image limits (spec 01 §9.3): 4 MiB, side <= 8192 px, <= 40 MP,
+ * PNG/JPEG by real content. Images never enter material-parse and never claim
+ * extracted full text.
+ */
+export const IMAGE_LIMITS = {
+  fileBytes: 4 * 1024 * 1024,
+  sidePixels: 8192,
+  totalPixels: 40_000_000,
+} as const
+
+/** One fixed product message for every image acceptance failure (never leaks internals). */
+export const IMAGE_MATERIAL_MESSAGE = "证照图片需为 4 MiB 以内的 PNG 或 JPEG，单边不超过 8192 像素且总像素不超过 4000 万。"
+
+export type ImageInspection = { format: "png" | "jpeg"; width: number; height: number }
+
 export class ParseFailure extends Error {
   constructor(readonly code: "INVALID_SOURCE" | "LIMIT_EXCEEDED", message: string, readonly coverage?: ParseCoverage) {
     super(message)
@@ -24,16 +40,76 @@ const failedCoverage = (findings: CoverageFinding[], pageCount: number | null): 
   status: "failed", findings, pageCount, textLength: 0,
 })
 
-export function detectMaterialFormat(bytes: Uint8Array): MaterialFormat | "image" | null {
+export function detectMaterialFormat(bytes: Uint8Array): MaterialFormat | null {
   if (bytes.length >= 5 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d) return "pdf"
   if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) return "docx"
   if (bytes.length >= 3 && ((bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) || (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47))) return "image"
   return null
 }
 
+const readUint32Be = (bytes: Uint8Array, offset: number): number =>
+  ((bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]) >>> 0
+const readUint16Be = (bytes: Uint8Array, offset: number): number => (bytes[offset] << 8) | bytes[offset + 1]
+
+/**
+ * Identify a PNG/JPEG image from its real bytes and read its pixel dimensions.
+ * Returns null when the content is not a structurally readable PNG/JPEG; the
+ * caller never trusts a file name or declared content type.
+ */
+export function inspectImage(bytes: Uint8Array): ImageInspection | null {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 3) return null
+  const png = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a
+  if (png) {
+    // Signature (8) + first chunk length (4) + "IHDR" (4) + 13-byte IHDR header.
+    if (bytes.length < 33) return null
+    if (String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]) !== "IHDR") return null
+    if (readUint32Be(bytes, 8) !== 13) return null
+    const width = readUint32Be(bytes, 16), height = readUint32Be(bytes, 20)
+    if (!width || !height) return null
+    return { format: "png", width, height }
+  }
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    let offset = 2
+    while (offset + 4 <= bytes.length) {
+      if (bytes[offset] !== 0xff) return null
+      // Fill bytes are legal before a marker.
+      while (bytes[offset + 1] === 0xff && offset + 2 < bytes.length) offset++
+      const marker = bytes[offset + 1]
+      offset += 2
+      if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd9)) continue
+      if (offset + 2 > bytes.length) return null
+      const length = readUint16Be(bytes, offset)
+      if (length < 2 || offset + length > bytes.length) return null
+      const isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc
+      if (isSof) {
+        if (length < 7) return null
+        const height = readUint16Be(bytes, offset + 3), width = readUint16Be(bytes, offset + 5)
+        if (!width || !height) return null
+        return { format: "jpeg", width, height }
+      }
+      offset += length
+    }
+    return null
+  }
+  return null
+}
+
+/** Validate an image material before it is stored: real PNG/JPEG content plus every limit. */
+export function parseImageMaterial(bytes: Uint8Array): ImageInspection {
+  if (!(bytes instanceof Uint8Array) || !bytes.length) throw new ParseFailure("INVALID_SOURCE", IMAGE_MATERIAL_MESSAGE)
+  if (bytes.byteLength > IMAGE_LIMITS.fileBytes) throw new ParseFailure("LIMIT_EXCEEDED", IMAGE_MATERIAL_MESSAGE)
+  const image = inspectImage(bytes)
+  if (!image) throw new ParseFailure("INVALID_SOURCE", IMAGE_MATERIAL_MESSAGE)
+  if (image.width > IMAGE_LIMITS.sidePixels || image.height > IMAGE_LIMITS.sidePixels ||
+    image.width * image.height > IMAGE_LIMITS.totalPixels) throw new ParseFailure("LIMIT_EXCEEDED", IMAGE_MATERIAL_MESSAGE)
+  return image
+}
+
 export function parseMaterial(input: { bytes: Uint8Array; format: MaterialFormat }): ParsedMaterial {
   if (!(input.bytes instanceof Uint8Array) || !input.bytes.length) throw new ParseFailure("INVALID_SOURCE", "文件内容为空。")
   if (input.bytes.byteLength > MATERIAL_LIMITS.fileBytes) throw new ParseFailure("LIMIT_EXCEEDED", "文件超过 20 MiB 限制，请缩减后重试。")
+  // Defensive: images have no parse snapshot and must never be parsed as documents.
+  if (input.format === "image") throw new ParseFailure("INVALID_SOURCE", "图片材料不进入文档解析。")
   return input.format === "docx" ? parseDocx(input.bytes) : parsePdf(input.bytes)
 }
 

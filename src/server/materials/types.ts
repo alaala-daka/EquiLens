@@ -1,4 +1,4 @@
-export type MaterialFormat = "docx" | "pdf"
+export type MaterialFormat = "docx" | "pdf" | "image"
 
 export type CoverageStatus = "available" | "partial" | "failed"
 export type CoverageFindingCode =
@@ -21,7 +21,7 @@ export type ParsedFragment = {
 }
 
 export type ParsedMaterial = {
-  format: MaterialFormat
+  format: "docx" | "pdf"
   parser: string
   parserVersion: string
   coverage: ParseCoverage
@@ -108,6 +108,8 @@ export type SourceFragmentRecord = {
 }
 
 export type MaterialSummary = {
+  parseTaskId: string | null
+  parseState: string | null
   id: string
   title: string
   fileName: string | null
@@ -132,6 +134,8 @@ export type ParseSnapshotReadResult = {
   snapshot: ParseSnapshotRecord
   material: MaterialRecord
   version: MaterialVersionRecord
+  /** Immutable fragments of this snapshot in document order (round-five C4-UI source picker). */
+  fragments: SourceFragmentRecord[]
 }
 
 export type SourceReadResult = {

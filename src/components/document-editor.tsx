@@ -36,6 +36,11 @@ export type DocumentEditorAccessProps = {
   access?: EditorAccess
   /** Workspace-level unsaved registry shared with facts, payments, results and task conditions. */
   unsaved?: UnsavedRegistry
+  canEdit?: boolean
+  blocked?: boolean
+  projectLabel?: string
+  roleLabel?: string
+  onReadOnlyDownload?: () => Promise<void>
 }
 
 // Connect React callbacks and the imperative canvas only after commit. The
@@ -106,10 +111,37 @@ const phaseLabel = {
 
 type LeaveTarget = "list" | "reload"
 
-export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnavailable, onDirtyChange, initialReviewTaskId, access: providedAccess, unsaved: providedUnsaved }: {
+type DocumentEditorProps = {
   opened: OpenDocument
   initialReviewTaskId?: string
-} & EditorCallbacks & DocumentEditorAccessProps) {
+} & EditorCallbacks & DocumentEditorAccessProps
+
+export function DocumentEditor(props: DocumentEditorProps) {
+  return props.canEdit === false ? <ReadOnlyDocument {...props} /> : <EditableDocument {...props} />
+}
+
+function ReadOnlyDocument({ opened, onBack, projectLabel, roleLabel, onReadOnlyDownload }: DocumentEditorProps) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  async function download() {
+    if (!onReadOnlyDownload || busy) return
+    setBusy(true)
+    try { await onReadOnlyDownload() } catch (failure) { setError(errorMessage(failure)) }
+    finally { setBusy(false) }
+  }
+  return <main className="flex min-h-svh flex-col">
+    <header className="flex min-h-16 flex-wrap items-center gap-2 border-b px-4 py-2">
+      <Button variant="ghost" onClick={onBack}><ArrowLeftIcon />文档</Button>
+      <span className="text-sm">{projectLabel}</span><Badge variant="outline">{roleLabel || "只读"}</Badge>
+      <h1 className="text-sm font-medium">{opened.document.title}</h1>
+      <Button variant="outline" disabled={busy || !onReadOnlyDownload} onClick={() => void download()}><DownloadIcon />下载 Word</Button>
+    </header>
+    {error && <p role="alert" className="p-4 text-sm text-destructive">{error}</p>}
+    <div className="p-4 text-sm text-muted-foreground">保存版本：{opened.revision.id}</div>
+  </main>
+}
+
+function EditableDocument({ blocked = false, opened, onSaved, onBack, onCopy, onSessionUnavailable, onDirtyChange, initialReviewTaskId, access: providedAccess, unsaved: providedUnsaved, projectLabel, roleLabel }: DocumentEditorProps) {
   const isMobile = useIsMobile()
   const [{ bridge, access, registry, session }] = useState(() => {
     const bridge = createEditorBridge()
@@ -284,6 +316,8 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
       <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
         <Button ref={backButton} variant="ghost" disabled={busy} onClick={event => requestLeave("list", event.currentTarget)}><ArrowLeftIcon />文档</Button>
         <Separator orientation="vertical" className="data-vertical:h-4" />
+        {projectLabel && <span className="text-sm">{projectLabel}</span>}
+        {roleLabel && <Badge variant="outline">{roleLabel}</Badge>}
         <Input ref={titleInput} aria-label="文档标题" className="min-w-0 flex-1 basis-full md:basis-auto md:max-w-sm" value={title} disabled={busy} inert={busy} onChange={event => session.editTitle(event.target.value)} placeholder="未命名文档" />
         <Badge variant="outline" role="status" aria-live="polite">{status}</Badge>
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
@@ -299,7 +333,7 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
             <h1 className="sr-only">文档编辑器</h1>
             <p id={keyboardHelpId} className="shrink-0 border-b px-4 py-2 text-xs text-muted-foreground">正文中按 F6 转到备注，Shift+F6 转到文档操作。</p>
             {engine === "loading" && <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background text-sm" aria-hidden="true"><LoaderCircleIcon className="size-4 animate-spin" />正在打开文档</div>}
-            <WordCanvas ref={attachCanvas} initialBlob={load.blob} reloadToken={load.token} onStateChange={engineChanged} onChange={markChanged} keyboardHelpId={keyboardHelpId} keyboardBlocked={busy || !!leaveTarget} controlsDisabled={!ready || busy || !!leaveTarget} onFocusShortcut={destination => {
+            <WordCanvas readOnly={blocked} ref={attachCanvas} initialBlob={load.blob} reloadToken={load.token} onStateChange={engineChanged} onChange={markChanged} keyboardHelpId={keyboardHelpId} keyboardBlocked={busy || !!leaveTarget} controlsDisabled={!ready || busy || !!leaveTarget} onFocusShortcut={destination => {
               if (destination === "agent") {
                 setAgentTab("notes")
                 requestAnimationFrame(() => agentInput.current?.focus())
@@ -322,7 +356,7 @@ export function DocumentEditor({ opened, onSaved, onBack, onCopy, onSessionUnava
               <Tabs value={agentTab} onValueChange={setAgentTab} className="flex-1">
                 <TabsList className="mx-4 mt-3"><TabsTrigger value="review">业务处理</TabsTrigger><TabsTrigger value="notes">备注</TabsTrigger></TabsList>
                 <TabsContent value="review" forceMount hidden={agentTab !== "review"}>
-                  <ContractReviewPanel key={state.saved.document.id + ":" + state.saved.revision.id} documentId={state.saved.document.id} revisionId={state.saved.revision.id} dirty={dirty} busy={busy || !ready || conflict} initialTaskId={initialReviewTaskId} onSessionUnavailable={onSessionUnavailable} onLocateCitation={locateCitation} />
+                  {!providedAccess && <ContractReviewPanel key={state.saved.document.id + ":" + state.saved.revision.id} documentId={state.saved.document.id} revisionId={state.saved.revision.id} dirty={dirty} busy={busy || !ready || conflict} initialTaskId={initialReviewTaskId} onSessionUnavailable={onSessionUnavailable} onLocateCitation={locateCitation} />}
                 </TabsContent>
                 <TabsContent value="notes" forceMount hidden={agentTab !== "notes"} className="p-4" inert={busy}><InputGroup>
                   <InputGroupTextarea ref={agentInput} aria-label="文档备注" placeholder="输入备注…" value={prompt} disabled={busy} onChange={event => session.editPrompt(event.target.value)} />

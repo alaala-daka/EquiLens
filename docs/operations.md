@@ -13,6 +13,113 @@ docker compose exec app node scripts/backup-sqlite.mjs /data/backups/equilens-<t
 恢复时停止全部应用实例，保留现库及其 WAL/SHM 文件，将一致性备份放到新的数据库路径；按下文重放最新删除日志成功后才能启动并验证下载。
 会话 cookie 是文件访问凭据，数据库恢复不能恢复已丢失的浏览器 cookie。
 
+**只备份数据库不够。** 项目原件、核验证明、导出文件与删除日志不在 SQLite 中；只恢复数据库会得到
+无法打开原件/下载导出的项目。完整备份集必须同时包含数据库、私有对象字节清单与摘要、删除日志、
+应用/模板版本、非敏感配置名清单与密钥恢复说明，见下文「完整项目备份集与恢复演练」。
+
+## 完整项目备份集与恢复演练（A5）
+
+本节是本地可执行的验收口径，**不等于**真实 OBS/GaussDB/Linux 容器/异地备份验收。完整项目恢复要求
+停止写入后取得一致备份，恢复前重放删除日志，恢复后清除过期租约与旧执行令牌，不信任旧进程。
+
+**本地开发配置**（源码环境；容器内使用等价的生成入口另见各命令说明）：
+
+```powershell
+$env:DATABASE_PROVIDER = 'sqlite'
+$env:SQLITE_PATH = 'C:\EquiLensData\equilens.sqlite'
+$env:EQUILENS_SYNTHETIC_STORAGE = '1'          # 仅开发对象存储；生产 fail-closed
+$env:EQUILENS_DEV_OBJECT_STORE = 'C:\EquiLensData\dev-objects'
+$env:PROJECT_DELETION_JOURNAL_DIR = 'C:\EquiLensData\project-deletion-journal'
+$env:APP_ORIGIN = 'http://127.0.0.1:3000'
+```
+
+**1. 合成完整项目 seed（可复现，仅合成数据）**
+
+```powershell
+pnpm exec tsx scripts/seed-restore-project.mts seed --root "$env:TEMP\equilens-r6-a5\seed"
+```
+
+生成新根目录（数据库 `equilens.sqlite`、`objects/`、`deletion-journal/` 与私有 `checkpoint.json`）：
+账号/成员、项目与预算、已解析材料、C4 字段+要求集+确定性比较成果（真实执行器运行、校验有效、已复核）、
+C5 拟约定输入+待核对草稿+版本化 Word 导出、任务历史，以及第二个用于删除重放演练的项目。
+命令拒绝覆盖已存在目录；密码只经 `A5_SEED_PASSWORD`/参数传入，不写入清单。
+
+**2. 一致备份集（必须停止应用写入）**
+
+```powershell
+node scripts/backup-objects.mjs --database <现库路径> --objects <dev-objects 目录> `
+  --journal <删除日志目录> --out <新的备份目录> --app-version <提交号>
+```
+
+工具先尝试数据库 EXCLUSIVE 写锁；仍有写入时直接失败（quiesced 备份要求），随后用 SQLite 一致性快照
+生成 `database.sqlite`，并逐个对象校验/复制（对象头 SHA-256 与实际字节、对象键与路径一致），复制最新
+删除日志，写出 `manifest.json`（version/root/objects[key,sha256,size]/database/journal/app/模板版本/
+配置名清单/密钥恢复说明/迁移账本）。备份集不得留在同机卷作为唯一副本。
+
+**3. 恢复到新根目录并验证**
+
+```powershell
+node scripts/restore-verify.mjs --set <备份目录> --checkpoint <checkpoint.json> `
+  --database <新库路径> --objects <新对象目录> --journal <新日志目录> `
+  --journal-source <最新删除日志目录>
+```
+
+脚本校验备份集 manifest/数据库摘要/integrity_check/迁移账本、对象清单完整覆盖与逐字节摘要、复制到新路径
+并再次校验，然后把恢复库中 `running` 在途任务改为 `recovered` 排队并清除旧执行令牌与租约（不信任旧进程），
+强制调用 C7 `replay --offline-restored-database` 重放删除日志；随后核对已删项目墓碑/删除记录、所有含
+`project_id` 表的行清理、删除项目对象键清理、保留项目数据与对象存在。给出 `--base` 时再按纯 HTTP 验证：
+登录、原件字节+sha256、解析来源逐字、成果/复核、导出下载 sha256、任务/预算历史、已删项目拒绝访问且列表不可见
+（对非成员统一 403、不暴露存在性；超级管理员等路径按 404 语义）与 no-store。
+`--use-restored` 用于验证已经启动服务的恢复根目录（数据库文件摘要因 WAL/会话写入变化时改为校验
+integrity_check 与冻结迁移账本）。
+该模式的直接数据库检查只读打开数据库，保留合法在途任务及租约，禁止与 `--replay-cli`、`--replay-args`、
+`--inject-stale-attempt` 等写入选项合用。在线 HTTP 验证须在离线恢复成功、启动服务后另行执行；
+HTTP 登录按正常认证流程创建会话，不重置业务任务或租约。
+离线恢复必须显式提供存在的最新日志源目录；确无删除意图时使用空目录。最新日志必须包含备份内每个既有意图，
+文件内容不得改变。脚本先完整预检日志结构和数据库冲突，再复制、清理旧执行令牌并执行离线重放；任何一步失败均不得启动服务。
+备份与恢复还按数据库核对材料原件、项目文档历史版本及已完成导出的对象引用、摘要和已登记大小；
+丢失对象、选错对象目录或摘要不符均拒绝完整备份/恢复。未完成上传和导出意图不要求对象已经存在。
+应用重启或明确离线重放会恢复上个进程中断的回收领取，保留逐对象清理检查点；普通在线重试不抢占当前执行。
+历史已删除但缺删除记录的项目由后续有界清扫持续补登记。维护 CLI 的默认 replay 只读预检也会拒绝数据库冲突，
+不初始化 schema 或改变备份库日志模式；实际应用重放仍须 `--apply --offline-restored-database`。
+
+**4. 迁移账本与卷式重启**
+
+```powershell
+pnpm exec tsx scripts/seed-restore-project.mts migrations --out <migration-reference.json>
+node scripts/smoke-database.mjs --verify-migrations <migration-reference.json> --database <库路径>
+node scripts/smoke-database.mjs --integrity --database <库路径>
+node scripts/smoke-database.mjs http://127.0.0.1:3000 <checkpoint>          # 首次，写入私有快照
+node scripts/smoke-database.mjs http://127.0.0.1:3000 <checkpoint> --verify # 卷式重启后
+```
+
+迁移验证覆盖空库应用、重复启动、0001 与 0004—0012 冻结摘要、0013 存在性、历史漂移/编号缺口拒绝与失败回滚；
+`--verify` 跨进程重启时还校验数据库 integrity_check/外键。
+
+**5. 删除/保留/重放边界**
+
+- 删除先撤销在线访问（每请求按 `retention_until`/删除状态判定），同一事务写状态与删除记录，再落删除日志、
+  清对象、按序清行；日志不可写时不删对象且保持撤销；项目行保留为墓碑，永不物理删除。
+- 恢复旧备份后必须重放**截至恢复时刻的最新删除日志**：已删项目保持不可见（非成员统一拒绝、不暴露存在性），不得复活；删除后取得的备份重放应为
+  no-op。缺少日志、损坏、冲突或仍提供服务时不得启动。
+- 合成项目不随保留期自动清扫（需显式删除；归档入口未交付）；真实授权项目到期由清扫进入删除流程。
+- 删除状态 `GET /api/projects/[id]/deletion` 只对删除请求人/超级管理员（以及成员行未清理时的当前管理员）可读，
+  只返回状态/尝试/时间，不返回项目内容。
+
+**6. 双层容量 harness（合成，不承诺 SLA）**
+
+```powershell
+pnpm exec tsx scripts/seed-restore-project.mts capacity-repository
+pnpm exec tsx scripts/seed-restore-project.mts capacity-http --database <库> --checkpoint <checkpoint> --base http://127.0.0.1:3000
+```
+
+仓储层用注入时钟验证生产限额（每账号 2 个未终结任务、全局队列 10、幂等/409/429、单执行租约与过期恢复）；
+HTTP 层由 CLI 创建 5 个合成账号并记录并行请求耗时/错误/用量。两者都是本机合成测量，不是生产容量或 SLA 证明。
+
+**边界**：本节命令在 Windows + SQLite + 开发文件对象存储上验证；真实 OBS 私有桶/版本保护、容器卷与
+Linux fsync、GaussDB 真机、GitHub CI 运行、公网 HTTPS、ECS 外异地备份与 24 小时备份窗口仍属外部缺项。
+备份耗时与损失窗口只报告本次实测值，不代表线上恢复目标。
+
 ## 匿名资料维护与恢复
 
 期限和通知由运维负责人登记，遵循[数据库规格](../spec/04-database-deployment.md#匿名资料的保留与清理)。

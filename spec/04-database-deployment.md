@@ -20,6 +20,15 @@
 SQLite 使用 Node.js 24 的 `node:sqlite`，GaussDB 使用华为维护的 `gaussdb-node`，不引入 ORM。
 GaussDB 的目标是集中式实例，版本、兼容模式和真实服务的往返验收独立记录；本机 SQLite 测试不能替代它。
 
+## 开发私有对象存储
+
+真实 OBS 未接入时生产保持 fail-closed。仅 `NODE_ENV=development` 且显式设置 `EQUILENS_SYNTHETIC_STORAGE=1`
+时启用开发对象存储；默认写入 `data/dev-objects/`，可用 `EQUILENS_DEV_OBJECT_STORE` 指定其他本地目录。
+对象按现有不可变对象键落盘（先写临时文件再以原子链接提交，读取时校验长度与 SHA-256），只允许服务端按项目授权读取，
+不提供公开 URL。该目录与数据库同属本地开发数据，必须排除在版本库之外；进程重启不丢失对象字节。
+此适配器不实现 OBS 的桶权限、版本、生命周期、跨实例一致性或备份语义，不能作为 OBS 验收证据；
+删除本地目录或更换路径会使既有记录失去对象字节，需同步清理对应材料、文档版本与导出记录。
+
 ## 数据与权限
 
 - 新建、导入、读取和保存文档使用同源服务端 API。持久化元数据、不可变 DOCX 版本、导入原件及来源关系。
@@ -54,6 +63,37 @@ GaussDB 的目标是集中式实例，版本、兼容模式和真实服务的往
 共享仓储默认使用现有 SELECT 读取和条件 UPDATE 的短事务模式；扩展 RETURNING/CTE 等查询返回能力前，
 先对两个 provider 验证连接接口，不假定 SQLite 的 SQL 分类与 GaussDB 行返回行为一致。
 首个项目数据库闭环在真实 GaussDB 版本/模式上验收迁移、事务、约束、冲突、精确金额和连接安全；SQLite 结果不可替代。
+
+第四轮迁移分配：C4 投标材料核验使用 0010（OCR 运行、证照字段插入式历史、外部核验记录）；0011—0013
+是后续 C6/C5/C7 的规划意图，不是账本条目，落地时取当时下一个连续编号并在该轮计划登记。原第二轮计划中
+0010/0011 的 B1a/B3a 预留未注册，已由第四轮计划重新分配；B 线实施时按当时连续编号追加，并把运行时
+建表迁入迁移账本。新增表只用 `CREATE TABLE`/`CREATE INDEX`，不在 SQL 中依赖 CHECK、部分索引、CTE
+或 RETURNING；枚举与状态转换由服务层校验，并断言条件更新恰好影响一行。OCR 运行/字段与核验记录是
+项目私有数据，纳入项目删除与恢复清单；知识/规则发布版本是全局数据，不随项目删除。
+
+第五轮迁移分配：C6 已发布知识/规则使用 0011（`equilens_publications`、`equilens_publication_versions`，
+含 `UNIQUE(kind,artifact_id)`、`UNIQUE(publication_id,version)`；核对人/核对时间/证据可空以支持草拟与
+待核对，发布转换时强制非空）；C5 拟约定输入使用 0012（`equilens_drafting_inputs`、
+`equilens_drafting_input_versions`，含 `UNIQUE(project_id,operation_id)`）。0013 是 C7 生命周期的规划意图，
+落地时取当时下一连续编号并在该轮计划登记。发布版本为全局数据，不随项目删除，C7 恢复清单登记但不回滚；
+拟约定输入与文书成果为项目私有数据，进入项目删除与恢复清单。唯一约束沿用既有迁移已采用的 `UNIQUE`
+语法；重复键按既有 provider 兼容模式处理。
+
+第六轮迁移分配：C7 项目生命周期使用 0013（`equilens_project_deletions` 删除记录/墓碑，
+`equilens_project_reclamations` 对象回收记录；均只 CREATE TABLE/INDEX，条件更新断言一行，
+不假设 FK/CHECK）。项目生命周期运行时由显式 Node 生命周期启动，**启动不阻塞健康接口**，后台链在
+lifecycle ready 后才启动材料孤儿对象修复；生命周期就绪前项目业务入口（`requireProjectAccess`、
+`authorizeTaskExecution`、项目列表/创建）返回 503，健康接口可用且不表示业务就绪。删除日志目录
+`PROJECT_DELETION_JOURNAL_DIR`（SQLite 默认数据库旁，GaussDB 必须显式）；回收批大小
+`PROJECT_RECLAIM_BATCH`（默认 10、上限 100）；清扫间隔 `PROJECT_LIFECYCLE_INTERVAL_MS`
+（默认 3600000，最小 60000）。私有维护入口 `project-lifecycle`（inspect|reclaim|replay，
+离线恢复重放使用 `--offline-restored-database`），随保留工具构建以在无 tsx 的容器中运行。
+默认只读 replay 也必须执行与 apply 相同的日志结构及全批数据库冲突校验，但不修改项目、删除记录或对象。
+只读维护连接不创建 schema、不切换 SQLite 日志模式；缺少离线确认的 apply 在打开写连接前拒绝。
+中断的回收状态只在单实例启动或显式确认离线恢复时解除；小时清扫持续推进历史无记录删除项目。
+删除日志与匿名删除日志共用持久化助手：文件内容 fsync + 原子 rename 后逐级 fsync 目录；Windows 本地无法
+fsync 目录（EPERM/EISDIR），该平台按“目录 fsync 不支持”记录为平台缺项（不中断本地验收），Linux/生产必须
+使用真实逐级目录 fsync；Linux 专用持久性测试不得以 Windows 结果充当通过。
 
 业务迁移验收：空库应用、重复启动、同号摘要不符、未知编号、失败回滚、既有匿名文档/版本不变及双 provider 首闭环分别留证。
 业务迁移与认证核心已有本地基础；登录 HTTP、项目功能及平台验收仍按各自记录判断，

@@ -1,6 +1,6 @@
-import type { ProjectAccess, ProjectAction, ProjectRole } from "../../lib/business/contracts"
+import type { ProjectAccess, ProjectAction, ProjectRole, ProjectExecutionAccess } from "../../lib/business/contracts"
 import { isAuthError } from "../auth/errors"
-import type { AuthIdentity } from "../auth/service"
+import type { AuthIdentity, Account } from "../auth/service"
 import { BusinessError } from "./errors"
 import type { ProjectRepository } from "./repository"
 import { isProjectId } from "./validation"
@@ -16,9 +16,48 @@ export type ProjectAuthorizationDependencies = {
   repository: Pick<ProjectRepository, "findActive" | "findMember">
   /** Production wiring is src/server/auth/access.ts revalidateAccountSession. */
   revalidateSession: (sessionId: string) => Promise<AuthIdentity>
+  /**
+   * C7 readiness gate: project business entries are unavailable (503) until the
+   * lifecycle runtime has replayed the deletion journal and reconciled records.
+   * Tests that inject dependencies directly omit it (no-op).
+   */
+  ready?: () => void
 }
 
 export type ProjectAuthorization = ReturnType<typeof createProjectAuthorization>
+
+export type TaskExecutionAuthorization = {
+  authorize(input: { accountId: string; projectId: string; action: ProjectAction }): Promise<ProjectExecutionAccess>
+}
+
+/** Execution snapshots expire at the next stage; never use browser sessions here. */
+export function createTaskExecutionAuthorization(deps: {
+  account: (id: string) => Promise<Account | null>
+  repository: {
+    findActive: (id: string) => Promise<{ id: string } | null>
+    findMember: (projectId: string, accountId: string) => Promise<ProjectRole | null>
+  }
+  /** C7 readiness gate: background task authorization fails closed until lifecycle ready. */
+  ready?: () => void
+}): TaskExecutionAuthorization {
+  return {
+    async authorize({ accountId, projectId, action }) {
+      try {
+        deps.ready?.()
+        const account = await deps.account(accountId)
+        if (!account || !isProjectId(projectId) || !await deps.repository.findActive(projectId)) {
+          throw new BusinessError("FORBIDDEN", "无权访问该项目。")
+        }
+        const role = account.role === "superadmin" ? "admin" : await deps.repository.findMember(projectId, account.id)
+        if (!role || !roleAllows(role, action)) throw new BusinessError("FORBIDDEN", "无权访问该项目。")
+        return { projectId, action, role, account }
+      } catch (failure) {
+        if (failure instanceof BusinessError) throw failure
+        throw new BusinessError("SERVICE_UNAVAILABLE", "服务暂不可用，请稍后重试。")
+      }
+    },
+  }
+}
 
 /**
  * Fresh project authorization. The returned ProjectAccess.identity is a
@@ -40,6 +79,9 @@ export function createProjectAuthorization(deps: ProjectAuthorizationDependencie
     revalidate,
 
     async requireProjectAccess(identity: AuthIdentity, projectId: string, action: ProjectAction): Promise<ProjectAccess> {
+      // C7 fail-closed readiness: no project data is served before journal replay
+      // and record reconciliation have completed.
+      deps.ready?.()
       const current = await revalidate(identity)
       if (current.account.role === "superadmin") {
         // The global exception still requires a real, non-deleted project.

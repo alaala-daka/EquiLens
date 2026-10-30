@@ -9,12 +9,15 @@ import { connectDatabase } from "../database/connection"
 import { migrateBusiness } from "../database/migrations"
 import { createProjectAuthorization } from "../projects/authorization"
 import { ProjectRepository } from "../projects/repository"
-import { applyProjectSchema } from "../projects/schema"
 import { ProjectService } from "../projects/service"
 import { createFaultyObjectStore, createSyntheticObjectStore, type PrivateObjectStore, type SyntheticObjectStore } from "../storage/obs"
 import { MaterialRepository } from "./repository"
-import { applyMaterialSchema } from "./schema"
 import { MaterialService } from "./service"
+import { QueuedMaterialService } from "./queued"
+import { TaskRepository } from "../tasks/repository"
+import { validateUpload } from "../documents/validate"
+import { createMaterialHandlers } from "./http"
+import { OcrRepository, VerificationFieldService } from "../verification/ocr-repository"
 
 const site = "https://equilens.test"
 const config = () => authConfig({ APP_ORIGIN: site })
@@ -77,8 +80,6 @@ function encryptedPdf(): Uint8Array {
 async function setup(store: PrivateObjectStore = createSyntheticObjectStore()) {
   const database = await connectDatabase({ provider: "sqlite", path: ":memory:" })
   await migrateBusiness(database)
-  await applyProjectSchema(database)
-  await applyMaterialSchema(database)
   const clock = new Date("2026-10-28T00:00:00Z")
   const auth = new AuthService(database, () => clock.getTime())
   const access = createAccountAccess({ services: () => auth, config })
@@ -96,6 +97,15 @@ async function setup(store: PrivateObjectStore = createSyntheticObjectStore()) {
     },
     now: () => clock,
   })
+  const tasks = new TaskRepository(database)
+  const fields = new VerificationFieldService({ repository: new OcrRepository(database, () => clock), materials: repository, requireProjectAccess: projectAuthorization.requireProjectAccess, readProjectRetention: async id => (await projectRepository.findActive(id))?.retentionUntil ?? null, now: () => clock })
+  const queued = new QueuedMaterialService({ repository, store, requireProjectAccess: projectAuthorization.requireProjectAccess,
+    readProject: id => projectRepository.findActive(id), now: () => clock, available: () => true,
+    ocrAvailable: () => false,
+    preflight: bytes => validateUpload(Buffer.from(bytes)),
+    enqueue: async (identity, version, operationId) => (await tasks.submit(identity.account.id, operationId, { kind: "material-parse", projectId: version.projectId, refs: { materials: [{ materialVersionId: version.id, sha256: version.sha256 }] }, conditions: {} })).task.id,
+  })
+  const handlers = createMaterialHandlers(async () => ({ requireAccount: access.requireAccount, origin: () => site, reads: material, writes: queued, fields }))
   async function create(username: string) {
     await auth.maintain({ action: "create", username, password, actor: "synthetic-admin" })
   }
@@ -103,8 +113,81 @@ async function setup(store: PrivateObjectStore = createSyntheticObjectStore()) {
     const result = await auth.login(username, password, "deployment")
     return { token: result.token, identity: await access.requireAccount(new Request(`${site}/workbench`, { headers: { cookie: `__Host-equilens-auth=${result.token}` } })) }
   }
-  return { database, auth, access, projects, projectRepository, repository, material, store, create, login }
+  return { database, auth, access, projects, projectRepository, repository, material, queued, tasks, handlers, store, fields, create, login }
 }
+
+test("C2a: upload persists task id without snapshot; duplicate shares task; reparse preserves history", async () => {
+  const env = await setup()
+  try {
+    await env.create("alice")
+    const alice = await env.login("alice")
+    const project = await env.projects.create(alice.identity, projectInput)
+    const bytes = await docx(paragraph("第一条 合同价款"))
+    await assert.rejects(env.queued.upload(alice.identity, project.id, registration(project.id), new Uint8Array([0x50, 0x4b, 3, 4])), /无效|不支持/)
+    await assert.rejects(env.queued.upload(alice.identity, project.id, registration(project.id), new Uint8Array(20 * 1024 * 1024 + 1)), { code: "LIMIT_EXCEEDED" })
+    await env.create("viewer")
+    const viewer = await env.login("viewer")
+    await env.projects.addMember(alice.identity, project.id, { username: "viewer", role: "viewer" })
+    await assert.rejects(env.queued.upload(viewer.identity, project.id, registration(project.id), bytes), { code: "FORBIDDEN" })
+    const first = env.queued.upload(alice.identity, project.id, registration(project.id), bytes)
+    await assert.rejects(env.queued.upload(alice.identity, project.id, registration(project.id), bytes), { code: "SERVICE_UNAVAILABLE" })
+    const result = await first
+    const concurrent = await env.queued.upload(alice.identity, project.id, registration(project.id), bytes)
+    assert.equal(concurrent.version.id, result.version.id)
+    assert.equal(concurrent.parseTaskId, result.parseTaskId)
+    assert.equal((await env.repository.listMaterials(project.id)).length, 1)
+    for (const state of ["queued", "running", "failed"]) {
+      await env.database.transaction(c => c.query("UPDATE equilens_tasks SET state=$1 WHERE id=$2", [state, result.parseTaskId]))
+      const request = new Request(`${site}/materials`, { headers: { cookie: `__Host-equilens-auth=${alice.token}` } })
+      const listed = await (await env.handlers.list(request, { params: Promise.resolve({ id: project.id }) })).json()
+      assert.equal(listed.materials[0].parseTaskId, result.parseTaskId)
+      assert.equal(listed.materials[0].parseState, state)
+      const detail = await (await env.handlers.detail(request, { params: Promise.resolve({ id: project.id, materialId: result.material.id }) })).json()
+      assert.equal(detail.material.parseState, state)
+    }
+    assert.equal("coverage" in result, false)
+    assert.equal(await env.repository.latestSnapshot(project.id, result.material.id), null)
+    assert.ok(result.parseTaskId)
+    assert.equal((await env.tasks.get(alice.identity.account.id, result.parseTaskId)).kind, "material-parse")
+    const duplicate = await env.queued.upload(alice.identity, project.id, registration(project.id), bytes)
+    assert.equal(duplicate.parseTaskId, result.parseTaskId)
+    assert.equal(duplicate.version.id, result.version.id)
+    const reparsed = await env.queued.reparse(alice.identity, project.id, result.material.id, "reparse-synthetic-1")
+    assert.notEqual(reparsed.parseTaskId, result.parseTaskId)
+    assert.equal((await env.repository.latestVersion(project.id, result.material.id))?.id, result.version.id)
+    await assert.rejects(env.queued.reparse(viewer.identity, project.id, result.material.id, "reparse-viewer-1"), { code: "FORBIDDEN" })
+    const content = await env.material.readMaterialVersion(alice.identity, { projectId: project.id, materialId: result.material.id, versionId: result.version.id })
+    assert.deepEqual(content.bytes, bytes)
+    await env.auth.logout(alice.token)
+    await assert.rejects(env.queued.reparse(alice.identity, project.id, result.material.id, "reparse-synthetic-2"), { code: "UNAUTHENTICATED" })
+  } finally { await env.database.close() }
+})
+
+test("C2a HTTP: auth, origin, body bounds, multipart upload and private download", async () => {
+  const env = await setup()
+  try {
+    await env.create("alice")
+    const alice = await env.login("alice")
+    const project = await env.projects.create(alice.identity, projectInput)
+    const context = { params: Promise.resolve({ id: project.id }) }
+    const url = `${site}/api/projects/${project.id}/materials`
+    assert.equal((await env.handlers.list(new Request(url), context)).status, 401)
+    const authHeaders = { cookie: `__Host-equilens-auth=${alice.token}`, origin: site }
+    assert.equal((await env.handlers.upload(new Request(url, { method: "POST", headers: { ...authHeaders, origin: "https://other.test" } }), context)).status, 403)
+    assert.equal((await env.handlers.upload(new Request(url, { method: "POST", headers: { ...authHeaders, "content-length": "99999999" } }), context)).status, 400)
+    const form = new FormData()
+    form.set("metadata", JSON.stringify(registration(project.id)))
+    form.set("file", new File([Buffer.from(await docx(paragraph("合成合同")))], "fake.pdf", { type: "application/pdf" }))
+    const response = await env.handlers.upload(new Request(url, { method: "POST", headers: authHeaders, body: form }), context)
+    assert.equal(response.status, 202)
+    assert.equal(response.headers.get("cache-control"), "private, no-store")
+    const value = await response.json()
+    assert.equal(value.material.format, "docx")
+    assert.equal("coverage" in value, false)
+    const download = await env.handlers.content(new Request(url, { headers: authHeaders }), { params: Promise.resolve({ id: project.id, materialId: value.material.id, versionId: value.version.id }) })
+    assert.equal(download.status, 200)
+  } finally { await env.database.close() }
+})
 
 test("C2/AC-08: authorized DOCX registration, immutable version and source read", async () => {
   const inner = createSyntheticObjectStore()

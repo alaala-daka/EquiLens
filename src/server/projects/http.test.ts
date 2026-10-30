@@ -7,6 +7,7 @@ import { connectDatabase } from "../database/connection"
 import { migrateBusiness } from "../database/migrations"
 import { createProjectAuthorization } from "./authorization"
 import { createProjectHandlers, type ProjectContext, type ProjectMemberContext } from "./handlers"
+import { applyProjectLifecycleSchema } from "./lifecycle-schema"
 import { ProjectRepository } from "./repository"
 import { applyProjectSchema } from "./schema"
 import { ProjectService } from "./service"
@@ -38,6 +39,7 @@ async function setup() {
   const database = await connectDatabase({ provider: "sqlite", path: ":memory:" })
   await migrateBusiness(database)
   await applyProjectSchema(database)
+  await applyProjectLifecycleSchema(database)
   const clock = new Date("2026-10-28T00:00:00Z")
   const auth = new AuthService(database, () => clock.getTime())
   const access = createAccountAccess({ services: () => auth, config })

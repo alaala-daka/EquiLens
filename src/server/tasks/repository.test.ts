@@ -3,7 +3,7 @@ import { test } from "node:test"
 import type { Connection } from "../database/connection"
 import { TaskError } from "./errors"
 import type { CallBudgetEstimate, ClaimedTask, TaskBudgetReservation } from "./repository"
-import { setupTasks, ref, validRequest } from "./test-fixtures"
+import { setupTasks, ref, reviewConditions, reviewRequest, validRequest } from "./test-fixtures"
 
 async function rejectsTask(work: Promise<unknown>, status: number, code: string) {
   await assert.rejects(work, (failure: unknown) => {
@@ -52,7 +52,7 @@ test("A3a/AC-23: same operationId and input returns the original task; changed i
     assert.equal(second.task.id, first.task.id)
     assert.equal((await s.repository.list("account-1")).length, 1)
 
-    const changed = { ...validRequest("contract-review"), conditions: { asOf: "2026-10-29" } }
+    const changed = { ...reviewRequest(), conditions: { ...reviewConditions, asOf: "2026-10-29" } }
     await rejectsTask(s.repository.submit("account-1", "operation-idem", changed), 409, "CONFLICT")
     const unchanged = await s.repository.get("account-1", first.task.id)
     assert.equal(unchanged.state, "queued")
@@ -302,11 +302,7 @@ test("A3a: reads are owner-scoped and can be filtered by project", async () => {
   const s = await setupTasks()
   try {
     await s.repository.submit("account-1", "operation-project-1", validRequest("contract-review"))
-    await s.repository.submit("account-1", "operation-project-2", {
-      kind: "contract-review", projectId: "project-2",
-      refs: { document: { projectId: "project-2", id: "document-2", versionId: "document-2-version" } },
-      conditions: {},
-    })
+    await s.repository.submit("account-1", "operation-project-2", reviewRequest("project-2"))
     assert.equal((await s.repository.list("account-1")).length, 2)
     assert.equal((await s.repository.list("account-1", "project-1")).length, 1)
     assert.equal((await s.repository.list("account-1", "project-2")).length, 1)

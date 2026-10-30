@@ -12,7 +12,6 @@ import type { AuthIdentity } from "@/server/auth/service"
  *
  * Still pending (do not invent compatible duplicates in business modules):
  * - 乙's saveFactRevision / calculateLedger handoff signatures
- * - A4 saveResultRevision / validateResult / reviewResult / createExport
  * - C2 readMaterialVersion / readParseSnapshot / readSource signatures
  * - A2 editor access interface (owned by A2; C3 consumes the finishe file)
  *
@@ -60,6 +59,66 @@ export type ProjectAccess = ProjectRef & {
   action: ProjectAction
   role: ProjectRole
   identity: AuthIdentity
+}
+
+/** Session-independent authorization snapshot; recheck before every stage. */
+export type ProjectExecutionAccess = ProjectRef & {
+  action: ProjectAction
+  role: ProjectRole
+  account: { id: string; username: string; role: "member" | "superadmin" }
+}
+
+export type ResultRevisionRef = ProjectRef & {
+  resultId: string
+  versionId: string
+  sha256: string
+}
+
+/** Selected immutable `bid-requirements` result version used by a comparison task. */
+export type RequirementSetRef = ProjectRef & {
+  id: string
+  versionId: string
+  sha256: string
+}
+
+/** Project contract-review task input frozen for round three (catalog is the runtime authority). */
+export type ProjectReviewScene = "auto" | "mep-sub-2026" | "decoration-sub-2026" | "curtain-wall-sub-2026" | "steel-structure-sub-2026"
+
+export type ProjectReviewConditions = {
+  asOf?: string
+  scene: ProjectReviewScene
+  role: "专业分包人"
+  region: string
+  externalProcessingConsent: true
+  unreviewedMaterialsConsent: boolean
+}
+
+export type ProjectReviewMaterialRef = { materialVersionId: string; sha256: string }
+
+export type ProjectReviewSubmission = ProjectRef & {
+  materials: ProjectReviewMaterialRef[]
+  conditions: ProjectReviewConditions
+}
+
+export type ResultValidation = {
+  status: "valid" | "invalid" | "partial"
+  versionId: string
+  checkedAt: string
+  issues: Array<{ code: string; message: string; ref?: string }>
+}
+
+export type ResultReview = {
+  versionId: string
+  decision: "approved" | "rejected" | "changes_requested"
+  comment: string
+  reviewedBy: string
+  reviewedAt: string
+}
+
+export type ExportRef = ResultRevisionRef & {
+  exportId: string
+  format: "docx"
+  createdAt: string
 }
 
 /**

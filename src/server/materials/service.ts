@@ -10,6 +10,7 @@ import type {
   ParseSnapshotRecord, ParsedFragment, RegisterMaterialResult, SourceFragmentRecord, SourceReadResult,
 } from "./types"
 import { parseBytes, parseRegistration, today, uuid } from "./validation"
+import type { UploadIntent } from "./upload-intents"
 
 const docxContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 const pdfContentType = "application/pdf"
@@ -24,6 +25,7 @@ export type MaterialServiceDependencies = {
   requireProjectAccess: (identity: AuthIdentity, projectId: string, action: ProjectAction) => Promise<ProjectAccess>
   readProject: (projectId: string) => Promise<{ retentionUntil: string } | null>
   now?: () => Date
+  enqueueParse?: (intent: UploadIntent) => Promise<string>
 }
 
 type Parsed = { coverage: ParseCoverage; fragments: ParsedFragment[]; parser: string; parserVersion: string }
@@ -66,9 +68,12 @@ export class MaterialService {
     const createdAt = this.now().toISOString()
     const contentType = format === "docx" ? docxContentType : pdfContentType
     const key = objectKey({ projectId, materialId, versionId, sha256 })
+    const intents = this.deps.repository.uploadIntents()
+    const intent = await intents.begin({ projectId, materialId, versionId, objectKey: key, accountId: access.identity.account.id, sourceKind: registration.sourceKind, sourceReference: registration.sourceReference, processingAuthorized: true, purpose: registration.purpose, retentionUntil: registration.retentionUntil })
     let stored: StoredObject
     try {
       stored = await this.deps.store.put({ key, bytes: content, contentType })
+      await intents.stored(intent.id)
     } catch (failure) {
       if (failure instanceof ObjectStoreError && failure.code === "INVALID_KEY") throw new BusinessError("INVALID_SOURCE", "材料对象标识无效。")
       throw unavailable()
@@ -98,6 +103,7 @@ export class MaterialService {
       if (failure instanceof BusinessError) throw failure
       throw unavailable()
     }
+    await intents.committed(intent.id)
     return { material, version, snapshot, coverage: parsed.coverage, duplicate: false }
   }
 
@@ -108,13 +114,14 @@ export class MaterialService {
     await this.authorize(identity, projectId, "edit")
     const material = await this.deps.repository.findMaterial(projectId, materialId)
     if (!material || material.status !== "active") throw new BusinessError("NOT_FOUND", "找不到该材料。")
+    if (material.format === "image") throw new BusinessError("INVALID_SOURCE", "图片材料不进入文档解析。")
     const version = await this.deps.repository.latestVersion(projectId, materialId)
     if (!version) throw new BusinessError("NOT_FOUND", "找不到该材料的原件版本。")
     let bytes: Uint8Array
     try {
       const object = await this.deps.store.get(version.objectKey)
       if (!object) throw unavailable("原件读取失败，未改写历史解析快照。")
-      if (object.sha256 !== version.sha256) throw unavailable("原件校验失败，未改写历史解析快照。")
+      if (object.sha256 !== version.sha256 || digest(object.bytes) !== version.sha256) throw unavailable("原件校验失败，未改写历史解析快照。")
       bytes = object.bytes
     } catch (failure) {
       if (failure instanceof BusinessError) throw failure
@@ -150,7 +157,7 @@ export class MaterialService {
     } catch {
       throw unavailable("原件暂不可用，请稍后重试。")
     }
-    if (!object || object.sha256 !== version.sha256) throw unavailable("原件暂不可用，请稍后重试。")
+    if (!object || object.sha256 !== version.sha256 || digest(object.bytes) !== version.sha256) throw unavailable("原件暂不可用，请稍后重试。")
     return { material, version, bytes: object.bytes, contentType: version.contentType, fileName: version.fileName }
   }
 
@@ -163,7 +170,8 @@ export class MaterialService {
     const material = await this.deps.repository.findMaterial(projectId, snapshot.materialId)
     const version = await this.deps.repository.findVersion(projectId, snapshot.materialId, snapshot.versionId)
     if (!material || material.status !== "active" || !version) throw new BusinessError("NOT_FOUND", "找不到该解析快照。")
-    return { snapshot, material, version }
+    const fragments = await this.deps.repository.fragments(snapshot.id)
+    return { snapshot, material, version, fragments }
   }
 
   async readSource(identity: AuthIdentity, ref: { projectId?: unknown; snapshotId?: unknown; fragmentId?: unknown }): Promise<SourceReadResult> {
@@ -188,18 +196,29 @@ export class MaterialService {
 
   /** Server-only maintenance: retry deletion of objects left by failed registrations. */
   async repairResidues(limit = 10): Promise<{ resolved: number; remaining: number }> {
+    const intents = await this.deps.repository.uploadIntents().repair({
+      store: this.deps.store,
+      isReferenced: intent => this.deps.repository.objectReferenced(intent.objectKey),
+      enqueueParse: this.deps.enqueueParse,
+      // Images have no parse step; recovery must commit their intent instead of
+      // re-enqueuing material-parse for a version that can never be parsed.
+      isParseRequired: async intent => {
+        const material = await this.deps.repository.findMaterial(intent.projectId, intent.materialId)
+        return material?.format !== "image"
+      },
+    }, { limit })
     const residues = await this.deps.repository.openResidues(Math.max(1, Math.min(100, Math.trunc(limit))))
     let resolved = 0
     for (const residue of residues) {
       try {
-        await this.deps.store.delete(residue.objectKey)
+        if (!await this.deps.repository.objectReferenced(residue.objectKey)) await this.deps.store.delete(residue.objectKey)
         await this.deps.repository.resolveResidue(residue.id)
         resolved++
       } catch {
         await this.deps.repository.recordResidueFailure(residue.id).catch(() => undefined)
       }
     }
-    return { resolved, remaining: Math.max(0, residues.length - resolved) }
+    return { resolved: resolved + intents.resolved, remaining: Math.max(0, residues.length - resolved) + intents.remaining }
   }
 
   private extract(format: "docx" | "pdf", bytes: Uint8Array): Parsed {
@@ -235,7 +254,7 @@ export class MaterialService {
 
   private async cleanup(key: string, projectId: string, reason: string): Promise<void> {
     try {
-      await this.deps.store.delete(key)
+      if (!await this.deps.repository.objectReferenced(key)) await this.deps.store.delete(key)
     } catch {
       try {
         await this.deps.repository.recordResidue(projectId, key, reason)

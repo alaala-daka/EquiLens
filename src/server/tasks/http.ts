@@ -33,7 +33,7 @@ type Context = { params: Promise<{ id: string }> }
 const maxBodyBytes = 256 * 1024
 const idPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 
-function taskFailure(failure: unknown) {
+export function taskFailure(failure: unknown) {
   const headers = { "Cache-Control": "private, no-store" }
   if (isTaskError(failure)) {
     return NextResponse.json({ error: { code: failure.code, message: failure.message } }, { status: failure.status, headers })
@@ -133,6 +133,9 @@ export function createTaskCollectionHandlers(getServices: Services) {
         const operationId = request.headers.get("idempotency-key")
         if (!operationId) throw new TaskError(422, "INVALID_SUBMISSION", "缺少任务提交标识。")
         const body = await jsonBody(request)
+        if (Object.keys(body).some(key => !["kind", "projectId", "refs", "conditions"].includes(key))) {
+          throw new TaskError(422, "INVALID_SUBMISSION", "请求内容无效。")
+        }
         const result = await services.submit(identity, services.authorize, { ...body, operationId } as unknown as TaskSubmission)
         return NextResponse.json(result, { status: 202, headers: { "Cache-Control": "private, no-store" } })
       } catch (failure) { return taskFailure(failure) }

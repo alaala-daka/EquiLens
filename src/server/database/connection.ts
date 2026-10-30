@@ -20,14 +20,19 @@ const sessionSchema = [
   "CREATE INDEX IF NOT EXISTS equilens_session_expiry ON equilens_document_sessions(expires_at)",
 ]
 
-export async function connectDatabase(config = databaseConfig()): Promise<Database> {
+export async function connectDatabase(config = databaseConfig(), options: { readOnly?: boolean } = {}): Promise<Database> {
+  const readOnly = options.readOnly === true
+  const assertRead = (sql: string) => {
+    if (readOnly && !/^\s*SELECT\b/i.test(sql)) throw new Error("Read-only database query required")
+  }
   let database: Database
   if (config.provider === "sqlite") {
-    mkdirSync(dirname(config.path), { recursive: true })
+    if (!readOnly) mkdirSync(dirname(config.path), { recursive: true })
     const { DatabaseSync } = await import("node:sqlite")
-    const sqlite = new DatabaseSync(config.path)
-    sqlite.exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
+    const sqlite = new DatabaseSync(config.path, { readOnly })
+    sqlite.exec(readOnly ? "PRAGMA busy_timeout=5000;" : "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
     const connection: Connection = { async query(sql, values = []) {
+      assertRead(sql)
       const statement = sqlite.prepare(sql.replace(/\$\d+/g, "?"))
       if (/^\s*SELECT/i.test(sql)) return { rows: statement.all(...values as SQLInputValue[]), changes: 0 }
       return { rows: [], changes: Number(statement.run(...values as SQLInputValue[]).changes) }
@@ -36,7 +41,7 @@ export async function connectDatabase(config = databaseConfig()): Promise<Databa
     database = {
       transaction<T>(work: (connection: Connection) => Promise<T>) {
         const result = tail.then(async () => {
-          sqlite.exec("BEGIN IMMEDIATE")
+          sqlite.exec(readOnly ? "BEGIN" : "BEGIN IMMEDIATE")
           try { const value = await work(connection); sqlite.exec("COMMIT"); return value }
           catch (failure) { sqlite.exec("ROLLBACK"); throw failure }
         })
@@ -57,6 +62,7 @@ export async function connectDatabase(config = databaseConfig()): Promise<Databa
         try {
           await client.query("BEGIN")
           const value = await work({ async query(sql, values) {
+            assertRead(sql)
             const result = await client.query(sql, values)
             return { rows: result.rows, changes: result.rowCount }
           } })
@@ -68,6 +74,7 @@ export async function connectDatabase(config = databaseConfig()): Promise<Databa
       async close() { await pool.end() },
     }
   }
+  if (readOnly) return database // No schema creation, migrations or journal-mode changes during inspection.
   try {
     await database.transaction(async connection => {
       await connection.query(schema[0])

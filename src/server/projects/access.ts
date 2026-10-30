@@ -6,8 +6,27 @@ import type { AuthIdentity } from "../auth/service"
 import { applicationDatabase } from "../database/runtime"
 import { createProjectAuthorization, type ProjectAuthorization } from "./authorization"
 import type { ProjectHttpDependencies } from "./handlers"
+import { requestProjectDeletion, requireProjectLifecycleReady } from "./lifecycle"
 import { ProjectRepository } from "./repository"
 import { ProjectService } from "./service"
+import { AuthService } from "../auth/service"
+import { createTaskExecutionAuthorization } from "./authorization"
+
+/**
+ * C7: every project-data entry fails closed with 503 until the lifecycle
+ * runtime has replayed the deletion journal and reconciled deletion records.
+ * The gate lives here (single place) rather than in each materials/results/
+ * exports/verification adapter.
+ */
+export async function authorizeTaskExecution(input: { accountId: string; projectId: string; action: ProjectAction }) {
+  const database = await applicationDatabase()
+  const auth = new AuthService(database)
+  return createTaskExecutionAuthorization({
+    repository: new ProjectRepository(database),
+    account: id => auth.account(id),
+    ready: requireProjectLifecycleReady,
+  }).authorize(input)
+}
 
 type ProjectRuntime = { deps: ProjectHttpDependencies; authorization: ProjectAuthorization }
 
@@ -19,12 +38,21 @@ type ProjectRuntime = { deps: ProjectHttpDependencies; authorization: ProjectAut
 async function load(): Promise<ProjectRuntime> {
   const database = await applicationDatabase()
   const repository = new ProjectRepository(database)
-  const authorization = createProjectAuthorization({ repository, revalidateSession: revalidateAccountSession })
+  const authorization = createProjectAuthorization({
+    repository,
+    revalidateSession: revalidateAccountSession,
+    ready: requireProjectLifecycleReady,
+  })
   return {
     authorization,
     deps: {
       requireAccount,
-      service: new ProjectService({ repository, authorization }),
+      service: new ProjectService({
+        repository,
+        authorization,
+        ready: requireProjectLifecycleReady,
+        deletion: { request: input => requestProjectDeletion(input) },
+      }),
       origin: () => authConfig(process.env).origin,
     },
   }

@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { UnsavedFailure, UnsavedRegistry } from "@/lib/documents/unsaved-registry"
 import { createProjectsClient, ProjectsClientError, type ProjectCreatePayload, type ProjectSummary } from "./projects-client"
 import { createRequestGate } from "./request-gate"
+import { retainProject } from "./project-retention"
 
 export type ProjectHostStatus = "loading" | "anonymous" | "ready" | "error"
 
@@ -22,6 +23,8 @@ export type ProjectHostValue = {
   refresh(): Promise<void>
   selectProject(projectId: string): Promise<boolean>
   createProject(input: ProjectCreatePayload): Promise<ProjectSummary>
+  /** Explicit sign-out: drop project views without the retained-editor guard used for unexpected 401s. */
+  signOut(): void
 }
 
 const storageKey = "equilens.project"
@@ -90,6 +93,7 @@ export function ProjectHostProvider({ children, registry }: { children: ReactNod
   }, [])
 
   const forget = useCallback(() => {
+    if (currentId.current) return // Preserve mounted human edits on access failure.
     clearStoredProjectId()
     currentId.current = null
     projectsRef.current = []
@@ -99,8 +103,31 @@ export function ProjectHostProvider({ children, registry }: { children: ReactNod
     setGeneration(value => value + 1)
   }, [])
 
+  const signOut = useCallback(() => {
+    listGate.cancel()
+    switchGate.cancel()
+    clearStoredProjectId()
+    currentId.current = null
+    projectsRef.current = []
+    setCurrentProjectId(null)
+    setProjects([])
+    setCanCreateProject(false)
+    setStatus("anonymous")
+    setError("")
+    setSwitchError("")
+    setSwitchFailures([])
+    setSwitching(false)
+    setGeneration(value => value + 1)
+  }, [listGate, switchGate])
+
   const reconcile = useCallback((list: ProjectSummary[], preferredId: string | null) => {
-    const wanted = preferredId ?? storedProjectId()
+    const wanted = preferredId ?? currentId.current ?? storedProjectId()
+    const retained = retainProject(projectsRef.current.find(project => project.id === currentId.current) ?? null, list)
+    if (currentId.current && !preferredId && retained.blocked) {
+      setStatus("error")
+      setError("该项目已无访问权限。")
+      return
+    }
     const next = list.find(project => project.id === wanted) ?? list[0] ?? null
     projectsRef.current = list
     setProjects(list)
@@ -264,7 +291,8 @@ export function ProjectHostProvider({ children, registry }: { children: ReactNod
     refresh: load,
     selectProject,
     createProject,
-  }), [status, projects, currentProject, canCreateProject, error, generation, switching, switchFailures, switchError, load, selectProject, createProject])
+    signOut,
+  }), [status, projects, currentProject, canCreateProject, error, generation, switching, switchFailures, switchError, load, selectProject, createProject, signOut])
 
   return <ProjectHostContext.Provider value={value}>{children}</ProjectHostContext.Provider>
 }

@@ -11,10 +11,12 @@ import { docxFromParagraphs } from "@/lib/documents/docx"
 import type { ExportExpectation } from "@/lib/documents/structures"
 import { editorFocusShortcut } from "@/lib/documents/editor-keyboard"
 import { validateDocx } from "@/lib/documents/validate"
+import { revokeEngineEditing } from "@/lib/documents/engine-access"
 
 export type WordCanvasHandle = { serialize: () => Promise<Blob>; cleanDocx: () => Promise<Blob>; locate: (paragraphIndex: number, quote: string) => Promise<boolean>; snapshot: () => unknown }
 
-export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChange, keyboardHelpId, keyboardBlocked, controlsDisabled, onFocusShortcut, ref }: {
+export function WordCanvas({ initialBlob, readOnly = false, reloadToken = 0, onStateChange, onChange, keyboardHelpId, keyboardBlocked, controlsDisabled, onFocusShortcut, ref }: {
+  readOnly?: boolean
   initialBlob: Blob
   reloadToken?: number
   onStateChange: (state: EngineState, message?: string) => void
@@ -30,6 +32,11 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
   const engine = useRef<WordCanvasHandle | null>(null)
   const zoomEngine = useRef<SuperDoc | null>(null)
   const [fitWidth, setFitWidth] = useState(true)
+  const readOnlyRef = useRef(readOnly)
+  useEffect(() => {
+    readOnlyRef.current = readOnly
+    if (readOnly && zoomEngine.current) revokeEngineEditing(zoomEngine.current)
+  }, [readOnly])
   const notifyState = useEffectEvent((state: EngineState, message?: string) => {
     onStateChange(state, message)
   })
@@ -159,7 +166,7 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
                 editor.dispatch(editor.state.tr.replaceWith(0, editor.state.doc.content.size, restored.content).setMeta("addToHistory", false))
               }
               throw failure
-            } finally { if (current()) editor.setEditable(editable, false) }
+            } finally { if (current()) editor.setEditable(editable && !readOnlyRef.current, false) }
           })
         } catch (failure) {
           if (failure instanceof WordExportTimeout && current()) fail(failure.message)
@@ -249,6 +256,7 @@ export function WordCanvas({ initialBlob, reloadToken = 0, onStateChange, onChan
           if (!load.ready()) return
           instance = superdoc
           zoomEngine.current = superdoc
+          if (readOnlyRef.current) revokeEngineEditing(superdoc)
           setFitWidth(superdoc.getZoomState().mode === "fit-width")
           const body = superdoc.activeEditor?.view?.dom
           body?.setAttribute("aria-describedby", keyboardHelpId)

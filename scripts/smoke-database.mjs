@@ -1,6 +1,87 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+
+/**
+ * Round-six A5 offline additions (before the HTTP restart smoke):
+ *   --verify-migrations <reference.json>  compare a database's business-migration
+ *                                         ledger (id + frozen checksum, count,
+ *                                         0013 presence) with a generated reference.
+ *   --integrity                           PRAGMA integrity_check + foreign_key_check
+ *                                         on --database/SQLITE_PATH (restored/backup DB).
+ * Both are offline (no server) and exit non-zero on mismatch. The HTTP
+ * document-session persistence modes below are unchanged; `--verify` also runs
+ * the integrity check when a database path is supplied, so a restart check covers
+ * both process state and database consistency.
+ */
+function optionValue(name) {
+  const index = process.argv.indexOf(name);
+  if (index < 0) return undefined;
+  const value = process.argv[index + 1];
+  if (value === undefined || value.startsWith("--")) throw new Error(`缺少参数值：${name}`);
+  return value;
+}
+function databasePath() {
+  return resolve(optionValue("--database") || process.env.SQLITE_PATH || "");
+}
+function assertDatabaseIntegrity(path) {
+  assert.ok(path && existsSync(path), `数据库不存在：${path}`);
+  const database = new DatabaseSync(path, { readOnly: true });
+  try {
+    const integrity = database.prepare("PRAGMA integrity_check").all();
+    assert.equal(integrity.length, 1, "integrity_check 返回多行");
+    assert.equal(integrity[0].integrity_check, "ok", `integrity_check 失败：${JSON.stringify(integrity)}`);
+    const foreignKeys = database.prepare("PRAGMA foreign_key_check").all();
+    assert.deepEqual(foreignKeys, [], `foreign_key_check 失败：${JSON.stringify(foreignKeys.slice(0, 5))}`);
+    return true;
+  } finally {
+    database.close();
+  }
+}
+if (process.argv.includes("--verify-migrations")) {
+  const referencePath = resolve(optionValue("--verify-migrations"));
+  assert.ok(existsSync(referencePath), `迁移参考文件不存在：${referencePath}`);
+  const reference = JSON.parse(readFileSync(referencePath, "utf8"));
+  assert.equal(reference.version, 1, "迁移参考文件版本无效");
+  const path = databasePath();
+  assert.ok(path && existsSync(path), "需要 --database 或 SQLITE_PATH");
+  const database = new DatabaseSync(path, { readOnly: true });
+  try {
+    assert.equal(assertDatabaseIntegrity(path), true);
+    const ledger = database.prepare("SELECT id,checksum FROM equilens_business_migrations ORDER BY id").all()
+      .map(row => ({ id: String(row.id), checksum: String(row.checksum) }));
+    assert.equal(ledger.length, reference.migrations.length,
+      `迁移数量不一致：数据库 ${ledger.length}，参考 ${reference.migrations.length}`);
+    for (let index = 0; index < ledger.length; index++) {
+      assert.equal(ledger[index].id, reference.migrations[index].id, `迁移编号不一致：${ledger[index].id}`);
+      assert.equal(ledger[index].checksum, reference.migrations[index].checksum,
+        `迁移 ${ledger[index].id} 摘要与参考不一致（历史迁移不得修改）`);
+    }
+    const has0013 = ledger.some(row => row.id === "0013");
+    if (reference.includes0013) assert.equal(has0013, true, "参考包含 0013，数据库账本缺少 0013");
+    console.log(JSON.stringify({
+      ok: true, mode: "verify-migrations", database: path, migrations: ledger.length,
+      includes0013: has0013, integrity: "ok", foreignKeys: "ok",
+    }, null, 2));
+  } finally {
+    database.close();
+  }
+  process.exit(0);
+}
+if (process.argv.includes("--integrity")) {
+  const path = databasePath();
+  assertDatabaseIntegrity(path);
+  const database = new DatabaseSync(path, { readOnly: true });
+  try {
+    const migrations = database.prepare("SELECT COUNT(*) AS n FROM equilens_business_migrations").get();
+    console.log(JSON.stringify({ ok: true, mode: "integrity", database: path, integrity: "ok", foreignKeys: "ok", migrations: Number(migrations.n) }, null, 2));
+  } finally {
+    database.close();
+  }
+  process.exit(0);
+}
 
 const origin = new URL(process.argv[2] || "http://127.0.0.1:3000").origin;
 const checkpoint = process.argv[3];
@@ -43,6 +124,13 @@ async function initialize() {
 
 if (verifyOnly) {
   assert.ok(checkpoint && checkpoint !== "--verify", "Verification needs a private checkpoint path");
+  // A volume-like restart is only meaningful if the database on disk is intact too.
+  try {
+    const path = databasePath();
+    if (path && existsSync(path)) { assertDatabaseIntegrity(path); console.log("Database integrity_check + foreign_key_check passed across restart"); }
+  } catch (error) {
+    if (!(error instanceof Error && /数据库不存在/.test(error.message))) throw error;
+  }
   const saved = JSON.parse(readFileSync(checkpoint, "utf8"));
   assert.equal(saved.origin, origin);
   assert.ok(saved.cookie);
