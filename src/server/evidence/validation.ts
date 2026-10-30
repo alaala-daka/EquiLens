@@ -11,7 +11,10 @@ const date = (value: string, field: string) => { if (!isoDate.test(value) || Num
 
 function source(value: SourceRef, projectId: string) {
   if (value.projectId !== projectId) throw new EvidenceError("EVIDENCE_PROJECT_MISMATCH", "来源不属于当前项目。")
-  for (const field of [value.documentId, value.documentVersionId, value.parseSnapshotId]) required(field, "来源字段")
+  required(value.parseSnapshotId, "来源快照")
+  // 项目主线使用材料版本；匿名文档增量使用文档版本，二者二选一且须成对出现。
+  if (value.materialVersionId) { required(value.materialId, "来源材料"); required(value.materialVersionId, "来源版本") }
+  else { required(value.documentId, "来源文档"); required(value.documentVersionId, "来源版本") }
   required(value.quote, "来源引文", 2000)
   if (value.paragraphIndex === undefined && !value.fragmentId) throw new EvidenceError("EVIDENCE_INPUT_INVALID", "来源须定位到段落或片段。")
   if (value.paragraphIndex !== undefined && (!Number.isSafeInteger(value.paragraphIndex) || value.paragraphIndex < 0)) throw new EvidenceError("EVIDENCE_INPUT_INVALID", "来源段落编号无效。")
@@ -39,7 +42,7 @@ export function validateEvidenceItem(input: EvidenceItemInput) {
   input.conflicts.forEach(value => source(value, input.projectId))
   const seenSources = new Set<string>()
   for (const value of [...input.sources, ...input.conflicts]) {
-    const key = [value.documentVersionId, value.parseSnapshotId, value.paragraphIndex ?? "", value.fragmentId ?? "", value.quote].join("|")
+    const key = [value.materialVersionId ?? value.documentVersionId, value.parseSnapshotId, value.paragraphIndex ?? "", value.fragmentId ?? "", value.quote].join("|")
     if (seenSources.has(key)) throw new EvidenceError("EVIDENCE_SOURCE_DUPLICATE", "同一附件与段落被重复引用。")
     seenSources.add(key)
   }

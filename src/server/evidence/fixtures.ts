@@ -4,7 +4,7 @@ import type { EvidenceItemInput, EvidenceReportInput, SourceRef } from "@/lib/ev
 export function testScope(options: { projectId: string; documents?: string[]; facts?: string[]; payments?: string[]; disputes?: string[] }) {
   const known = (list: string[] | undefined, value: string) => Boolean(list?.includes(value))
   return {
-    hasDocumentSource: (projectId: string, source: SourceRef) => projectId === options.projectId && known(options.documents, source.documentVersionId),
+    hasDocumentSource: (projectId: string, source: SourceRef) => projectId === options.projectId && known(options.documents, source.materialVersionId ?? source.documentVersionId ?? ""),
     hasFact: (projectId: string, factId: string, factVersionId: string) => projectId === options.projectId && known(options.facts, factId + ":" + factVersionId),
     hasPayment: (projectId: string, ledgerRevisionId: string, rowId: string) => projectId === options.projectId && known(options.payments, ledgerRevisionId + ":" + rowId),
     hasDispute: (projectId: string, revisionId: string, disputeId: string) => projectId === options.projectId && known(options.disputes, revisionId + ":" + disputeId),

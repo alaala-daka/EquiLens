@@ -16,6 +16,12 @@ const factStatements = [
   "CREATE INDEX equilens_fact_version_project ON equilens_fact_versions(project_id, contract_id, fact_id, version)",
 ] as const
 
+// Round eight: evidence items move from repository runtime DDL into the ledger.
+const evidenceStatements = [
+  "CREATE TABLE equilens_evidence_items (id VARCHAR(36) PRIMARY KEY, item_id VARCHAR(36) NOT NULL, version_id VARCHAR(36) NOT NULL UNIQUE, project_id VARCHAR(64) NOT NULL, contract_id VARCHAR(64), base_version_id VARCHAR(36), operation_id VARCHAR(128) NOT NULL, request_hash VARCHAR(64) NOT NULL, supersedes_version_id VARCHAR(36), sha256 VARCHAR(64) NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(project_id, operation_id))",
+  "CREATE INDEX equilens_evidence_item_project ON equilens_evidence_items(project_id, item_id, created_at)",
+] as const
+
 export type BusinessMigration = { id: string; statements: readonly string[] }
 export const businessMigrations: readonly BusinessMigration[] = [{ id: "0001", statements: [
   "CREATE TABLE equilens_auth_accounts (id VARCHAR(36) PRIMARY KEY, username VARCHAR(64) NOT NULL UNIQUE, password_hash TEXT NOT NULL, enabled INTEGER NOT NULL, revision INTEGER NOT NULL)",
@@ -29,7 +35,7 @@ export const businessMigrations: readonly BusinessMigration[] = [{ id: "0001", s
 ] }, { id: "0003", statements: [
   "ALTER TABLE equilens_auth_accounts ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'member'",
   "CREATE TABLE equilens_auth_bootstrap (id INTEGER PRIMARY KEY)",
-] }, { id: "0004", statements: projectStatements }, { id: "0005", statements: taskStatements }, { id: "0006", statements: materialStatements }, { id: "0007", statements: resultStatements }, { id: "0008", statements: uploadIntentStatements }, { id: "0009", statements: documentStatements }, { id: "0010", statements: verificationStatements }, { id: "0011", statements: knowledgeStatements }, { id: "0012", statements: draftingStatements }, { id: "0013", statements: projectLifecycleStatements }, { id: "0014", statements: factStatements }]
+] }, { id: "0004", statements: projectStatements }, { id: "0005", statements: taskStatements }, { id: "0006", statements: materialStatements }, { id: "0007", statements: resultStatements }, { id: "0008", statements: uploadIntentStatements }, { id: "0009", statements: documentStatements }, { id: "0010", statements: verificationStatements }, { id: "0011", statements: knowledgeStatements }, { id: "0012", statements: draftingStatements }, { id: "0013", statements: projectLifecycleStatements }, { id: "0014", statements: factStatements }, { id: "0015", statements: evidenceStatements }]
 
 /** Explicit initialization only; never runs on module import. */
 export async function migrateBusiness(db: Database, migrations = businessMigrations) {

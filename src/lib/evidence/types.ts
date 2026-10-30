@@ -11,15 +11,23 @@ export type EvidenceItemKind = (typeof EVIDENCE_ITEM_KINDS)[number]
 export type ConfirmationStatus = (typeof CONFIRMATION_STATUSES)[number]
 export type EvidenceSupport = (typeof EVIDENCE_SUPPORTS)[number]
 
-/** 与共享来源契约对齐：全部绑定不可变文档版本与解析快照。 */
+/**
+ * 与共享来源契约对齐：全部绑定不可变版本与解析快照。
+ *
+ * 项目主线（第八轮）使用项目材料版本 `materialId/materialVersionId`；
+ * 匿名文档 Agent 增量使用 `documentId/documentVersionId`。二者二选一，
+ * 由 `parseSnapshotId` 与片段/段落定位到原文。
+ */
 export type SourceRef = {
   projectId: string
-  documentId: string
-  documentVersionId: string
+  quote: string
   parseSnapshotId: string
+  materialId?: string
+  materialVersionId?: string
+  documentId?: string
+  documentVersionId?: string
   fragmentId?: string
   paragraphIndex?: number
-  quote: string
   locator?: string
 }
 

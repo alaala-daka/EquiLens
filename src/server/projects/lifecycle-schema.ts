@@ -102,6 +102,8 @@ export const PROJECT_SCOPED_TABLES: readonly string[] = [
   "equilens_result_reviews",
   "equilens_result_versions",
   "equilens_results",
+  // Round-eight evidence items (migration 0015); reports and letters are results.
+  "equilens_evidence_items",
   // Tasks/budget: reservations → tasks → project budget
   "equilens_task_budget_reservations",
   "equilens_tasks",
@@ -130,7 +132,6 @@ export const PROJECT_SCOPED_TABLES: readonly string[] = [
 /** B-line runtime tables; absence is expected and recorded (B line not wired to production). */
 export const PROJECT_RUNTIME_TABLES: readonly string[] = [
   "equilens_payment_ledger_revisions",
-  "equilens_evidence_items",
   "equilens_evidence_reports",
 ]
 
