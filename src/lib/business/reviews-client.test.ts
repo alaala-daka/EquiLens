@@ -120,9 +120,29 @@ test("B2a: read-only member never sends submit/review/export writes but may reva
     failure instanceof ProjectReviewError && failure.code === "ACCESS_DENIED")
   await assert.rejects(instance.createExport(result), (failure: unknown) =>
     failure instanceof ProjectReviewError && failure.code === "ACCESS_DENIED")
+  await assert.rejects(instance.saveResultRevision({ resultId: result.resultId, baseVersionId: result.versionId, operationId: "revision-1", reason: "修改", value: result.value }), (failure: unknown) =>
+    failure instanceof ProjectReviewError && failure.code === "ACCESS_DENIED")
   assert.deepEqual(writes, [])
   assert.equal((await instance.validateResult(result)).status, "valid")
   assert.deepEqual(writes, [])
+})
+
+test("B2b: revision writes bind the base and operation, send no server-owned metadata, and preserve 409", async () => {
+  const requests: RequestInit[] = []
+  const instance = client(async (path, init) => {
+    assert.equal(String(path), "/api/projects/project-1/results/result-1/revisions")
+    requests.push(init!)
+    if (requests.length === 1) return Response.json({ ...result, versionId: "version-2", origin: "human", review: null })
+    return Response.json({ error: { code: "CONFLICT", message: "成果版本已变化，请重新读取后保存。" } }, { status: 409 })
+  })
+  const input = { resultId: result.resultId, baseVersionId: result.versionId, operationId: "revision-1", reason: "修订", value: { ...result.value, findingDecisions: [] } }
+  const saved = await instance.saveResultRevision(input)
+  assert.equal(saved.versionId, "version-2")
+  assert.equal(saved.review, null)
+  assert.deepEqual(JSON.parse(String(requests[0].body)), { kind: "contract-review", baseVersionId: "version-1", operationId: "revision-1", reason: "修订", value: input.value, sources: [], dependencies: [] })
+  await assert.rejects(instance.saveResultRevision(input), (failure: unknown) => failure instanceof ProjectReviewError && failure.code === "CONFLICT")
+  assert.equal(requests.length, 2)
+  assert.equal(input.baseVersionId, "version-1")
 })
 
 test("B2a: HTTP failures map to the shared codes and preserve safe server messages", () => {

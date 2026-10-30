@@ -212,6 +212,31 @@ function checkCoverage(result: ReviewResult, complete: boolean, issues: Issue[])
   return { covered: !partialCoverage, partial: result.status === "partial" || partialCoverage }
 }
 
+function checkFindingDecisions(result: Record<string, unknown>, issues: Issue[]): void {
+  if (result.findingDecisions === undefined) return
+  if (!Array.isArray(result.findingDecisions)) {
+    issues.push({ code: "INVALID_DECISION", message: "发现项处理记录无效。" })
+    return
+  }
+  const findings = Array.isArray(result.findings) ? result.findings : []
+  const seen = new Set<number>()
+  for (const [index, raw] of result.findingDecisions.entries()) {
+    const item = object(raw)
+    const ref = `findingDecisions[${index}]`
+    const position = Number(item?.findingIndex)
+    const finding = object(findings[position])
+    if (!item || !Number.isSafeInteger(item.findingIndex) || position < 0 || !finding || seen.has(position) ||
+      item.ruleId !== finding.ruleId || !["采纳", "驳回", "修订"].includes(String(item.decision)) ||
+      typeof item.reason !== "string" || !item.reason.trim() || item.reason.length > 500 ||
+      Object.keys(item).some(key => !["findingIndex", "ruleId", "decision", "reason", "editedSuggestion", "editedImpact"].includes(key)) ||
+      (item.decision === "修订" ? typeof item.editedSuggestion !== "string" || !item.editedSuggestion.trim() || item.editedSuggestion.length > 2000 : item.editedSuggestion !== undefined) ||
+      (item.editedImpact !== undefined && (typeof item.editedImpact !== "string" || !item.editedImpact.trim() || item.editedImpact.length > 500))) {
+      issues.push({ code: "INVALID_DECISION", message: "发现项处理的编号、决定、理由或修订内容无效。", ref })
+    }
+    seen.add(position)
+  }
+}
+
 export const contractReviewResultValidator: ResultValidator = async value => {
   const issues: Issue[] = []
   const shape = checkStructure(value, issues)
@@ -222,6 +247,7 @@ export const contractReviewResultValidator: ResultValidator = async value => {
     if (digest(paragraphs) !== input.textSha256) issues.push({ code: "INVALID_TEXT_HASH", message: "成果输入摘要与正文不一致。" })
   }
   checkFindings(result as unknown as ReviewResult, paragraphs, issues)
+  checkFindingDecisions(result, issues)
   const coverage = checkCoverage(result as unknown as ReviewResult, input?.complete === true, issues)
   if (issues.length) return { status: "invalid", issues }
   return { status: coverage.partial ? "partial" : "valid", issues }

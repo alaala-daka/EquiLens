@@ -349,6 +349,15 @@ export function createProjectReviewsClient(options: ProjectReviewsClientOptions)
       const query = versionId ? `?versionId=${encodeURIComponent(versionId)}` : ""
       return resultView(await json(`${base}/results/${encodeURIComponent(resultId)}${query}`, { signal }))
     },
+    /** Save only human decisions as an immutable revision of an existing review. */
+    async saveResultRevision(input: { resultId: string; baseVersionId: string; operationId: string; reason: string; value: unknown }, signal?: AbortSignal): Promise<ProjectResultView> {
+      checkEditable()
+      return resultView(await json(`${base}/results/${encodeURIComponent(input.resultId)}/revisions`, {
+        method: "POST",
+        body: { kind: "contract-review", baseVersionId: input.baseVersionId, operationId: input.operationId, reason: input.reason, value: input.value, sources: [], dependencies: [] },
+        signal,
+      }))
+    },
     /** POST .../validate — a read-side check; allowed for a read-only member. */
     async validateResult(input: { resultId: string; versionId: string; sha256: string }, signal?: AbortSignal): Promise<ResultValidation> {
       return validation(await json(`${base}/results/${encodeURIComponent(input.resultId)}/validate`, {

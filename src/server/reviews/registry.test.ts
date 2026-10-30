@@ -9,6 +9,27 @@ test("A4c validator: a complete debug-mode machine result is valid", async () =>
   assert.deepEqual(checked.issues, [])
 })
 
+test("B2b: decisions match a unique saved finding and require bounded reasons/revisions", async () => {
+  const value = successResult(validRunnerInput())
+  const decision = { findingIndex: 0, ruleId: value.findings[0].ruleId, decision: "修订", reason: "按项目付款条件调整", editedSuggestion: "补充明确付款期限", editedImpact: "明确履行期限" }
+  for (const item of [decision, { ...decision, decision: "采纳", editedSuggestion: undefined }, { ...decision, decision: "驳回", editedSuggestion: undefined }]) {
+    assert.equal((await contractReviewResultValidator({ ...value, findingDecisions: [item] })).status, "valid")
+  }
+  for (const decisions of [null, [decision, decision], [{ ...decision, findingIndex: 1 }], [{ ...decision, ruleId: "other" }], [{ ...decision, decision: "approved" }], [{ ...decision, reason: " " }], [{ ...decision, reason: "字".repeat(501) }], [{ ...decision, editedSuggestion: "" }], [{ ...decision, editedSuggestion: "字".repeat(2001) }], [{ ...decision, editedImpact: "字".repeat(501) }], [{ ...decision, decision: "采纳" }], [{ ...decision, quote: "改写" }]]) {
+    const checked = await contractReviewResultValidator({ ...value, findingDecisions: decisions })
+    assert.equal(checked.status, "invalid", JSON.stringify(decisions))
+    assert.ok(checked.issues.some(issue => issue.code === "INVALID_DECISION"))
+  }
+  assert.equal((await contractReviewResultValidator({ ...value, findingDecisions: [] })).status, "valid")
+})
+
+test("B2b: adopting an invalid finding cannot waive citation validation", async () => {
+  const value = invalidCitationResult(validRunnerInput())
+  const checked = await contractReviewResultValidator({ ...value, findingDecisions: [{ findingIndex: 0, ruleId: value.findings[0].ruleId, decision: "采纳", reason: "确认" }] })
+  assert.equal(checked.status, "invalid")
+  assert.ok(checked.issues.some(issue => issue.code === "INVALID_CITATION"))
+})
+
 test("A4c validator: partial coverage stays saved but is reported as partial, never valid/no-risk", async () => {
   const checked = await contractReviewResultValidator(partialResult(validRunnerInput()))
   assert.equal(checked.status, "partial")
