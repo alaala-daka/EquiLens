@@ -75,7 +75,7 @@ export async function runClaimedReview(job: ClaimedReview, overrides: RunnerOver
       callsUsed: job.callsUsed, maxCalls: job.maxCalls, timeoutMs: Math.min(600000, Math.max(1, TASK_BUDGET_MS - elapsed())), maxPromptChars: job.input.maxPromptChars,
       previousResult: job.checkpoint ?? undefined,
       env: overrides.env ?? { AI_BASE_URL: job.input.baseURL, AI_MODEL: job.input.model, AI_API_KEY: process.env.AI_API_KEY, AI_REQUEST_TIMEOUT_MS: process.env.AI_REQUEST_TIMEOUT_MS },
-      fetcher: overrides.fetcher,
+      fetcher: overrides.fetcher ?? (await import("../../ai/dispatcher")).longRunningModelFetch(),
       onBeforeCall: async (reservation: { callNumber: number; ruleIds: string[] }) => {
         controller.signal.throwIfAborted()
         await repository.reserve(job, reservation.callNumber, elapsed())

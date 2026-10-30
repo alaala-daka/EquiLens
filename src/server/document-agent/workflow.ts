@@ -39,7 +39,7 @@ export async function runDocumentAgent(job: ClaimedReview, options: {
     await options.repository.checkpoint(job, stage, { paragraphCount: snapshot.paragraphs.length, readParagraphCount: analysis.extraction ? snapshot.paragraphs.length : 0,
       submittedRuleCount: analysis.extraction ? extractionIds(analysis.extraction).length : 0, agentRole: stage === "auditing" ? "auditor" : "primary", auditedRuleCount: analysis.audit.checks.length }, result, options.elapsed())
   }
-  const stageModel = () => createAgentModel({ env: roleEnvironment(options.env, job.input.models, stage === "auditing" ? "auditor" : "primary"), fetcher: options.fetcher, signal: options.signal, maxPromptChars: Math.min(job.input.maxPromptChars, 60000), requestTimeoutMs: requestTimeoutFromEnv(options.env),
+  const stageModel = async () => createAgentModel({ env: roleEnvironment(options.env, job.input.models, stage === "auditing" ? "auditor" : "primary"), fetcher: options.fetcher ?? (await import("../ai/dispatcher")).longRunningModelFetch(), signal: options.signal, maxPromptChars: Math.min(job.input.maxPromptChars, 60000), requestTimeoutMs: requestTimeoutFromEnv(options.env),
     lengthRepair: false, afterResponse: () => {}, onFailure: failure => { transportFailure = failure },
     beforeRequest: async () => {
       options.signal.throwIfAborted()
@@ -63,7 +63,7 @@ export async function runDocumentAgent(job: ClaimedReview, options: {
     for (;;) {
       let value: T | undefined
       transportFailure = undefined
-      const agent = new ToolLoopAgent({ model: stageModel().model, maxRetries: 0, maxOutputTokens: 16384, toolCallConcurrency: 1, stopWhen: stepCountIs(1),
+      const agent = new ToolLoopAgent({ model: (await stageModel()).model, maxRetries: 0, maxOutputTokens: 16384, toolCallConcurrency: 1, stopWhen: stepCountIs(1),
         providerOptions: { contractGateway: { reasoningEffort: "low" } }, instructions,
         repairToolCall: async ({ toolCall }) => {
           const raw = (toolCall as { input?: unknown }).input
