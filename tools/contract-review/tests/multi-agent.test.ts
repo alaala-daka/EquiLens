@@ -70,7 +70,7 @@ test("AC-24: a direct multi-agent entry cannot route draft bundles in published 
 
 test("AC-23: invalid direct-entry limits fail before any role sends a request", async () => {
   const state = transport("mep-sub-2026")
-  for (const limits of [{ maxPromptChars: Number.NaN }, { requestTimeoutMs: 90001 }, { maxToolChars: 64001 }]) {
+  for (const limits of [{ maxPromptChars: Number.NaN }, { requestTimeoutMs: 600001 }, { maxToolChars: 64001 }]) {
     await assert.rejects(reviewWithAgents({ ...options, ...limits, fetcher: state.fetcher }), { code: "REVIEW_INPUT_INVALID" })
   }
   assert.equal(state.roles.length, 0)

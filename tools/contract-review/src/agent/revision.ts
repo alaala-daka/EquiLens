@@ -28,7 +28,7 @@ async function runRole<T extends CallState>(state: T, options: Shared & { onChec
     transport: { failure: () => ReviewError | undefined; clear: () => void }) => Promise<void>) {
   const maxCalls = options.maxCalls ?? 25
   for (const [value, minimum, maximum] of [[maxCalls, 1, MAX_AGENT_CALLS], [state.callsUsed, 0, maxCalls],
-    [options.timeoutMs ?? 600000, 1, 600000], [options.requestTimeoutMs ?? 90000, 1, 90000], [options.maxPromptChars ?? 240000, 1000, 240000]])
+    [options.timeoutMs ?? 600000, 1, 600000], [options.requestTimeoutMs ?? 240000, 1, 600000], [options.maxPromptChars ?? 240000, 1000, 240000]])
     if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new ReviewError("REVIEW_INPUT_INVALID")
   const controller = new AbortController(), signal = controller.signal
   const timer = setTimeout(() => controller.abort(new ReviewError("REVIEW_TIMEOUT")), options.timeoutMs ?? 600000)
@@ -43,7 +43,7 @@ async function runRole<T extends CallState>(state: T, options: Shared & { onChec
   try {
     signal.throwIfAborted()
     const { model } = createAgentModel({ env: options.env, fetcher: options.fetcher, signal,
-      maxPromptChars: options.maxPromptChars ?? 240000, requestTimeoutMs: options.requestTimeoutMs ?? 90000,
+      maxPromptChars: options.maxPromptChars ?? 240000, requestTimeoutMs: options.requestTimeoutMs ?? 240000,
       lengthRepair: options.lengthRepair,
       lengthRepairInstruction: "上次工具输出超长而未采用。仅提交尚未接受的短批次，保持原文绑定和完整待确认说明，不输出自由文本。",
       afterResponse: () => {}, onFailure: value => { transportFailure = value },

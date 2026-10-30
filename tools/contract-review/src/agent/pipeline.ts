@@ -54,7 +54,7 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
   if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > MAX_AGENT_CALLS || !Number.isSafeInteger(callsUsed) || callsUsed < 0 || callsUsed > maxCalls ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000 || !["default", "low"].includes(auditEffort)) throw new ReviewError("REVIEW_INPUT_INVALID")
   for (const [value, minimum, maximum] of [[options.maxPromptChars ?? 240000, 1000, 240000],
-    [options.requestTimeoutMs ?? 90000, 1, 90000], [options.maxToolChars ?? 16000, 1000, 64000]]) {
+    [options.requestTimeoutMs ?? 240000, 1, 600000], [options.maxToolChars ?? 16000, 1000, 64000]]) {
     if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new ReviewError("REVIEW_INPUT_INVALID")
   }
   const prepared = prepareReviewInput(options, bundles[0].pack, options.models?.primary ?? ((env?.AI_MODEL ?? process.env.AI_MODEL)?.trim() || "glm-5.3-flash"), callsUsed)

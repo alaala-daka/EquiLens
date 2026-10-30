@@ -62,7 +62,7 @@ export async function reviewWithAgent(options: AgentReviewOptions): Promise<Revi
   const maxPromptChars = integer(options.maxPromptChars ?? 240000, 1000, 240000)
   const maxToolChars = integer(options.maxToolChars ?? 16000, 1000, 64000)
   const timeoutMs = integer(options.timeoutMs ?? 600000, 1, 600000)
-  const requestTimeoutMs = integer(options.requestTimeoutMs ?? 90000, 1, 90000)
+  const requestTimeoutMs = integer(options.requestTimeoutMs ?? 240000, 1, 600000)
   if (options.strategy !== undefined && options.strategy !== "prepared-v1" || !["default", "low"].includes(options.reasoningEffort ?? "default") || options.strategy && options.sceneCandidates) throw new ReviewError("REVIEW_INPUT_INVALID")
   // 在读取技能之前固定调用方输入，后续异步等待不能改变本任务。
   const input = structuredClone({

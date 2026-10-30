@@ -69,13 +69,13 @@ export async function auditReview(options: AuditOptions): Promise<AuditResult> {
   const primary = structuredClone(options.primary), pack = structuredClone(options.pack)
   const maxCalls = options.maxCalls ?? DEFAULT_AGENT_CALLS, timeoutMs = options.timeoutMs ?? 600000
   const callsUsed = options.callsUsed ?? primary.callsUsed
-  const maxPromptChars = options.maxPromptChars ?? 240000, requestTimeoutMs = options.requestTimeoutMs ?? 90000
+  const maxPromptChars = options.maxPromptChars ?? 240000, requestTimeoutMs = options.requestTimeoutMs ?? 240000
   if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > MAX_AGENT_CALLS ||
       !Number.isSafeInteger(primary.callsUsed) || primary.callsUsed < 0 || primary.callsUsed > maxCalls ||
       !Number.isSafeInteger(callsUsed) || callsUsed < primary.callsUsed || callsUsed > maxCalls ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000 ||
       !Number.isSafeInteger(maxPromptChars) || maxPromptChars < 1000 || maxPromptChars > 240000 ||
-      !Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 90000 ||
+      !Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 600000 ||
       (options.reasoningEffort !== undefined && !["default", "low"].includes(options.reasoningEffort)) ||
       primary.packVersion !== pack.manifest.version || pack.manifest.status === "已停用" ||
       primary.input.textSha256 !== digest(primary.paragraphs.map(paragraph => paragraph.text).join("\n"))) throw new ReviewError("REVIEW_INPUT_INVALID")

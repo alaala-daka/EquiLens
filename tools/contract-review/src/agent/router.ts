@@ -38,7 +38,7 @@ export async function routeScene(options: Options): Promise<RoutingResult> {
   const { paragraphs, candidates, context, complete } = structuredClone({ paragraphs: options.paragraphs, candidates: options.candidates, context: options.context, complete: options.complete })
   const startCalls = options.callsUsed ?? 0, maxCalls = Math.min(options.maxCalls ?? DEFAULT_AGENT_CALLS, startCalls + 4)
   for (const [value, minimum, maximum] of [[startCalls, 0, MAX_AGENT_CALLS], [options.maxCalls ?? DEFAULT_AGENT_CALLS, 1, MAX_AGENT_CALLS],
-    [options.timeoutMs ?? 600000, 1, 600000], [options.requestTimeoutMs ?? 90000, 1, 90000], [options.maxPromptChars ?? 240000, 1000, 240000]]) {
+    [options.timeoutMs ?? 600000, 1, 600000], [options.requestTimeoutMs ?? 240000, 1, 600000], [options.maxPromptChars ?? 240000, 1000, 240000]]) {
     if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new ReviewError("REVIEW_INPUT_INVALID")
   }
   if (startCalls > maxCalls) throw new ReviewError("REVIEW_INPUT_INVALID")
@@ -58,7 +58,7 @@ export async function routeScene(options: Options): Promise<RoutingResult> {
     signal.throwIfAborted()
     if (!candidates.length || !paragraphs.length) throw new ReviewError("REVIEW_INPUT_INVALID")
     const { model } = createAgentModel({ env: options.env, fetcher: options.fetcher, signal,
-      maxPromptChars: options.maxPromptChars ?? 240000, requestTimeoutMs: options.requestTimeoutMs ?? 90000,
+      maxPromptChars: options.maxPromptChars ?? 240000, requestTimeoutMs: options.requestTimeoutMs ?? 240000,
       lengthRepairInstruction: "仅调用selectScene提交一条简短场景判断，引用必要原文；不能调用审查或复核工具。",
       afterResponse: () => { result.readParagraphIndexes = paragraphs.map(item => item.index) }, onFailure: value => { failure = value },
       beforeRequest: async () => {

@@ -7,7 +7,7 @@ import { ReviewError, safeError } from "../../../../tools/contract-review/src/er
 import { canExportRevision } from "../../../../tools/contract-review/src/revision"
 import { renderRevisionInChild } from "../../../../tools/contract-review/src/revision-export"
 import type { ReviewTask, ReviewResult } from "../../../lib/contract-reviews/types"
-import type { ClaimedReview, ReviewTaskRepository } from "./repository"
+import { TASK_BUDGET_MS, type ClaimedReview, type ReviewTaskRepository } from "./repository"
 import { runDocumentAgent } from "../../document-agent/workflow"
 
 /**
@@ -28,8 +28,8 @@ export async function runClaimedReview(job: ClaimedReview, overrides: RunnerOver
   const repository = overrides.repository ?? await (await import("./service")).reviewTaskRepository()
   const controller = new AbortController()
   overrides.onActive?.(controller)
-  const elapsed = () => Math.min(600000, job.elapsedMs + Date.now() - Date.parse(job.startedAt))
-  const timeout = setTimeout(() => controller.abort(new ReviewError("REVIEW_TIMEOUT")), Math.max(1, 600000 - elapsed()))
+  const elapsed = () => Math.min(TASK_BUDGET_MS, job.elapsedMs + Date.now() - Date.parse(job.startedAt))
+  const timeout = setTimeout(() => controller.abort(new ReviewError("REVIEW_TIMEOUT")), Math.max(1, TASK_BUDGET_MS - elapsed()))
   let heartbeatBusy = false
   const heartbeat = setInterval(() => {
     if (heartbeatBusy) return
@@ -64,7 +64,7 @@ export async function runClaimedReview(job: ClaimedReview, overrides: RunnerOver
     progress.paragraphCount = snapshot.paragraphs.length
     if (job.input.workflow === "document-agent-v1") {
       result = await runDocumentAgent(job, { repository, signal: controller.signal, elapsed,
-        env: overrides.env ?? { AI_BASE_URL: job.input.baseURL, AI_MODEL: job.input.model, AI_API_KEY: process.env.AI_API_KEY }, fetcher: overrides.fetcher })
+        env: overrides.env ?? { AI_BASE_URL: job.input.baseURL, AI_MODEL: job.input.model, AI_API_KEY: process.env.AI_API_KEY, AI_REQUEST_TIMEOUT_MS: process.env.AI_REQUEST_TIMEOUT_MS }, fetcher: overrides.fetcher })
       await repository.finish(job, result, result.errors[0] ?? null, elapsed())
       return
     }
@@ -72,9 +72,9 @@ export async function runClaimedReview(job: ClaimedReview, overrides: RunnerOver
       paragraphs: snapshot.paragraphs, complete: snapshot.complete,
       documentTitle: job.input.title, documentVersionId: job.input.revisionId, parseSnapshotId: snapshot.id,
       context: job.input.context, mode: job.input.mode, signal: controller.signal,
-      callsUsed: job.callsUsed, maxCalls: job.maxCalls, timeoutMs: Math.max(1, 600000 - elapsed()), maxPromptChars: job.input.maxPromptChars,
+      callsUsed: job.callsUsed, maxCalls: job.maxCalls, timeoutMs: Math.min(600000, Math.max(1, TASK_BUDGET_MS - elapsed())), maxPromptChars: job.input.maxPromptChars,
       previousResult: job.checkpoint ?? undefined,
-      env: overrides.env ?? { AI_BASE_URL: job.input.baseURL, AI_MODEL: job.input.model, AI_API_KEY: process.env.AI_API_KEY },
+      env: overrides.env ?? { AI_BASE_URL: job.input.baseURL, AI_MODEL: job.input.model, AI_API_KEY: process.env.AI_API_KEY, AI_REQUEST_TIMEOUT_MS: process.env.AI_REQUEST_TIMEOUT_MS },
       fetcher: overrides.fetcher,
       onBeforeCall: async (reservation: { callNumber: number; ruleIds: string[] }) => {
         controller.signal.throwIfAborted()
@@ -110,11 +110,11 @@ export async function runClaimedReview(job: ClaimedReview, overrides: RunnerOver
       result = await repository.saveRevisionExport(job, result, output, elapsed())
     }
     const error = result.errors[0] ?? null
-    const retry = retryable(error?.code) && job.attempt < 2 && job.callsUsed < job.maxCalls && elapsed() < 600000
+    const retry = retryable(error?.code) && job.attempt < 2 && job.callsUsed < job.maxCalls && elapsed() < TASK_BUDGET_MS
     await repository.finish(job, result, error, elapsed(), retry)
   } catch (failure) {
     const error = safeError(controller.signal.aborted ? controller.signal.reason : failure)
-    const retry = retryable(error.code) && job.attempt < 2 && job.callsUsed < job.maxCalls && elapsed() < 600000
+    const retry = retryable(error.code) && job.attempt < 2 && job.callsUsed < job.maxCalls && elapsed() < TASK_BUDGET_MS
     await repository.finish(job, result, error, elapsed(), retry).catch(() => {})
   } finally {
     clearInterval(heartbeat)

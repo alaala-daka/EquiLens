@@ -1,4 +1,5 @@
 import { modelConfig } from "../ai/client"
+import { requestTimeoutFromEnv } from "@/lib/ai/timeout"
 import { BusinessError } from "../projects/errors"
 import type { FactsInput } from "./input"
 
@@ -26,7 +27,7 @@ export function createFactExtractor(fetcher: typeof fetch = fetch): FactExtracto
       input.signal.throwIfAborted()
       await input.onBeforeCall(call)
       try {
-        const response = await fetcher(config.endpoint, { method: "POST", redirect: "error", cache: "no-store", signal: AbortSignal.any([input.signal, AbortSignal.timeout(90000)]),
+        const response = await fetcher(config.endpoint, { method: "POST", redirect: "error", cache: "no-store", signal: AbortSignal.any([input.signal, AbortSignal.timeout(requestTimeoutFromEnv(input.env))]),
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
           body: JSON.stringify({ model: config.model, messages: [{ role: "user", content: prompt }], stream: false, temperature: 0, max_tokens: 8192, response_format: { type: "json_object" } }) })
         const data = await response.json() as { choices?: Array<{ finish_reason?: string; message?: { content?: string; refusal?: unknown; tool_calls?: unknown[] } }> }

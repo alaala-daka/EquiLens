@@ -20,6 +20,9 @@ import { RevisionDownloadError } from "./errors"
 import type { RoleModels } from "../../ai/roles"
 import { recordedTokenCount, recordedUsage, summarizeExchange, type ExchangeRetention, type ModelExchange } from "../../ai/exchange"
 
+/** 任务整体执行预算：推理模型单次请求可能接近 5 分钟，三次调用需要更长总预算。 */
+export const TASK_BUDGET_MS = 1_800_000
+
 /** 新任务固定候选目录；存量无目录任务沿用显式场景。 */
 export type TaskInput = Omit<SubmitReview, "context"> & {
   context: ReviewContext
@@ -186,8 +189,8 @@ export class ReviewTaskRepository {
       const row = (await c.query("SELECT * FROM equilens_review_tasks WHERE state='queued' OR (state='running' AND (lease_until IS NULL OR lease_until<=$1)) ORDER BY created_at,id LIMIT 1", [clock])).rows[0]
       if (!row) { await c.query("UPDATE equilens_review_runner SET token=NULL,lease_until=NULL WHERE token=$1", [token]); return null }
       const elapsed = Number(row.elapsed_ms) + (row.state === "running" ? Math.max(0, Math.min(Date.now(), Date.parse(String(row.lease_until))) - Date.parse(String(row.updated_at))) : 0)
-      if (Number(row.attempt) >= 3 || Number(row.calls_used) >= Number(row.max_calls) || elapsed >= 600000) {
-        const code = elapsed >= 600000 ? "REVIEW_TIMEOUT" : "REVIEW_BUDGET_EXHAUSTED"
+      if (Number(row.attempt) >= 3 || Number(row.calls_used) >= Number(row.max_calls) || elapsed >= TASK_BUDGET_MS) {
+        const code = elapsed >= TASK_BUDGET_MS ? "REVIEW_TIMEOUT" : "REVIEW_BUDGET_EXHAUSTED"
         const checkpoint = jsonResult(row)
         const partial = hasPartial(checkpoint)
         await c.query("UPDATE equilens_review_tasks SET state=$1,stage='failed',execution_token=NULL,lease_until=NULL,error_code=$2,error_message=$3,updated_at=$4 WHERE id=$5", [partial ? "partial" : "failed", code, "任务已达到累计预算或尝试次数上限。", clock, String(row.id)])
@@ -227,7 +230,7 @@ export class ReviewTaskRepository {
   async reserve(job: ClaimedReview, callNumber: number, elapsedMs: number) {
     await this.database.transaction(async c => {
       const row = await this.executing(c, job)
-      if (callNumber !== Number(row.calls_used) + 1 || callNumber > Number(row.max_calls) || elapsedMs >= 600000) throw lost()
+      if (callNumber !== Number(row.calls_used) + 1 || callNumber > Number(row.max_calls) || elapsedMs >= TASK_BUDGET_MS) throw lost()
       // The immutable exchange ledger survives a crash between response persistence and checkpointing.
       const tokenLimit = parse<TaskInput>(row.input).maxKnownTokens
       if (tokenLimit !== undefined) {
@@ -359,7 +362,7 @@ export class ReviewTaskRepository {
       !draft || !result.collaboration?.primary || !canExportRevision(draft, audit) || draft.sha256 !== draftHash(draft) ||
       draft.primarySha256 !== revisionHash(result.collaboration.primary) || result.input.documentVersionId !== job.input.revisionId ||
       result.input.parseSnapshotId !== job.snapshot?.id || result.input.textSha256 !== job.snapshot?.textSha256 ||
-      !Number.isSafeInteger(elapsedMs) || elapsedMs < 0 || elapsedMs >= 600000 || !bytes.length || bytes.length > 20 * 1024 * 1024) throw new StoreError(409, "修订稿未完成核对或版本不匹配。")
+      !Number.isSafeInteger(elapsedMs) || elapsedMs < 0 || elapsedMs >= TASK_BUDGET_MS || !bytes.length || bytes.length > 20 * 1024 * 1024) throw new StoreError(409, "修订稿未完成核对或版本不匹配。")
     return this.database.transaction(async c => {
       await this.executing(c, job)
       const existing = (await c.query("SELECT payload FROM equilens_review_artifacts WHERE task_id=$1 AND attempt=$2 AND stage='revision-docx' AND ordinal=0", [job.id, job.attempt])).rows[0]
@@ -407,7 +410,7 @@ export class ReviewTaskRepository {
     const result = structuredClone(input), analysis = result.documentAnalysis, letter = analysis?.letter
     if (job.input.workflow !== "document-agent-v1" || job.input.task !== "collection-letter" || !analysis || !letter || !letterVerificationAllowed(analysis) || !letter.auditPassed ||
       result.input.documentVersionId !== job.input.revisionId || result.input.parseSnapshotId !== job.snapshot?.id || result.input.textSha256 !== job.snapshot?.textSha256 ||
-      !bytes.length || bytes.length > 1024 * 1024 || elapsedMs >= 600000) throw new StoreError(409, "催款函草稿未完成校验或版本不匹配。")
+      !bytes.length || bytes.length > 1024 * 1024 || elapsedMs >= TASK_BUDGET_MS) throw new StoreError(409, "催款函草稿未完成校验或版本不匹配。")
     return this.database.transaction(async c => {
       await this.executing(c, job)
       const existing = (await c.query("SELECT payload FROM equilens_review_artifacts WHERE task_id=$1 AND stage='letter-docx' ORDER BY attempt DESC LIMIT 1", [job.id])).rows[0]
@@ -461,7 +464,7 @@ export class ReviewTaskRepository {
         if (["queued", "running"].includes(String(row.state))) return view(row, true)
         const analysis = jsonResult(row)?.documentAnalysis
         if (analysis?.audit.complete && (analysis.task !== "collection-letter" || analysis.letter?.export)) throw new StoreError(409, "当前资料已完成机器核对；补充材料后请明确提交新任务。")
-        if (row.state === "success" || ["REVIEW_CANCELLED", "REVIEW_TOKEN_BUDGET_EXHAUSTED"].includes(String(row.error_code)) || Number(row.attempt) >= 3 || Number(row.calls_used) >= Number(row.max_calls) || Number(row.elapsed_ms) >= 600000) throw new StoreError(409, "原任务不能继续重试；如需新分析，请重新确认后提交。")
+        if (row.state === "success" || ["REVIEW_CANCELLED", "REVIEW_TOKEN_BUDGET_EXHAUSTED"].includes(String(row.error_code)) || Number(row.attempt) >= 3 || Number(row.calls_used) >= Number(row.max_calls) || Number(row.elapsed_ms) >= TASK_BUDGET_MS) throw new StoreError(409, "原任务不能继续重试；如需新分析，请重新确认后提交。")
         await c.query("UPDATE equilens_review_tasks SET state='queued',stage='queued',updated_at=$1,error_code=NULL,error_message=NULL WHERE owner=$2 AND id=$3 AND state=$4 AND attempt=$5 AND execution_token IS NULL", [now(), owner, id, String(row.state), Number(row.attempt)])
       }
       return view(await this.owned(c, owner, id, contextId), true)
