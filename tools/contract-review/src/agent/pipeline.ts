@@ -54,7 +54,7 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
   if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > MAX_AGENT_CALLS || !Number.isSafeInteger(callsUsed) || callsUsed < 0 || callsUsed > maxCalls ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000 || !["default", "low"].includes(auditEffort)) throw new ReviewError("REVIEW_INPUT_INVALID")
   for (const [value, minimum, maximum] of [[options.maxPromptChars ?? 240000, 1000, 240000],
-    [options.requestTimeoutMs ?? 90000, 1, 90000], [options.maxToolChars ?? 16000, 1000, 64000]]) {
+    [options.requestTimeoutMs ?? 240000, 1, 600000], [options.maxToolChars ?? 16000, 1000, 64000]]) {
     if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new ReviewError("REVIEW_INPUT_INVALID")
   }
   const prepared = prepareReviewInput(options, bundles[0].pack, options.models?.primary ?? ((env?.AI_MODEL ?? process.env.AI_MODEL)?.trim() || "glm-5.3-flash"), callsUsed)
@@ -155,7 +155,7 @@ export async function reviewWithAgents(options: MultiAgentOptions): Promise<Revi
       collaboration.phase = "reviewing"
       await publish()
       const ruleCount = bundle.pack.rules.filter(rule => rule.status !== "已停用").length
-      const reserveForAudit = revisionMode ? Math.ceil(ruleCount / REVISION_AUDIT_BATCH_SIZE) + Math.ceil(ruleCount / 6) : Math.ceil(ruleCount / 3) + 1
+      const reserveForAudit = revisionMode ? Math.ceil(ruleCount / REVISION_AUDIT_BATCH_SIZE) + Math.ceil(ruleCount / 6) : Math.ceil(ruleCount / 3) + 2
       const primaryLimit = Math.max(1, maxCalls - reserveForAudit)
       if (callsUsed >= primaryLimit) throw new ReviewError("REVIEW_BUDGET_EXHAUSTED")
       collaboration.primary = await reviewWithAgent({ paragraphs: prepared.paragraphs, complete: prepared.result.input.complete,

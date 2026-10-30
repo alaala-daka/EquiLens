@@ -1,0 +1,51 @@
+import { NextResponse, type NextRequest } from "next/server"
+import { authConfig } from "../auth/config"
+import { isAuthError } from "../auth/errors"
+import type { AuthIdentity } from "../auth/service"
+import { BusinessError, httpStatus, isBusinessError } from "../projects/errors"
+import type { ResultAuthorizer } from "../results/service"
+import { saveProjectFactSchema, type FactService } from "./service"
+
+export type FactsHttpServices = { identity(request: NextRequest): Promise<AuthIdentity>; authorize: ResultAuthorizer; service: FactService }
+const headers = { "Cache-Control": "private, no-store" }
+async function readBody(request: NextRequest): Promise<unknown> {
+  if (request.headers.get("origin") !== authConfig(process.env).origin) throw new BusinessError("FORBIDDEN", "请求来源无效。")
+  if (!request.headers.get("content-type")?.startsWith("application/json")) throw new BusinessError("INVALID_INPUT", "请求格式无效。")
+  const reader = request.body?.getReader()
+  if (!reader) throw new BusinessError("INVALID_INPUT", "请求内容无效。")
+  const chunks: Uint8Array[] = []; let size = 0
+  try {
+    while (true) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      size += chunk.value.byteLength
+      if (size > 262144) { await reader.cancel(); throw new BusinessError("LIMIT_EXCEEDED", "请求内容过大。") }
+      chunks.push(chunk.value)
+    }
+  } finally { reader.releaseLock() }
+  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")) } catch { throw new BusinessError("INVALID_INPUT", "请求内容无效。") }
+}
+export function factsHandler(services: () => Promise<FactsHttpServices>, operation: "list" | "history" | "save") {
+  return async (request: NextRequest, context: { params: Promise<{ id: string; factId?: string }> }) => {
+    try {
+      const { id, factId } = await context.params
+      const { identity: resolve, authorize, service } = await services()
+      const identity = await resolve(request)
+      let value: unknown
+      if (operation === "list") value = { facts: await service.list(identity, authorize, id, request.nextUrl.searchParams.get("contractId") ?? undefined) }
+      else if (operation === "history") {
+        if (!factId) throw new BusinessError("NOT_FOUND", "找不到该事实。")
+        value = { versions: await service.history(identity, authorize, id, factId) }
+      } else {
+        const parsed = saveProjectFactSchema.safeParse(await readBody(request))
+        if (!parsed.success) throw new BusinessError("INVALID_INPUT", "事实输入无效，请检查字段。")
+        value = { fact: await service.save(identity, authorize, id, parsed.data) }
+      }
+      return NextResponse.json(value, { headers })
+    } catch (failure) {
+      if (isBusinessError(failure)) return NextResponse.json({ error: { code: failure.code, message: failure.message } }, { status: httpStatus[failure.code], headers })
+      if (isAuthError(failure)) return NextResponse.json({ error: { code: failure.code, message: "身份验证失败。" } }, { status: failure.code === "UNAUTHENTICATED" ? 401 : failure.code === "AUTH_UNAVAILABLE" || failure.code === "AUTH_BUSY" ? 503 : 403, headers })
+      return NextResponse.json({ error: { code: "SERVICE_UNAVAILABLE", message: "事实服务暂时不可用。" } }, { status: 503, headers })
+    }
+  }
+}

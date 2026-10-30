@@ -7,6 +7,9 @@ import type { UnsavedRegistry } from "@/lib/documents/unsaved-registry"
 import { ProjectDraftingWorkspace } from "./project-drafting-workspace"
 import { ProjectReviewWorkspace } from "./project-review-workspace"
 import { ProjectVerificationWorkspace } from "./project-verification-workspace"
+import { ProjectPaymentsWorkspace } from "./project-payments-workspace"
+import { ProjectEvidencePanel } from "./project-evidence-panel"
+import { ProjectLettersPanel } from "./project-letters-panel"
 import type { ProjectSummary } from "./projects-client"
 
 /**
@@ -33,9 +36,18 @@ export function ProjectBusinessWorkspace({ project, active, blocked, isCurrent, 
   return <Tabs value={business} onValueChange={setBusiness} className="flex flex-col gap-6">
     <TabsList>
       <TabsTrigger value="review">合同审查</TabsTrigger>
+      <TabsTrigger value="payments">款项核对</TabsTrigger>
+      <TabsTrigger value="evidence">证据整理</TabsTrigger>
       <TabsTrigger value="verification">投标材料核验</TabsTrigger>
+      <TabsTrigger value="letters">催款函</TabsTrigger>
       <TabsTrigger value="drafting">文书起草</TabsTrigger>
     </TabsList>
+    <TabsContent value="payments" forceMount hidden={business !== "payments"}>
+      <ProjectPaymentsWorkspace project={project} active={active && business === "payments"} canEdit={canEdit} blocked={blocked} isCurrent={isCurrent} onAccessInvalid={onAccessInvalid} registry={registry} />
+    </TabsContent>
+    <TabsContent value="evidence" forceMount hidden={business !== "evidence"} className="flex flex-col gap-6">
+      <ProjectEvidencePanel project={project} active={active && business === "evidence"} canEdit={canEdit} blocked={blocked} isCurrent={isCurrent} onAccessInvalid={onAccessInvalid} registry={registry} />
+    </TabsContent>
     <TabsContent value="review" forceMount hidden={business !== "review"} className="flex flex-col gap-6">
       <ProjectReviewWorkspace
         project={project}
@@ -61,6 +73,9 @@ export function ProjectBusinessWorkspace({ project, active, blocked, isCurrent, 
         onOpenDocuments={onOpenDocuments}
         registry={registry}
       />
+    </TabsContent>
+    <TabsContent value="letters" forceMount hidden={business !== "letters"} className="flex flex-col gap-6">
+      <ProjectLettersPanel project={project} active={active && business === "letters"} canEdit={canEdit} blocked={blocked} isCurrent={isCurrent} onAccessInvalid={onAccessInvalid} registry={registry} />
     </TabsContent>
     <TabsContent value="drafting" forceMount hidden={business !== "drafting"} className="flex flex-col gap-6">
       <ProjectDraftingWorkspace

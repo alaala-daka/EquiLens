@@ -45,9 +45,9 @@ function record(value: unknown): Record<string, unknown> {
 /** 一次调用只发送一次请求；分批、重试、总预算由 reviewContract 统一管理。 */
 export function createGatewayAskModel(options: GatewayOptions = {}): AskModel {
   const maxTokens = options.maxTokens ?? 8192
-  const timeoutMs = options.timeoutMs ?? 90000
+  const timeoutMs = options.timeoutMs ?? 240000
   if (!Number.isSafeInteger(maxTokens) || maxTokens < 1 || maxTokens > 8192 ||
-      !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 90000) throw new ReviewError("REVIEW_INPUT_INVALID")
+      !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000) throw new ReviewError("REVIEW_INPUT_INVALID")
   const fetcher = options.fetcher ?? fetch
   return async ({ system, user, signal: parentSignal }) => {
     if (!system.trim() || !user.trim()) throw new ReviewError("REVIEW_INPUT_INVALID")

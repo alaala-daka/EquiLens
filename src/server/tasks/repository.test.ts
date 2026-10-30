@@ -3,7 +3,7 @@ import { test } from "node:test"
 import type { Connection } from "../database/connection"
 import { TaskError } from "./errors"
 import type { CallBudgetEstimate, ClaimedTask, TaskBudgetReservation } from "./repository"
-import { setupTasks, ref, reviewConditions, reviewRequest, validRequest } from "./test-fixtures"
+import { setupTasks, reviewConditions, reviewRequest, validRequest } from "./test-fixtures"
 
 async function rejectsTask(work: Promise<unknown>, status: number, code: string) {
   await assert.rejects(work, (failure: unknown) => {
@@ -75,7 +75,7 @@ test("A3a: operationId is scoped per account and project, not global", async () 
     const first = await s.repository.submit("account-1", "operation-shared", validRequest("document-analysis"))
     const otherProject = {
       kind: "document-analysis" as const, projectId: "project-2",
-      refs: { document: ref("document-1", "project-2") }, conditions: {},
+      refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }] }, conditions: { externalProcessingConsent: true },
     }
     const second = await s.repository.submit("account-1", "operation-shared", otherProject)
     assert.equal(first.created, true)

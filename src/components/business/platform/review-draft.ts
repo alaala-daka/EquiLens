@@ -1,4 +1,46 @@
 import { defaultReviewScene, isReviewScene, type ReviewDraft, type ReviewMaterialSelection } from "./review-state"
+import type { FindingDecision } from "../../../lib/business/contracts"
+import type { ProjectResultView } from "../../../lib/business/reviews-client"
+import type { ReviewResult } from "../../../lib/contract-reviews/types"
+
+export type ReviewRevisionDraft = {
+  /** Keep the exact saved base even when a background refresh finds a newer version. */
+  base: ProjectResultView
+  operationId: string
+  reason: string
+  decisions: FindingDecision[]
+}
+
+export function savedFindingDecisions(value: unknown): FindingDecision[] {
+  const decisions = (value as { findingDecisions?: FindingDecision[] } | null)?.findingDecisions
+  return Array.isArray(decisions) ? decisions.filter(item => item && Number.isSafeInteger(item.findingIndex) && typeof item.reason === "string") : []
+}
+
+export function reviewRevisionValue(draft: ReviewRevisionDraft): ReviewResult & { findingDecisions: FindingDecision[] } {
+  return { ...draft.base.value as ReviewResult, findingDecisions: draft.decisions }
+}
+
+export function reviewRevisionIssues(draft: ReviewRevisionDraft): string[] {
+  const issues: string[] = []
+  if (!draft.reason.trim()) issues.push("请填写修订理由。")
+  if (!draft.decisions.length && !savedFindingDecisions(draft.base.value).length) issues.push("请先处理发现项。")
+  for (const item of draft.decisions) {
+    if (!item.reason.trim()) issues.push(`第 ${item.findingIndex + 1} 项需填写处理理由。`)
+    if (item.decision === "修订" && !item.editedSuggestion?.trim()) issues.push(`第 ${item.findingIndex + 1} 项需填写修订建议。`)
+  }
+  return issues
+}
+
+export function sameFindingDecisions(left: FindingDecision[], right: FindingDecision[]): boolean {
+  const ordered = (items: FindingDecision[]) => [...items].sort((a, b) => a.findingIndex - b.findingIndex)
+    .map(item => [item.findingIndex, item.ruleId, item.decision, item.reason, item.editedSuggestion ?? null, item.editedImpact ?? null])
+  return JSON.stringify(ordered(left)) === JSON.stringify(ordered(right))
+}
+
+export function updateReviewRevisionDraft(previous: ReviewRevisionDraft | undefined, result: ProjectResultView, decisions: FindingDecision[], reason: string, operationId: string): ReviewRevisionDraft | null {
+  const base = previous?.base ?? result
+  return sameFindingDecisions(decisions, savedFindingDecisions(base.value)) ? null : { base, decisions, reason, operationId }
+}
 
 /**
  * Project-scoped preparation input for the review conditions (B2a).

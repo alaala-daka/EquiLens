@@ -40,7 +40,7 @@ export function validRequest(kind: TaskKind): TaskRequest {
     case "contract-review":
       return reviewRequest()
     case "document-analysis":
-      return { kind, projectId, refs: { document: ref("document-1") }, conditions: {} }
+      return { kind, projectId, refs: { materials: [material("material-1")] }, conditions: { externalProcessingConsent: true } }
     case "payment-reconciliation":
       return { kind, projectId, refs: { document: ref("document-1"), facts: [ref("facts-1")] }, conditions: { asOf: "2026-10-28" } }
     case "evidence-organization":

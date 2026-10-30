@@ -32,6 +32,8 @@ export async function register() {
         // C6: register the publication resolver before any task can be submitted/claimed.
         const { startKnowledgeRuntime } = await import("./server/knowledge/runtime")
         startKnowledgeRuntime()
+        const { startFactsRuntime } = await import("./server/facts/runtime")
+        startFactsRuntime()
         const { startTaskRunner } = await import("./server/tasks/runner")
         startTaskRunner()
       })

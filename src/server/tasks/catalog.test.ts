@@ -35,6 +35,16 @@ test("A3a: every controlled task kind has a server-fixed schema", () => {
   }
 })
 
+test("B1a: fact preparation pins one to five material versions and explicit external consent", () => {
+  for (const count of [1, 5]) {
+    const refs = { materials: Array.from({ length: count }, (_, i) => ({ materialVersionId: `m-${i}`, sha256: "a".repeat(64) })) }
+    assert.equal((parseTaskRequest({ ...validRequest("document-analysis"), refs }).refs.materials as unknown[]).length, count)
+  }
+  submissionError(() => parseTaskRequest({ ...validRequest("document-analysis"), conditions: {} }))
+  submissionError(() => parseTaskRequest({ ...validRequest("document-analysis"), refs: { materials: [] } }))
+  submissionError(() => parseTaskRequest({ ...validRequest("document-analysis"), refs: { materials: Array.from({ length: 6 }, (_, i) => ({ materialVersionId: `m-${i}`, sha256: "a".repeat(64) })) } }))
+})
+
 test("C4: bid task schemas pin records/asOf/one-image and reject the superseded shape", () => {
   // The old two-call single bid-verification shape must not be accepted any more.
   submissionError(() => parseTaskRequest({
@@ -84,7 +94,7 @@ test("C4: bid task schemas pin records/asOf/one-image and reject the superseded 
     refs: { materials: [{ materialVersionId: "material-1", sha256: "a".repeat(64) }], requirementSet: { id: "r", versionId: "v", sha256: "a".repeat(64) }, externalRecords: [{ recordId: "record-1", sha256: "not-a-digest" }] },
     conditions: { asOf: "2026-10-28" },
   }))
-  assert.equal(TASK_CATALOG_VERSION, 4)
+  assert.equal(TASK_CATALOG_VERSION, 5)
 })
 
 test("R5: server-resolved publications are pinned into the manifest and never accepted from the browser", () => {

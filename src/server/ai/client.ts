@@ -36,7 +36,7 @@ export async function askModel(prompt: string, config: ModelConfig, fetcher: typ
   let response: Response
   try {
     response = await fetcher(config.endpoint, {
-      method: "POST", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(30000),
+      method: "POST", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(120000),
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
       body: JSON.stringify({ model: config.model, messages: [{ role: "user", content: prompt }], stream: false, max_tokens: 256 }),
     })

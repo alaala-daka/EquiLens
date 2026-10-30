@@ -13,6 +13,20 @@ export type SourceRef = {
   locator?: string
 }
 
+/** Project material anchor; legacy document anchors remain supported by the anonymous domain. */
+export type SourceAnchor = {
+  projectId: string
+  quote: string
+  parseSnapshotId: string
+  locator?: string
+  fragmentId?: string
+  paragraphIndex?: number
+  materialId?: string
+  materialVersionId?: string
+  documentId?: string
+  documentVersionId?: string
+}
+
 export type FactInput = {
   projectId: string
   contractId?: string
@@ -27,8 +41,8 @@ export type FactInput = {
   selectedValue?: string
   unit?: string
   caliber?: string
-  sources: SourceRef[]
-  conflicts: SourceRef[]
+  sources: SourceAnchor[]
+  conflicts: SourceAnchor[]
   confirmation: FactConfirmation
   support: FactSupport
   createdBy: string
@@ -44,6 +58,16 @@ export type FactVersion = FactInput & {
   createdAt: string
   /** 人工确认不清除材料冲突；该字段表示当前证据状态。 */
   evidenceStatus: FactSupport
+}
+
+export type ProjectFactDraft = Omit<FactInput, "projectId" | "createdBy">
+export type ProjectFactVersion = FactVersion
+export type SaveProjectFact = {
+  operationId: string
+  factId?: string
+  baseVersionId: string
+  reason: string
+  value: ProjectFactDraft
 }
 
 export class FactError extends Error {

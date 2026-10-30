@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog"
-import { ContractReviewReport, CitationLocatorContext, type CitationLocator } from "@/components/contract-review-report"
+import { ContractReviewReport, CitationLocatorContext, ReportExpandContext, type CitationLocator } from "@/components/contract-review-report"
 import { DocumentAgentReport } from "@/components/document-agent-report"
 import { documentTaskLabels, type LetterPlan } from "@/lib/document-agent/types"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
@@ -217,9 +217,11 @@ export function ContractReviewPanel({ documentId, revisionId, dirty, busy, initi
       {active && <Button type="button" variant="outline" disabled={submitting} onClick={() => void action("cancel")}>取消任务</Button>}
       {!active && task.revisionId === revisionId && ["REVIEW_SCENE_UNCERTAIN", "REVIEW_SCENE_UNSUPPORTED"].includes(task.error?.code ?? "") && <Button type="button" variant="outline" disabled={submitting || dirty || busy} onClick={() => { setKind("contract-review"); setManualScene({ sourceTaskId: task.id, scene: "", reason: "" }); setConsentRevision("") }}>手动选择场景后新建审查</Button>}
       {!active && !task.result?.documentAnalysis?.audit.complete && task.state !== "success" && task.stage !== "cancelled" && !["REVIEW_INPUT_EMPTY", "REVIEW_REVISION_UNSAFE", "REVIEW_TOKEN_BUDGET_EXHAUSTED"].includes(task.error?.code ?? "") && !task.result?.collaboration?.revision?.export && (!task.result?.sceneSelection || task.result.sceneSelection.status === "matched") && task.attempt < 3 && task.callsUsed < task.maxCalls && <Button type="button" variant="outline" disabled={submitting} onClick={() => setRetryDialog(true)}>继续原任务</Button>}
-      {task.result && <CitationLocatorContext.Provider value={onLocateCitation ?? null}>
-        {task.result.documentAnalysis ? <DocumentAgentReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} /> : <ContractReviewReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} onRevisionCreated={id => { setSelected(id); setReload(value => value + 1) }} />}
-      </CitationLocatorContext.Provider>}
+      {task.result && <ReportExpandContext.Provider value={() => setReportExpanded(true)}>
+        <CitationLocatorContext.Provider value={onLocateCitation ?? null}>
+          {task.result.documentAnalysis ? <DocumentAgentReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} /> : <ContractReviewReport result={task.result} taskId={active ? undefined : task.id} onSessionUnavailable={onSessionUnavailable} onRevisionCreated={id => { setSelected(id); setReload(value => value + 1) }} />}
+        </CitationLocatorContext.Provider>
+      </ReportExpandContext.Provider>}
     </div>}
     <AlertDialog open={reportExpanded} onOpenChange={setReportExpanded}>
       <AlertDialogContent size="lg" className="max-h-[90vh] overflow-y-auto">

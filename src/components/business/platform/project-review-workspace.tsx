@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import type { ExportRef, ResultReview, ResultValidation } from "@/lib/business/contracts"
+import type { ExportRef, FindingDecision, ResultReview, ResultValidation } from "@/lib/business/contracts"
 import {
   createProjectReviewsClient,
   type ProjectBudgetView,
@@ -62,7 +62,7 @@ import {
   type ReviewDraft,
   type SubmissionOperation,
 } from "./review-state"
-import { browserReviewDraftStorage, clearReviewDraft, readReviewDraft, writeReviewDraft } from "./review-draft"
+import { browserReviewDraftStorage, clearReviewDraft, readReviewDraft, writeReviewDraft, reviewRevisionIssues, reviewRevisionValue, updateReviewRevisionDraft, type ReviewRevisionDraft } from "./review-draft"
 import { ReviewResultPanel, type ReviewPanelBusy } from "./review-result-panel"
 
 const regions = ["北京", "天津", "河北", "山西", "内蒙古", "辽宁", "吉林", "黑龙江", "上海", "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南", "广东", "广西", "海南", "重庆", "四川", "贵州", "云南", "西藏", "陕西", "甘肃", "青海", "宁夏", "新疆", "香港", "澳门", "台湾"] as const
@@ -71,17 +71,17 @@ type WorkspaceBusy = "" | "submit" | "refresh"
 type Selection = { taskId: string; resultId: string }
 
 /**
- * Project contract-review workspace (B2a).
+ * Project contract-review workspace (B2a/B2b).
  *
  * Flow: select parsed materials and an explicit scene → submit a persisted task
  * → poll the persisted task detail every five seconds until terminal → open
- * the machine result linked by task provenance → revalidate → approve/reject →
- * create and download one versioned Word export.
+ * the machine result linked by task provenance → save per-finding human
+ * decisions as a revision → revalidate → approve/reject → versioned Word export.
  *
  * Every request is bound to this project instance: late responses from another
  * project or after unmount are rejected by the client guard. A read-only
- * member sees tasks, results and existing exports but cannot submit, review or
- * create an export.
+ * member sees tasks, results, decisions and existing exports but cannot submit,
+ * revise, review or create an export.
  */
 export function ProjectReviewWorkspace({ project, active, canEdit, canManage, blocked, isCurrent, onAccessInvalid, onOpenDocuments, registry }: {
   project: ProjectSummary
@@ -146,10 +146,12 @@ export function ProjectReviewWorkspace({ project, active, canEdit, canManage, bl
   const [validationOverride, setValidationOverride] = useState<Record<string, ResultValidation>>({})
   const [resultBusy, setResultBusy] = useState<ReviewPanelBusy>(null)
   const [actionError, setActionError] = useState("")
+  const [revisions, setRevisions] = useState<Record<string, ReviewRevisionDraft>>({})
   const [exports, setExports] = useState<ExportRef[]>([])
   const [exportsError, setExportsError] = useState("")
   const [exportsVersion, setExportsVersion] = useState(0)
   const operation = useRef<SubmissionOperation | null>(null)
+  const revisionSaving = useRef(false)
   const restored = useRef(false)
   const loadedOnce = useRef(false)
   const client = runtime.client
@@ -293,7 +295,7 @@ export function ProjectReviewWorkspace({ project, active, canEdit, canManage, bl
   const selectedResultId = selection.resultId && results.some(row => row.resultId === selection.resultId)
     ? selection.resultId
     : taskResult?.resultId ?? ""
-  const selectedResult = results.find(row => row.resultId === selectedResultId) ?? null
+  const selectedResult = revisions[selectedResultId]?.base ?? results.find(row => row.resultId === selectedResultId) ?? null
   const selectedResultVersion = selectedResult?.versionId ?? ""
 
   useEffect(() => {
@@ -333,7 +335,50 @@ export function ProjectReviewWorkspace({ project, active, canEdit, canManage, bl
     })
   }, [canEdit, blocked, draft, project.id, registry])
 
-  const draftDirty = canEdit && isReviewDraftDirty(draft)
+  const saveRevision = useCallback(async (pending: ReviewRevisionDraft): Promise<boolean> => {
+    if (!canEdit || blocked || revisionSaving.current || !current()) return false
+    const issues = reviewRevisionIssues(pending)
+    if (issues.length) { setActionError(issues.join(" ")); return false }
+    const controller = beginAction()
+    revisionSaving.current = true
+    setResultBusy("save")
+    setActionError("")
+    try {
+      const updated = await client.saveResultRevision({
+        resultId: pending.base.resultId, baseVersionId: pending.base.versionId,
+        operationId: pending.operationId, reason: pending.reason.trim(), value: reviewRevisionValue(pending),
+      }, controller.signal)
+      if (!current()) return false
+      setResults(rows => rows.map(row => row.resultId === updated.resultId ? updated : row))
+      setRevisions(rows => {
+        if (rows[updated.resultId]?.operationId !== pending.operationId) return rows
+        const next = { ...rows }
+        delete next[updated.resultId]
+        return next
+      })
+      setNotice("修订版本已保存，待复核。")
+      return true
+    } catch (failure) {
+      if (current() && !controller.signal.aborted) setActionError(errorMessage(failure))
+      return false
+    } finally {
+      revisionSaving.current = false
+      endAction(controller)
+      if (current()) setResultBusy(null)
+    }
+  }, [beginAction, blocked, canEdit, client, current, endAction])
+
+  useEffect(() => {
+    const unregister = Object.values(revisions).map(pending => registry.register({
+      id: `review-revision:${project.id}:${pending.base.resultId}`,
+      label: "审查成果修订",
+      save: () => saveRevision(pending),
+      discard: () => setRevisions(rows => { const next = { ...rows }; delete next[pending.base.resultId]; return next }),
+    }))
+    return () => unregister.forEach(remove => remove())
+  }, [project.id, registry, revisions, saveRevision])
+
+  const draftDirty = canEdit && (isReviewDraftDirty(draft) || Object.keys(revisions).length > 0)
   useEffect(() => {
     if (!draftDirty) return
     const handler = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = "" }
@@ -350,6 +395,18 @@ export function ProjectReviewWorkspace({ project, active, canEdit, canManage, bl
     setDraft(next)
     setSubmitIssues([])
     setNotice("")
+  }
+
+  function editRevision(result: ProjectResultView, decisions: FindingDecision[], reason: string) {
+    if (!canEdit || blocked || resultBusy) return
+    setActionError("")
+    setRevisions(rows => {
+      const next = { ...rows }
+      const updated = updateReviewRevisionDraft(rows[result.resultId], result, decisions, reason, crypto.randomUUID())
+      if (updated) next[result.resultId] = updated
+      else delete next[result.resultId]
+      return next
+    })
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -585,14 +642,19 @@ export function ProjectReviewWorkspace({ project, active, canEdit, canManage, bl
       </TableBody></Table></div>}
       {taskFinishedWithoutResult && <p role="alert" className="text-sm text-destructive">该任务已结束，但未读取到对应成果；请刷新后重试。</p>}
       {selectedResult && selectedValidation && <ReviewResultPanel
+        key={`${selectedResult.resultId}:${selectedResult.versionId}`}
         result={selectedResult}
         value={selectedValue}
         validation={selectedValidation}
         exports={exports}
         exportsError={exportsError}
-        canEdit={canEdit}
+        canEdit={canEdit && !blocked}
         busy={resultBusy}
         error={actionError}
+        revision={revisions[selectedResult.resultId]}
+        onEditRevision={(decisions, reason) => editRevision(selectedResult, decisions, reason)}
+        onSaveRevision={() => { const pending = revisions[selectedResult.resultId]; if (pending) void saveRevision(pending) }}
+        onDiscardRevision={() => setRevisions(rows => { const next = { ...rows }; delete next[selectedResult.resultId]; return next })}
         onValidate={() => validateResult(selectedResult)}
         onReview={(decision, comment) => reviewResult(selectedResult, decision, comment)}
         onCreateExport={() => createExport(selectedResult)}

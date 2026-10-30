@@ -62,7 +62,7 @@ function WorkspaceRouter({ registry }: { registry: ReturnType<typeof createUnsav
     return <AnonymousWorkbench workspaceRegistry={registry} onOpenProject={host.status === "ready" ? openProject : undefined} />
   }
   if (host.currentProject) return <ProjectDocumentsWorkspace key={host.currentProject.id} project={host.currentProject} accessBlocked={host.status !== "ready"} registry={registry} onOpenAnonymous={openAnonymous} />
-  return <main className="flex min-h-svh flex-col"><header className="flex h-16 items-center justify-between border-b px-6"><span className="text-sm font-medium">衡鉴</span><div className="flex items-center gap-3"><ProjectSwitcher /><Button variant="outline" size="sm" onClick={() => void openAnonymous()}><FileTextIcon />匿名工作台</Button><AccountEntry /></div></header>{host.status === "loading" && <p role="status" className="p-6 text-sm">正在读取项目</p>}</main>
+  return <main className="flex min-h-svh flex-col"><header className="flex h-16 items-center justify-between border-b px-6"><span className="text-sm font-medium">衡鉴</span><div className="flex items-center gap-3"><ProjectSwitcher /><Button variant="outline" size="sm" onClick={() => void openAnonymous()}><FileTextIcon />匿名工作台</Button><AccountEntry /></div></header>{host.status === "loading" && <p role="status" className="p-6 text-sm">正在读取项目</p>}{host.status === "error" && <div role="alert" className="flex flex-col items-start gap-3 p-6 text-sm"><p>{host.error || "项目列表暂不可用，请重试。"}</p><Button variant="outline" size="sm" onClick={() => void host.refresh()}>重试</Button></div>}</main>
 }
 
 function AnonymousWorkbench({ workspaceRegistry, onOpenProject }: { workspaceRegistry: ReturnType<typeof createUnsavedRegistry>; onOpenProject?: () => Promise<boolean> }) {

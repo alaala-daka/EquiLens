@@ -69,13 +69,13 @@ export async function auditReview(options: AuditOptions): Promise<AuditResult> {
   const primary = structuredClone(options.primary), pack = structuredClone(options.pack)
   const maxCalls = options.maxCalls ?? DEFAULT_AGENT_CALLS, timeoutMs = options.timeoutMs ?? 600000
   const callsUsed = options.callsUsed ?? primary.callsUsed
-  const maxPromptChars = options.maxPromptChars ?? 240000, requestTimeoutMs = options.requestTimeoutMs ?? 90000
+  const maxPromptChars = options.maxPromptChars ?? 240000, requestTimeoutMs = options.requestTimeoutMs ?? 240000
   if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > MAX_AGENT_CALLS ||
       !Number.isSafeInteger(primary.callsUsed) || primary.callsUsed < 0 || primary.callsUsed > maxCalls ||
       !Number.isSafeInteger(callsUsed) || callsUsed < primary.callsUsed || callsUsed > maxCalls ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000 ||
       !Number.isSafeInteger(maxPromptChars) || maxPromptChars < 1000 || maxPromptChars > 240000 ||
-      !Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 90000 ||
+      !Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 600000 ||
       (options.reasoningEffort !== undefined && !["default", "low"].includes(options.reasoningEffort)) ||
       primary.packVersion !== pack.manifest.version || pack.manifest.status === "已停用" ||
       primary.input.textSha256 !== digest(primary.paragraphs.map(paragraph => paragraph.text).join("\n"))) throw new ReviewError("REVIEW_INPUT_INVALID")
@@ -154,16 +154,19 @@ export async function auditReview(options: AuditOptions): Promise<AuditResult> {
       },
     })
     const remaining = auditable.filter(id => !accepted.has(id))
-    for (let offset = 0; offset < remaining.length; offset += 3) {
+    let batchSize = 3
+    for (let offset = 0; offset < remaining.length;) {
       signal.throwIfAborted()
-      const batch = remaining.slice(offset, offset + 3)
+      const slice = remaining.slice(offset, offset + batchSize)
+      const batch = slice.filter(id => !accepted.has(id))
+      if (!batch.length) { offset += slice.length; continue }
       const batchRules = rules.filter(rule => batch.includes(rule.ruleId))
       const sourceIds = new Set(batchRules.flatMap(rule => rule.basis.map(basis => basis.sourceId)))
       const availableSources = sourcesFor(primary, pack).filter(source => sourceIds.has(source.sourceId))
       const availableIds = availableSources.map(source => source.sourceId)
       const submissionSchema = checkSchema.extend({ ruleId: z.enum(batch),
         basis: availableIds.length ? z.array(z.enum(availableIds)).max(20) : z.array(z.string()).max(0) })
-      const reviewer = new ToolLoopAgent({ model, maxRetries: 0, maxOutputTokens: 8192, toolCallConcurrency: 1,
+      const reviewer = new ToolLoopAgent({ model, maxRetries: 0, maxOutputTokens: 16384, toolCallConcurrency: 1,
         providerOptions: options.reasoningEffort === "low" ? { contractGateway: { reasoningEffort: "low" } } : undefined,
         stopWhen: [stepCountIs(3), () => batch.every(id => accepted.has(id))],
         instructions: [
@@ -193,15 +196,25 @@ export async function auditReview(options: AuditOptions): Promise<AuditResult> {
           },
         }) },
       })
-      await abortable(reviewer.generate({ abortSignal: signal, prompt: JSON.stringify({
-        targetRuleIds: batch, context: primary.input.context, mode: primary.mode, input: primary.input,
-        paragraphs: primary.paragraphs, primaryStatus: primary.status,
-        primaryFindings: primary.findings.filter(item => auditable.includes(item.ruleId))
-          .map(({ ruleId, category, kind, risk, suggestion, impact, quote, paragraphIndex, basis, pending }) =>
-            ({ ruleId, category, kind, risk, suggestion, impact, quote, paragraphIndex, basis, pending })),
-        rules: batchRules, sources: availableSources,
-      }) }), signal)
+      try {
+        await abortable(reviewer.generate({ abortSignal: signal, prompt: JSON.stringify({
+          targetRuleIds: batch, context: primary.input.context, mode: primary.mode, input: primary.input,
+          paragraphs: primary.paragraphs, primaryStatus: primary.status,
+          primaryFindings: primary.findings.filter(item => auditable.includes(item.ruleId))
+            .map(({ ruleId, category, kind, risk, suggestion, impact, quote, paragraphIndex, basis, pending }) =>
+              ({ ruleId, category, kind, risk, suggestion, impact, quote, paragraphIndex, basis, pending })),
+          rules: batchRules, sources: availableSources,
+        }) }), signal)
+      } catch (failure) {
+        // 一批 3 条仍被长度截断时，下一次只复核 1 条；保留已接受结果，不终止整个任务。
+        if (failure instanceof ReviewError && failure.code === "AI_OUTPUT_TRUNCATED" && batch.length > 1) {
+          batchSize = 1
+          continue
+        }
+        throw failure
+      }
       if (!batch.every(id => accepted.has(id))) throw new ReviewError("REVIEW_OUTPUT_INVALID")
+      offset += slice.length
     }
   } catch (failure) {
     result.errors.push(safeError(fatal ?? (signal.aborted ? signal.reason : transportFailure ?? failure)))

@@ -1,4 +1,4 @@
-import { FactError, type FactInput, type SourceRef } from "@/lib/facts/types"
+import { FactError, type FactInput, type SourceAnchor } from "@/lib/facts/types"
 
 const date = /^\d{4}-\d{2}-\d{2}$/
 const required = (value: string | undefined, field: string) => {
@@ -6,10 +6,15 @@ const required = (value: string | undefined, field: string) => {
   return value.trim()
 }
 const checkDate = (value: string | undefined, field: string) => { if (value !== undefined && (!date.test(value) || Number.isNaN(Date.parse(value + "T00:00:00Z")))) throw new FactError("FACT_INPUT_INVALID", field + "无效。") }
-function source(value: SourceRef, projectId: string) {
+function source(value: SourceAnchor, projectId: string) {
   if (value.projectId !== projectId) throw new FactError("FACT_PROJECT_MISMATCH", "来源不属于当前项目。")
-  for (const field of [value.documentId, value.documentVersionId, value.parseSnapshotId]) required(field, "来源字段")
-  required(value.quote, "来源引文")
+  required(value.parseSnapshotId, "来源快照")
+  if (value.materialId || value.materialVersionId) {
+    required(value.materialId, "来源材料"); required(value.materialVersionId, "来源版本")
+  } else {
+    required(value.documentId, "来源文档"); required(value.documentVersionId, "来源版本")
+  }
+  if (typeof value.quote !== "string" || !value.quote.trim() || value.quote.length > 10000) throw new FactError("FACT_INPUT_INVALID", "来源引文无效。")
   if (value.paragraphIndex === undefined && !value.fragmentId) throw new FactError("FACT_INPUT_INVALID", "来源须定位到段落或片段。")
   if (value.paragraphIndex !== undefined && (!Number.isSafeInteger(value.paragraphIndex) || value.paragraphIndex < 0)) throw new FactError("FACT_INPUT_INVALID", "来源段落无效。")
 }
@@ -28,7 +33,7 @@ export function validateFact(input: FactInput) {
   input.conflicts.forEach(value => source(value, input.projectId))
   const seen = new Set<string>()
   for (const value of [...input.sources, ...input.conflicts]) {
-    const key = [value.documentVersionId, value.parseSnapshotId, value.paragraphIndex ?? "", value.fragmentId ?? "", value.quote].join("|")
+    const key = [value.materialVersionId ?? value.documentVersionId, value.parseSnapshotId, value.paragraphIndex ?? "", value.fragmentId ?? "", value.quote].join("|")
     if (seen.has(key)) throw new FactError("FACT_SOURCE_DUPLICATE", "同一来源被重复引用。")
     seen.add(key)
   }

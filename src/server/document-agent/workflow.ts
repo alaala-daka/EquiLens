@@ -10,6 +10,7 @@ import { auditSchema, extractionSchema } from "./schema"
 import { calculateDocumentAmounts, extractionIds, normalizeExtraction, validateExtraction } from "./validation"
 import { buildCollectionLetter, letterVerificationAllowed, renderCollectionLetter } from "./letter"
 import { roleEnvironment } from "../ai/roles"
+import { requestTimeoutFromEnv } from "@/lib/ai/timeout"
 
 /** 只修复模型常见的 JSON 语法瑕疵（重复逗号、尾随逗号）；字段内容仍由 schema 严格校验。 */
 export function repairToolInput(input: string): string | null {
@@ -38,7 +39,7 @@ export async function runDocumentAgent(job: ClaimedReview, options: {
     await options.repository.checkpoint(job, stage, { paragraphCount: snapshot.paragraphs.length, readParagraphCount: analysis.extraction ? snapshot.paragraphs.length : 0,
       submittedRuleCount: analysis.extraction ? extractionIds(analysis.extraction).length : 0, agentRole: stage === "auditing" ? "auditor" : "primary", auditedRuleCount: analysis.audit.checks.length }, result, options.elapsed())
   }
-  const stageModel = () => createAgentModel({ env: roleEnvironment(options.env, job.input.models, stage === "auditing" ? "auditor" : "primary"), fetcher: options.fetcher, signal: options.signal, maxPromptChars: Math.min(job.input.maxPromptChars, 60000), requestTimeoutMs: 90000,
+  const stageModel = async () => createAgentModel({ env: roleEnvironment(options.env, job.input.models, stage === "auditing" ? "auditor" : "primary"), fetcher: options.fetcher ?? (await import("../ai/dispatcher")).longRunningModelFetch(), signal: options.signal, maxPromptChars: Math.min(job.input.maxPromptChars, 60000), requestTimeoutMs: requestTimeoutFromEnv(options.env),
     lengthRepair: false, afterResponse: () => {}, onFailure: failure => { transportFailure = failure },
     beforeRequest: async () => {
       options.signal.throwIfAborted()
@@ -62,7 +63,7 @@ export async function runDocumentAgent(job: ClaimedReview, options: {
     for (;;) {
       let value: T | undefined
       transportFailure = undefined
-      const agent = new ToolLoopAgent({ model: stageModel().model, maxRetries: 0, maxOutputTokens: 4096, toolCallConcurrency: 1, stopWhen: stepCountIs(1),
+      const agent = new ToolLoopAgent({ model: (await stageModel()).model, maxRetries: 0, maxOutputTokens: 16384, toolCallConcurrency: 1, stopWhen: stepCountIs(1),
         providerOptions: { contractGateway: { reasoningEffort: "low" } }, instructions,
         repairToolCall: async ({ toolCall }) => {
           const raw = (toolCall as { input?: unknown }).input

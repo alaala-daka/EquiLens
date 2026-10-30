@@ -58,6 +58,8 @@ test("DB-01: frozen 0004-0013 checksums prevent silent migration drift", async (
     "0011": "846cb0abee7b1282024d34e5c5f98405b0db5d5a443bbc4b24ba334505ccb64e",
     "0012": "a3550648bf78ff0fc40e30eea4b00406d72d16661dda673fba799dfe8b27ee36",
     "0013": "6f2de175b2f34dc2c0f2fa476e280d4985c609ea176031de881de6d92f2cad00",
+    "0014": "7ff2c64c491ae9617f3d194ea9f0eb53e74fa0c28fa4604086aba83301241bb4",
+    "0015": "f2e4ad94ea91c41d9aeca1cd269c8c7880c96e013a477ab1f4e4422badca51ce",
   }
   for (const [id, digest] of Object.entries(expected)) {
     const migration = businessMigrations.find(row => row.id === id)
