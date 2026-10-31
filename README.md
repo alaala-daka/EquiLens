@@ -1,210 +1,219 @@
 # 衡鉴 EquiLens
 
+**让合同有据，让款项有数。** 面向工程专业分包企业的法律风险与文书协同工作台。
+
+![衡鉴 EquiLens 宣传海报：合同审查、款项核对、证据整理与催款函](docs/assets/readme/equilens-poster.png)
+
 [![CI](https://github.com/alaala-daka/EquiLens/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/alaala-daka/EquiLens/actions/workflows/ci.yml)
 
-**面向工程专业分包企业的法律风险与文书协同平台。**
+[在线入口](https://equilens.zeabur.app) · [本地启动](#本地启动) · [实机展示](#核心功能实机展示) · [部署指南](docs/deployment.md) · [规格索引](spec/README.md)
 
-衡鉴围绕同一工程项目组织合同、证照和履约资料，计划贯通合同审查、材料核验、
-款项分析和文书撰写，使事实、来源和人工修订能在流程之间复用。
+> 项目处于 Demo 开发与授权联调阶段。海报表达产品定位，实机截图展示已实现界面；两者均不代表法律业务验收通过。在线版本可能与当前源码不同。
 
-> **项目状态：**提供文档/规范库工作台和浏览器 Word 编辑器，支持新建、导入、编辑、保存、重开及导出 DOCX。
-> 文档原件和保存版本存入服务端数据库，支持 SQLite / GaussDB 配置。SQLite 已有行为测试；GaussDB 尚未连接真实实例验证。
-> 匿名固定期限、到期拒绝访问、服务内清理及私有维护工具已实现；Linux 日志持久性与容器恢复仍待本版验证。
-> 合同审查 Agent 已接入匿名 DOCX 工作区与持久化任务，仅供授权联调；内置资料均待核对，正式模式拒绝使用。
-> 合同审查由场景识别、主审和独立核对协作；已接入机电安装、装饰装修、幕墙、钢结构四类房建专业分包联调场景，不适配或材料不足时停止。
-> 网页可选择生成独立合同修订稿：主审后加载对应修订技能，再核对修改后的合同；通过结构校验及完整机器核对后提供已保存 Word 建议稿，原件与人工内容保留。四个审查技能及四个修订技能均限联调。
-> 新网页任务的主审材料由程序准备，按六类独立上下文审查；主审/修订思考配置和累计已记录 token 停止阈值随任务固定，旧任务继续原流程。配置和边界见[网页审查说明](docs/contract-review-web.md)。
-> 本轮已实现项目级合同审查闭环：项目材料解析快照 → 持久审查任务 → 受限真实模型审查 → 机器成果 → 生产校验/人工复核 → 版本化 Word 导出；项目工作区新增「业务处理」页签、管理员审查预算登记，匿名工作台与项目工作区可互相切换。已有合成 SQLite 与一次本地真实模型联调记录，不表示 AC 或法律业务验收通过。
-> 内置审查规则尚未领域签核，结果固定为未签核/需人工复核；真实 OBS、GaussDB、MaaS/OCR 服务能力、价格与生产恢复仍待验证。范围和证据见[第三轮集成验证](docs/reviews/2026-10-29-round-three-integration.md)。
+## 为谁解决什么问题
 
-[在线使用](https://equilens.zeabur.app) · [部署说明](docs/deployment.md)
+衡鉴首先聚焦中国大陆房建机电安装专业分包，代表**专业分包人**组织合同、履约材料与工程款依据。
 
-## 工作方式
+| 核心人群 | 日常痛点 | 衡鉴的处理方式 |
+| --- | --- | --- |
+| 企业法务、合同管理人员 | 合同条款分散，审查意见难以回到原文，修订版本容易混淆 | 选择保存版本审查，保留原文引文、审查记录与独立修订建议稿 |
+| 商务、结算人员 | 计量、应付、已付、未到期与争议金额混用 | 按合同、主体、期间与口径登记事实和款项，再进行核对 |
+| 项目负责人、资料人员 | 履约材料零散，发生争议时难以说明时间线和缺失证据 | 将来源片段与事实关联，整理证据项、时间线、争点及缺证项 |
+| 催收协作人员 | 催款函金额和合同依据反复核对，文书容易引用旧数据 | 显式选择款项、事实与证据版本，形成可复核、可导出的催款函草稿 |
 
-产品首版聚焦房建机电安装专业分包，代表专业分包人，优先完成
-“合同审查 → 款项核对 → 证据整理 → 催款函”。文书限定专业分包合同、补充协议和催款函三套模板。
-工作台以文档和规范库组织内容，文档打开后进入编辑器与右侧 Agent 会话。
-业务来源定位、人工复核和正式业务成果导出按产品契约另行实现。
+目标工作流：**合同审查 → 款项核对 → 证据整理 → 催款函**。资料围绕同一项目组织，成果保留所引用的来源与版本；更新上游材料后，需要明确发起新的处理。
 
-应用采用 **Next.js App Router + TypeScript**，一个 Node.js 应用承担页面、接口和后台任务。
-数据库通过环境变量选择 **SQLite** 或 **GaussDB 集中式**。SQLite 适用于单实例运行，Zeabur 部署挂载持久卷。
-后续业务原件及导出文件计划使用 **OBS 私有桶**，模型分析与证照识别分别接入 **MaaS** 和 **OCR**。
-云服务配置与能力以实际账号验证为准。
+## 核心功能实机展示
 
-## 从源码运行
+以下为仓库已有本地浏览器演示的原始截图，使用合成项目与材料，来自第七轮模型联调和第八轮演示留存。本次重写逐张核对并复制至版本库，未用文生图制作产品界面。截图中的金额、项目、状态仅用于展示交互，不是业务准确率或云上验收证据。
 
-使用 **Node.js 24** 和 **pnpm 11.6.0**。
+### 1. 合同审查：明确材料、场景与外发授权
 
-当前本地目录的配置、样本及逐步操作见[本地复现指南](docs/local-development.md)。
+选择已解析材料的保存版本、地域和审查场景，确认外发授权后提交后台任务。审查采用场景识别、主审与独立复核；支持范围或依据不足时保留失败、部分完成及待核实状态。
 
-```bash
+![合同审查实机画面：材料版本、场景、外发确认和预算](docs/assets/readme/contract-review.png)
+
+当前机电安装、装饰装修、幕墙、钢结构四类专业分包仅供授权联调。内置规则尚未领域签核，不能作为正式法律结论依据。选择生成修订稿时，另存建议稿并核对，不覆盖原件和人工内容。详见[网页审查说明](docs/contract-review-web.md)。
+
+### 2. 款项核对：把金额与计算口径放在一起
+
+登记款项性质、金额、期间、到期或付款时间及材料来源；区分计量、应付款、付款、未到期款和争议主张。材料不足或口径未确认时保留草案或有条件测算状态，不把计量值直接当作已到期未付额。
+
+![款项核对实机画面：款项行、金额口径和来源](docs/assets/readme/payment-reconciliation.png)
+
+### 3. 证据整理：保留时间线，也保留缺口
+
+将证据项关联到来源片段与项目事实，组织时间线、争点和缺证项。报告保存为独立版本，材料冲突、待核实和缺证状态不能通过复核按钮消除。
+
+![证据整理实机画面：时间线、争点、缺证项和校验状态](docs/assets/readme/evidence-report.png)
+
+### 4. 催款函：从已保存依据生成草稿
+
+选择款项、事实与证据版本，填写发函主体、收函主体、履行要求和送达计划，使用固定模板生成草稿，复核后导出 DOCX。**不提供自动发送、送达回执或利息／违约金自动计算。**
+
+![催款函实机画面：草稿列表、主体、款项成果和送达计划](docs/assets/readme/collection-letter.png)
+
+截图来源与边界见[素材说明](docs/assets/readme/README.md)；工程验证见[第七轮记录](docs/reviews/2026-10-30-round-seven-integration.md)与[第八轮记录](docs/reviews/2026-10-30-round-eight-integration.md)。各段验证不等于四业务端到端新输入验收通过。
+
+## 当前能力与边界
+
+| 能力 | 当前状态 |
+| --- | --- |
+| 浏览器 Word 编辑 | 新建、导入、编辑、保存、重开和导出真实 DOCX；保存不可变版本，导出复用保存字节 |
+| 工作台与账号 | 文档／规范库、编辑器与右侧 Agent；账号登录、项目成员及权限机制已有本地验证；登录不接管匿名文档 |
+| 合同审查 | 匿名文档与项目审查任务、受限模型调用、来源校验、人工复核及版本化导出；正式依据仍缺领域签核 |
+| 项目事实与款项核对 | 事实来源与版本、款项行及确定性计算；依赖人工确认主体、口径与分配关系 |
+| 证据整理与催款函 | 人工录入配合服务端确定性组装；不依赖模型生成，不提供催款函正文自由编辑或发送 |
+| 规范与模板 | 发布须受控维护及独立领域核对；当前没有经领域签核并发布的真实规则／模板，规范库不能作为已有权威知识库宣传 |
+| 云服务与发布 | SQLite 已有本地验证；真实 GaussDB、私有 OBS、MaaS／OCR、公网 HTTPS、Linux 容器及 CI 结果需单独验收 |
+
+单个 DOCX 上限 **20 MiB**；不承诺任意 Word 版式无损还原，不支持旧版 DOC、宏、加密文件、实时协作或完整扫描件审查。图片、页眉页脚、域、批注与修订等的保留能力按[Word 验证记录](docs/reviews/2026-10-22-word-editing-validation.md)逐类判定；不提供 Word 修订的接受／拒绝功能。
+
+项目按实际开工后十二天 Demo、随后一个月完善的两阶段范围推进。工程测试、合成演示与真实法律业务验收分开记录，尚无 24／60 个独立业务质量案例的完整发布验收结论。
+
+## 本地启动
+
+### 1. 准备环境与源码
+
+安装 Git、**Node.js 24** 和 **pnpm 11.6.0**。以下终端命令适用于 PowerShell；macOS／Linux 的文件复制命令见下一步。
+
+```powershell
+node --version
+# 已有正确版本的 pnpm 时跳过安装
+npm install --global pnpm@11.6.0
+pnpm --version
+
 git clone https://github.com/alaala-daka/EquiLens.git
 cd EquiLens
 pnpm install --frozen-lockfile
-# Copy .env.example to .env.local and register ANONYMOUS_DATA_RETENTION_DAYS before creating documents.
+```
+
+依赖使用 pnpm 与已提交的锁文件安装；不要使用 npm／yarn 安装项目依赖或生成其他锁文件。
+
+### 2. 配置本地环境
+
+首次运行复制配置文件；已有 `.env.local` 时直接编辑，避免覆盖私有配置。
+
+```powershell
+Copy-Item .env.example .env.local
+```
+
+macOS／Linux 对应命令：`cp .env.example .env.local`。
+
+编辑 `.env.local`，先使用不调用模型的最小配置：
+
+```dotenv
+DATABASE_PROVIDER=sqlite
+SQLITE_PATH=data/equilens.sqlite
+APP_ORIGIN=http://127.0.0.1:3000
+ANONYMOUS_DATA_RETENTION_DAYS=7
+AI_API_KEY=
+EQUILENS_SYNTHETIC_STORAGE=0
+```
+
+这里的 7 天仅是本地合成资料体验示例，实际用途和保留期限由负责人登记后确定。`APP_ORIGIN` 必须与浏览器域名和端口严格一致，不带末尾斜线。其余配置可保留示例值，无模型密钥时不提交审查任务。
+
+SQLite 在运行时创建数据库；无需另装数据库服务。不要将 `.env.local`、数据库或真实合同提交 Git。
+
+### 3. 启动并验证
+
+```powershell
 pnpm dev
 ```
 
-打开 <http://127.0.0.1:3000>，与 `.env.local` 的 `APP_ORIGIN` 保持严格一致；使用 localhost 或其他端口时同步调整。当前启动不需要云服务凭据，也不会发起模型或 OCR 请求。
+打开 [http://127.0.0.1:3000](http://127.0.0.1:3000)。在另一个终端进入仓库执行：
 
-页签、列表和对话框使用官方 shadcn/ui 组件；Word 画布和工具栏使用固定版本的 SuperDoc 1.47.2。
-支持中文段落、基础格式、标题、列表和普通表格文字编辑。单个 DOCX 不超过 20 MiB；
-宏、加密、外部资源、嵌入对象、altChunk 与嵌套压缩按安全边界拒绝；图片、页眉页脚、域、批注、修订和合并表格可导入并往返保留，文档可正常编辑，保留能力逐类别以验证记录为准。
-不承诺任意 Word 版式无损还原；Microsoft Word 自动打开与渲染核对、大文档单次实测和人工验收缺口见验证记录。
+```powershell
+pnpm smoke http://127.0.0.1:3000
+```
 
-保存按钮及 `Ctrl/Cmd+S` 提交不可变 DOCX 版本；有修改时导出会先保存，再下载该版本的同一份字节。
-标题、正文和 Agent 待发送输入共用保存状态；没有修改时保存禁用，快捷键不新增版本。
-桌面编辑器与 Agent 默认按 70/30 排列，可拖动或用分隔柄键盘调整；窄屏按相同比例上下排列，区域分别滚动。
-正文中按 `F6` 转到右侧备注，按 `Shift+F6` 转到文档操作；菜单打开或组合输入期间保留原有按键处理。
-备注随当前文档保存，自由会话发送保持禁用。离开编辑器前可保存并离开、放弃更改或取消，保存失败留在当前文档。
-加载失败时可重新加载；未保存修改先经确认。多标签页保存冲突时保留当前编辑，可另存为新文档。
-只有保存成功的版本能在刷新后恢复，导入原件不会被编辑覆盖。
+启动命令会先构建文档校验、解析与保留维护程序，不要直接运行 `next dev`。按 `Ctrl+C` 停止，调整配置后重新启动。
 
-服务端使用 HttpOnly 会话 cookie 隔离文档；其他浏览器、设备或隐私窗口有独立列表。
-账号登录不接管匿名文档；工作台页头提供登录入口，登录后显示当前账号并可退出。清除匿名 cookie 会失去该会话的文件访问入口，请下载需要保留的文件。
-历史 IndexedDB 文档不会删除或自动上传；可从旧版导出后重新导入。持久卷不替代备份。
+如 Windows 环境因 Turbopack 创建目录联接失败，可使用 `pnpm dev --webpack`。端口被占用时可运行 `pnpm dev --port 3001`，同时将 `APP_ORIGIN` 与访问地址改为 `http://127.0.0.1:3001`。
 
-匿名资料按[数据库规格](spec/04-database-deployment.md)使用固定保留期限。负责人须先登记用途和天数；
-新建、导入前确认实际到期日期，同会话后续操作及配置调整不续期。到期立即停止旧资料读写与下载；
-请在到期前打开文档，使用“导出 Word”保存需要保留的版本。到期后可“开始新会话”，新列表不继承旧资料。
-cookie 只提供访问凭据，清除或过期不会触发服务端删除，也不能恢复访问入口。
-服务启动重放删除日志后开放资料访问，并在启动及每小时尝试清理到期资料；故障期间仍拒绝过期访问。
-存量资料须先通知并登记导出窗口，窗口内仅原会话可读和导出，结束后拒绝访问。
-窗口登记、私有删除日志及恢复重放见[运维说明](docs/operations.md#匿名资料维护与恢复)。
+### 4. 完成第一次文档操作（无需模型或云账号）
 
-来源和边界见 [工作台界面规格](spec/02-workbench-ui.md)、[Word 编辑规格](spec/03-word-editing.md)
-及 [Word 验证记录](docs/reviews/2026-10-22-word-editing-validation.md)、
-[工作台步骤一验证记录](docs/reviews/2026-10-22-workbench-step-one-validation.md)、
-[编辑器步骤二验证记录](docs/reviews/2026-10-23-editor-step-two-validation.md)，
-第三方许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
-项目采用 [AGPL-3.0-only](LICENSE)，保留 SuperDoc 等第三方许可；页面“源代码”链接对应部署版本。
+1. 点击「新建文档」，确认资料保留期限，输入标题和正文并保存。
+2. 返回列表、重开文档，核对内容，再使用「导出 Word」下载保存版本。
+3. 点击「导入 Word」，选择合成样本 [`sample-contract.docx`](tools/contract-review/fixtures/sample-contract.docx)，体验导入与编辑。
+4. 修改正文后使用保存按钮或 `Ctrl/Cmd+S`；导出时有修改会先保存。保存失败不会替换已有导出。
 
-## 合同审查联调
+匿名文档由当前浏览器 cookie 隔离。清除 cookie、换浏览器或隐私窗口不会找回原列表；请在到期前导出需保留的文件。固定期限不会随访问或保存续期，历史 IndexedDB 文档也不会自动上传。
 
-先配置匿名资料保留期限，再在忽略的 `.env.local` 配置 `AI_BASE_URL`、`AI_MODEL`、`AI_API_KEY`。
-内置规则未完成领域核对，只能显式使用 `AI_REVIEW_MODE=debug` 联调；生产默认 `published` 会拒绝这些资料。
-打开已保存 DOCX 后，在右侧「合同审查」确认地域、所选版本、发送目标和外发授权。
-保存版本变化后需要重新确认。审查记录最多按 `AI_REVIEW_RETENTION_DAYS` 保留，原资料先到期时一并停止访问和清理。
-生产须显式设置 1–365 天的审查期限及经验证的 `AI_REVIEW_MAX_PROMPT_CHARS`。
-Agent 累计请求上限默认 25 次，可配置 1–40；重试与恢复不重置预算。真实审查会发送合同并可能产生费用。
+### 5. 可选：配置合同审查联调
 
-任务与文档共用会话上下文、删除日志就绪屏障和期限守卫；撤销、到期及只读导出窗口阻止新处理。
-网页任务用法见[交接说明](docs/contract-review-web.md)，CLI 和后端入口见[模块说明](tools/contract-review/README.md)。
-`pnpm ai:smoke` 仅发送一次固定合成消息验证模型连接；`pnpm review:contract:example` 使用离线合成桩。
-本地整合验证见[验证记录](docs/reviews/2026-10-23-contract-review-main-integration.md)，不计为法律业务准确率验收。
+只使用合成或明确授权的材料。在 `.env.local` 配置有权访问的模型服务：
 
-编辑器打开及重开文档时默认居中并适应宽度，随面板宽度自动缩放（10%—200%）。
-点击工具栏旁的“适应宽度”可关闭自动适配并保持当前比例，在原生缩放菜单选择数值也会退出自动适配。
-纸张宽于画布时可在正文区域横向滚动。缩放不改变正文、分页尺寸或保存版本。
+```dotenv
+AI_BASE_URL=https://your-provider.example/v1
+AI_MODEL=your-model-id
+AI_API_KEY=your-private-key
+AI_REVIEW_MODE=debug
+AI_REVIEW_RETENTION_DAYS=7
+AI_REVIEW_MAX_PROMPT_CHARS=240000
+AI_AGENT_MAX_CALLS=25
+```
 
-## 数据库配置
+替换服务地址、模型和密钥；提示字符上限须按实际模型能力调低，240000 只是应用允许的上限。重启服务，打开已保存 DOCX，在右侧「合同审查」确认地域、版本、未核对规则提示及外发授权后提交。
 
-A1 已实现 `/login`、登录/会话/退出 HTTP、可撤销身份、持久化登录限流和有界清理。合成 SQLite 实际接口、默认生产构建、生产冒烟和本地 TLS 浏览器交互已验证；本地自签证书测试不等于有效公网 HTTPS 验收，项目权限和完整 AC-01/AC-15 仍待联验。详见[认证验证记录](docs/reviews/2026-10-27-a1-auth-validation.md)。
-从源码运行的服务器维护入口为 `pnpm account:maintain <create|reset|disable|enable|grant-admin|revoke-admin> --username <账号> --actor <运维标识>`；当前未打包此命令到 standalone 镜像。
-创建/重置只从私有标准输入接收 UTF-8 密码（去除一个末尾换行），拒绝在终端明文键入，不支持密码参数；
-使用受保护的输入来源，不将密码写入 shell 历史、Git 或日志。停用/重置撤销已有会话，账号创建不自动获得项目权限。
-维护命令必须显式配置 `DATABASE_PROVIDER=sqlite|gaussdb`；SQLite 必须使用指向目标库的绝对 `SQLITE_PATH`，不接受开发默认路径。命令会初始化业务迁移，先备份目标数据库。
-隐藏输入到私有 stdin 的完整操作、停用/重置检查与认证 503 诊断见[账号维护](docs/operations.md#受控账号维护与认证就绪)。仅合成 SQLite 已验证，GaussDB 另行验收。
-A1 所有账号共享部署来源额度：每 15 分钟 30 次；另有每规范账号 15 分钟 5 次。不同用户可能互相影响，忽略客户端 IP 和转发头。
+提交会向配置的第三方模型发送材料并可能产生费用。无密钥、超时、预算耗尽或输出无效时会失败或部分完成，不以演示答案替代。生产默认 `published`，未发布规则会被拒绝；不要用 debug 结果作为正式法律结论。更多配置见[网页审查说明](docs/contract-review-web.md)。
 
-默认不需要云端数据库即可启动，SQLite 文件位于 `data/equilens.sqlite`。
-配置示例见 [.env.example](.env.example)，开发时复制为 `.env.local`。
+### 6. 可选：账号与项目合成联调
 
-| 配置 | 用途 |
-| --- | --- |
-| `DATABASE_PROVIDER=sqlite` | 使用 SQLite，默认值 |
-| `SQLITE_PATH` | SQLite 文件路径，Zeabur 使用 `/data/equilens/equilens.sqlite` |
-| `ANONYMOUS_DATA_RETENTION_DAYS` | 新建、导入、复制必需，正整数天数，无默认值；负责人登记用途和期限 |
-| `ANONYMOUS_DELETION_JOURNAL_DIR` | 私有持久删除日志；SQLite 默认数据库旁 retention-journal，GaussDB 必须显式配置 |
-| `ANONYMOUS_EMPTY_SESSION_RETENTION_DAYS` | 可选、另行登记的空会话窗口，正整数，无默认值；未设不清理空行，显式空值或非法值使资料就绪失败 |
-| `DATABASE_PROVIDER=gaussdb` | 使用 GaussDB 集中式，连接失败不回退 |
-| `GAUSSDB_HOST/PORT/DATABASE/USER/PASSWORD` | GaussDB 连接配置，端口默认 `8000` |
-| `GAUSSDB_CA_PATH` | 可选 CA 文件，TLS 始终校验证书 |
-| `APP_ORIGIN` | 必填精确 origin，无末尾斜线；开发回环 HTTP，生产 HTTPS，用于认证和写请求校验 |
+匿名编辑不需要账号。首次初始化管理员可在 `.env.local` 同时设置 `BOOTSTRAP_ADMIN_USERNAME` 与 `BOOTSTRAP_ADMIN_PASSWORD`，密码为 12–128 个字符、UTF-8 不超过 512 字节，没有默认账号。启动创建成功后移除两项并重启；访问 `/login` 登录，账号后续维护见[运维说明](docs/operations.md#受控账号维护与认证就绪)。
 
-运行期显式初始化数据库和删除日志，生产构建不连接数据库或启动清理。切换 provider 不会自动迁移已有文档。
-资料期限缺失或非法时新建返回 503；已有有效期限仍可读取、保存和下载，到期后立即拒绝。
-删除日志初始化或重放失败时资料接口返回 503；健康接口仍独立可用。
-存储边界与独立 GaussDB 验收见[数据库规格](spec/04-database-deployment.md)。
+项目材料的本地合成联调需要显式设置 `EQUILENS_SYNTHETIC_STORAGE=1`，再重启开发服务。文件默认保存至 `data/dev-objects/`，只允许合成资料；该开关生产环境拒绝使用，不代表 OBS 已实现。登录、项目成员权限、材料解析及审查预算仍需按各自流程配置，不会由匿名样本自动生成完整项目。
 
-生产构建与启动：
+### 7. 生产构建与容器部署
 
-```bash
+```powershell
 pnpm build
 pnpm start
 ```
 
-`GET /healthz` 返回应用存活状态。它不检查数据库或外部服务，也不表示业务流程已可用。
+生产启动前将运行环境的 `APP_ORIGIN` 改为实际 **HTTPS** 入口，并配置 TLS 反向代理；开发回环 HTTP 不能作为生产认证配置。单独执行 `pnpm build` 不表示业务服务已验证。
 
-## 开发
+Docker Compose 首次部署：复制 `.env.example` 为 `.env`，填写实际 HTTPS `APP_ORIGIN` 和已登记的保留天数，配置反向代理后执行：
 
-| 工作 | 命令 |
-| --- | --- |
-| 安装锁定依赖 | `pnpm install --frozen-lockfile` |
-| 本地热更新 | `pnpm dev` |
-| 代码与类型检查 | `pnpm check` |
-| DOCX 与版本存储测试 | `pnpm test` |
-| 生产构建 | `pnpm build` |
-| 检查运行中的应用 | `pnpm smoke` |
-| 本地容器 | `docker compose up --build -d` |
-| 私有知识/规则发布维护（本机 CLI） | `pnpm knowledge:maintain <list|validate|submit|publish|disable|show> ...` |
-
-```text
-src/app/               页面、布局与 HTTP 入口
-src/components/        工作台、Word 适配器与官方 UI 组件
-src/lib/documents/     DOCX 校验、存储客户端与历史浏览器存储
-src/server/            数据库适配、文档版本与会话隔离
-public/                公共静态资源
-scripts/               应用冒烟检查与私有维护入口
-spec/                  已接受的产品与技术契约
-docs/                  操作指南与历史资料
-.github/workflows/     检查与镜像发布
+```powershell
+docker compose up --build -d
+docker compose logs --tail=100 app
 ```
 
-服务端模块随实际业务建立，不预建多服务结构。开发边界见 [DEVELOPMENT.md](DEVELOPMENT.md)，
-贡献流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+Compose 发布至 `127.0.0.1:3000`，SQLite 固定单副本并保留 `equilens-data` 持久卷。不要运行 `docker compose down --volumes`。管理员初始化变量需要在 Compose 的 `app.environment` 显式传入，仅填写 `.env` 不会自动注入。
 
-受控知识/规则发布（C6）：发布只能通过 `pnpm knowledge:maintain` 私有命令执行，没有公开 HTTP 写路由，
-规范库页面在本轮保持“暂无规范”。发布要求操作者是现有且启用的超级管理员、核对人位于部署配置的
-`EQUILENS_DOMAIN_REVIEWERS` 允许清单且与操作者不同、核对时间与期望摘要匹配；缺少核对人/证据时拒绝发布。
-本仓库当前没有任何经领域核对并发布的真实规则或模板：未核对内容不得显示为已发布规范、不得作为正式法律
-结论依据；合同审查任务在无发布依据时仍走显式 debug/未签核路径，核验与文书起草的合成夹具不得冒充真实
-服务或法律结论。
+生产私有对象存储仍有缺项，不能据此承诺完整项目材料处理已可上线。ECS、Zeabur、GHCR 镜像发布、配置和备份恢复以[部署指南](docs/deployment.md)为准。完整备份必须包含数据库、私有对象与删除日志；只复制 SQLite 文件不算完整项目备份。
 
-A/C 两线（认证/共用机制与项目平台/业务）当前状态见
-[A/C 最终验收记录](docs/reviews/2026-10-29-ac-final-acceptance.md)：工作包已在本地环境实现并通过工程、恢复与浏览器可执行验收；
-真实 GaussDB、私有 OBS、MaaS/OCR、公网 HTTPS、CI 运行与 Linux 容器仍未验证，保持外部缺项，
-不把本地合成数据或 SQLite 结果表述为云上/法律质量验收。
+### 常见启动问题
 
-备份、恢复与保留（第六轮）：**只备份数据库不算完整备份**。完整备份集必须包含数据库一致快照、私有对象清单与
-摘要、删除日志、应用与模板版本、非敏感配置名清单及密钥安全恢复说明，并且必须在停止写入后取得。恢复只能到新路径，
-先逐字节复核数据库/对象/日志并清除旧租约与执行令牌，再重放删除日志后才允许对外服务；删除日志重放保证旧备份不会
-复活已删除项目（删除后备份重放为 no-op）。合成项目不随保留期自动清扫，真实授权项目到期后先撤销访问再清理；
-删除状态入口只返回状态与次数，不返回项目内容。本机演练使用 SQLite 与开发文件对象存储，不是 OBS/GaussDB/Linux
-容器或异地备份验收。
+| 现象 | 检查与处理 |
+| --- | --- |
+| 新建或导入返回 503 | 检查资料保留天数是否为正整数、数据库和删除日志目录是否可写、日志重放是否成功 |
+| 登录或写入失败 | 检查 `APP_ORIGIN` 是否与当前访问地址严格一致；生产需 HTTPS |
+| 模型任务无法完成 | 检查模型权限、容量、外发确认、预算与 debug／published 依据准入，不把失败视为无风险 |
+| `/healthz` 正常但业务不可用 | 健康接口只检查应用存活，不检查数据库、登录或模型就绪 |
+| 换浏览器后文档不见 | 匿名资料按会话隔离，登录不会接管匿名文档；使用原会话并及时导出 |
 
-## 镜像
+## 开发与验证
 
-GitHub Actions 构建并验证镜像；完成许可安排并启用发布开关后，在主分支和版本标签检查通过时发布到
-`ghcr.io/alaala-daka/equilens`。当前配置构建 Linux AMD64 镜像，使用非 root 用户运行。
-镜像标签、仓库权限、Compose、Zeabur 和 ECS 部署方式见 [部署指南](docs/deployment.md)。
+单个 **Next.js App Router + TypeScript + Node.js** 应用承载页面、接口与数据库任务；通过 `DATABASE_PROVIDER` 选择 SQLite 或 GaussDB 集中式，不增加独立 API／Worker 服务。GaussDB 需要独立真机验证，连接失败不会回退为 SQLite，切换配置不会自动迁移数据。
 
-## 规格
+| 操作 | 命令 |
+| --- | --- |
+| 代码、路由类型与 TypeScript 检查 | `pnpm check` |
+| 文档、权限、任务、业务及持久化测试 | `pnpm test` |
+| 离线合成审查示例 | `pnpm review:contract:example` |
+| 生产构建 | `pnpm build` |
+| 检查运行中的服务 | `pnpm smoke [url]` |
+| 一次真实模型合成消息连通测试（可能计费） | `pnpm ai:smoke` |
+| 空白错误检查 | `git diff --check` |
 
-[规格索引](spec/README.md)是当前架构、业务行为和验收要求的入口。
-前端开发按[工作台界面规格](spec/02-workbench-ui.md)依次完善工作台、编辑器，再接入业务交互，
-从合同审查推进到款项核对、证据整理和催款函。步骤一已实现标题检索、列表状态、操作取消和会话期限交互，
-并完成本地 SQLite 工程与部分浏览器验证，历史缺口见
-[步骤一验证记录](docs/reviews/2026-10-22-workbench-step-one-validation.md)。步骤二已实现编辑状态、统一保存与导出、
-离开保护和面板响应式；工程检查、SQLite 重启、实际浏览器多视口与原生 200% 缩放、Word 自动往返检查已执行，
-完整 UI/WD 验收及平台缺口见[步骤二验证记录](docs/reviews/2026-10-23-editor-step-two-validation.md)。
-当前 Word 正文的 Tab/Shift+Tab 焦点无法退出，序列化超时后状态标签误报打开失败，UI-13 尚未通过；
-Windows 中文输入法候选选字、人工 Word 验收及平台恢复仍待验证。步骤三业务验收尚未完成。
-`spec/` 保存已接受的契约，`docs/` 保存使用说明与历史资料，未决方案及任务通过 GitHub Issues 管理。
+界面使用官方 shadcn/ui 组件与 SuperDoc 1.47.2。开发规则见 [DEVELOPMENT.md](DEVELOPMENT.md)，贡献检查见 [CONTRIBUTING.md](CONTRIBUTING.md)，验收依据见 [spec/](spec/README.md)。历史截图和工程检查不替代业务 AC、领域签核、真实云服务或 GitHub CI 验收。
 
-项目用于华为 ICT 大赛创新赛，按实际开工日起十二天 Demo、随后一个月完善的两阶段范围交付。
-业务验收尚未开始，设计目标不作为已完成功能或质量指标。
+## 文档与许可
 
-可选首次部署初始化见[预设超级管理员](docs/deployment.md#预设超级管理员)：显式成对秘密配置仅创建一次，完成后移除；角色守卫已提供，正式项目授权仍待接入，不接管匿名资料。
+- [产品与验收](spec/01-product.md)：两阶段范围、主体、金额、来源与 AC-01—AC-26。
+- [工作台规格](spec/02-workbench-ui.md) · [Word 编辑](spec/03-word-editing.md) · [数据库部署](spec/04-database-deployment.md)。
+- [合同审查联调](docs/contract-review-web.md) · [审查 CLI](tools/contract-review/README.md) · [部署](docs/deployment.md) · [运维与恢复](docs/operations.md)。
 
-开发合成材料联调：仅在 NODE_ENV=development 且 EQUILENS_SYNTHETIC_STORAGE=1 时启用文件型开发对象存储，默认写入 `data/dev-objects/`（可用 EQUILENS_DEV_OBJECT_STORE 覆盖）。仅使用合成材料；该目录不进入版本库，进程重启后对象字节仍然保留。它不实现 OBS 的桶权限、版本、生命周期或备份语义，生产环境始终拒绝此开关，不代替真实 OBS 验证。
+采用 [AGPL-3.0-only](LICENSE)，第三方组件遵循各自许可，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。页面「源代码」入口对应部署版本；对外分发与镜像发布须完成相应许可和源码提供安排。
